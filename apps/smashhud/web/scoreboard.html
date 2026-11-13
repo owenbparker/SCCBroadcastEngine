@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Smash HUD - Crews scoreboard</title>
+<!-- The crews scoreboard (OBS / vMix browser source, 1920x1080, see-through):
+     each crew's stocks left in the white boxes, the player on stage (or the
+     crew's name), the games won, the match and the series, and the sponsors
+     at the bottom. Built from the "smash scoreboard" PSD. -->
+<style>
+  @font-face { font-family: "Anton"; src: url("fonts/Anton-Regular.ttf") format("truetype"); }
+  /* The design's names are in Brick: drop BrickRegular into web/fonts to use it
+     (Permanent Marker stands in until then). */
+  @font-face { font-family: "Brick"; src: local("BrickRegular"), local("Brick Regular"), local("Brick"),
+               url("fonts/Brick.otf") format("opentype"), url("fonts/Brick.ttf") format("truetype"); }
+  @font-face { font-family: "Permanent Marker"; src: url("fonts/PermanentMarker-Regular.ttf") format("truetype"); size-adjust: 80%; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+  .board { position: absolute; inset: 0; transform: translateY(-140px); transition: transform .55s cubic-bezier(.2,.9,.3,1); }
+  .board.in { transform: none; }
+  .abs { position: absolute; white-space: nowrap; }
+  .name, .line { overflow-x: clip; overflow-clip-margin: 0; }
+  #bg { left: 286px; top: 0; width: 1350px; height: 127px; }
+  #logo { left: 880px; top: 1px; width: 162px; height: 127px; z-index: 3; object-fit: contain; transform-origin: 50% 50%; }
+  .score { top: 0; width: 88px; height: 74px; display: grid; place-items: center; font: 62.5px/1 "Anton", sans-serif;
+           color: #000; z-index: 2; padding-top: 1px; box-sizing: border-box; }
+  .score span { display: inline-block; }
+  .score.pop span { animation: pop .7s cubic-bezier(.2,.9,.3,1.3); }
+  @keyframes pop { 0% { transform: scale(1.6); color: #7200ff; } 100% { transform: scale(1); color: #000; } }
+  #score-left { left: 286px; }
+  #score-right { left: 1548px; }
+  .name { top: 4px; height: 76px; line-height: 76px; font-size: 66px; color: #fff; letter-spacing: .01em;
+          font-family: "Brick", "Permanent Marker", sans-serif; z-index: 2; }
+  #name-left { left: 391px; }
+  #name-right { right: calc(1920px - 1530px); text-align: right; }
+  .line { top: 82px; height: 44px; line-height: 44px; font: 35.8px/44px "Anton", sans-serif; color: #000; letter-spacing: .01em; z-index: 2; }
+  #match { right: calc(1920px - 877px); text-align: right; }
+  #bestof { left: 1044px; }
+  .pip { position: absolute; top: 89px; width: 31px; height: 31px; background: #000; z-index: 2; transition: background .3s; }
+  .pip.won { background: var(--won, #7200ff); }
+  #sponsor-box { left: 792px; top: 903px; width: 336px; height: 125px; background: #000; display: grid; place-items: center;
+                 opacity: 0; transition: opacity .4s; }
+  #sponsor-box.on { opacity: 1; }
+  #sponsor-box img { max-width: 290px; max-height: 95px; object-fit: contain; transition: opacity .35s, transform .35s; }
+  #sponsor-box img.out { opacity: 0; transform: translateY(-10px); }
+</style>
+</head>
+<body>
+<div class="board" id="board">
+  <img class="abs" id="bg" src="assets/scoreboard_bg.png" alt="">
+  <div class="abs score" id="score-left"><span>12</span></div>
+  <div class="abs score" id="score-right"><span>12</span></div>
+  <div class="abs name" id="name-left">PLAYER 1</div>
+  <div class="abs name" id="name-right">PLAYER 2</div>
+  <div class="abs line" id="match">Grand Finals</div>
+  <div class="abs line" id="bestof">Best of 3</div>
+  <div id="pips"></div>
+  <img class="abs" id="logo" src="assets/logo.png" alt="">
+</div>
+<div class="abs" id="sponsor-box"><img id="sponsor" alt=""></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+// Texts squeeze to fit between the score boxes, the logo and the game boxes
+// (which move as the logo is sized and the series is longer).
+const SIZES = {};
+let last = null, flash = { left: null, right: null };
+
+function fit(el, text, room, force) {
+  const key = text + "|" + Math.round(room);
+  if (el.dataset.key === key && !force) return;
+  // Each text has a box as wide as its room (nothing past it shows), and
+  // shrinks until it fits in it.
+  el.style.width = Math.max(0, room) + "px";
+  let span = el.firstElementChild;
+  if (!span) { el.textContent = ""; span = el.appendChild(document.createElement("span")); }
+  span.textContent = text;
+  const size = SIZES[el.id] || (SIZES[el.id] = parseFloat(getComputedStyle(el).fontSize));
+  el.style.fontSize = size + "px";
+  const w = span.offsetWidth;
+  // (not laid out yet, e.g. a preview that's hidden: try again later)
+  if (!w && text) { delete el.dataset.key; return; }
+  el.dataset.key = key;
+  if (w > room) el.style.fontSize = (size * room / w) + "px";
+}
+
+// Where the logo is (its box scaled from its middle), and how far the game boxes reach.
+function layout(s) {
+  const scale = (+s.logo_size || 100) / 100, gap = 14;
+  const logoL = 961 - 81 * scale, logoR = 961 + 81 * scale;
+  const n = Math.max(1, Math.ceil(s.best_of / 2));
+  const pipsL = 600 + 38 * (n - 1) + 31, pipsR = 1289 - 38 * (n - 1);
+  const matchRight = Math.min(877, logoL - 4), bestLeft = Math.max(1044, logoR + 4);
+  $("match").style.right = (1920 - matchRight) + "px";
+  $("bestof").style.left = bestLeft + "px";
+  return { "name-left": logoL - 391 - gap, "name-right": 1530 - logoR - gap,
+           match: matchRight - pipsL - gap, bestof: pipsR - bestLeft - gap };
+}
+
+function pips(bestOf, s) {
+  const n = Math.max(1, Math.ceil(bestOf / 2)), key = `${n}|${s.left.wins}|${s.right.wins}`;
+  if ($("pips").dataset.key === key) return;
+  $("pips").dataset.key = key;
+  let html = "";
+  for (let i = 0; i < n; i++) {
+    // (filled from the outside in: the left crew's first win is the leftmost box)
+    html += `<div class="pip${i < s.left.wins ? " won" : ""}" style="left:${600 + 38 * i}px"></div>`;
+    html += `<div class="pip${i < s.right.wins ? " won" : ""}" style="left:${1289 - 38 * i}px"></div>`;
+  }
+  $("pips").innerHTML = html;
+}
+
+function score(side, s) {
+  const box = $(`score-${side}`), span = box.querySelector("span");
+  span.textContent = s[side].stocks;
+  if (flash[side] !== null && s[side].flash !== flash[side]) {
+    box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop");
+  }
+  flash[side] = s[side].flash;
+}
+
+function fitAll(s, force) {
+  const room = layout(s);
+  for (const side of ["left", "right"]) fit($(`name-${side}`), s[side].name, room[`name-${side}`], force);
+  fit($("match"), s.match || "", room.match, force);
+  fit($("bestof"), `Best of ${s.best_of}`, room.bestof, force);
+}
+
+function render(s) {
+  last = s;
+  for (const side of ["left", "right"]) score(side, s);
+  fitAll(s);
+  if (s.logo && $("logo").getAttribute("src") !== s.logo) $("logo").src = s.logo;
+  $("logo").style.transform = `translateY(${+s.logo_y || 0}px) scale(${(+s.logo_size || 100) / 100})`;
+  pips(s.best_of, s);
+  sponsors(s);
+  $("board").classList.add("in");
+}
+
+// The sponsors, one after another in the box at the bottom.
+let spIndex = 0, spTimer = null, spKey = "";
+function sponsors(s) {
+  const list = (s.show && s.show.sponsors === false) ? [] : (s.sponsors || []);
+  const key = list.join("|") + "|" + s.sponsor_seconds;
+  $("sponsor-box").classList.toggle("on", list.length > 0);
+  if (key === spKey) return;
+  spKey = key;
+  clearInterval(spTimer);
+  spIndex = 0;
+  if (!list.length) return;
+  $("sponsor").src = list[0];
+  if (list.length > 1) spTimer = setInterval(() => {
+    spIndex = (spIndex + 1) % list.length;
+    const img = $("sponsor");
+    img.classList.add("out");
+    setTimeout(() => { img.src = list[spIndex]; img.classList.remove("out"); }, 350);
+  }, Math.max(2, s.sponsor_seconds || 8) * 1000);
+}
+
+function connect() {
+  const es = new EventSource("/api/stream");
+  es.onmessage = e => { try { render(JSON.parse(e.data)); } catch (err) {} };
+}
+document.fonts.ready.then(connect);
+// (a font that arrives later, Brick from the PC say, is wider or narrower: fit again)
+document.fonts.addEventListener("loadingdone", () => last && fitAll(last, true));
+// (and again whenever it's shown or resized, and now and then, in case the fonts were still on their way)
+addEventListener("resize", () => last && fitAll(last, true));
+document.addEventListener("visibilitychange", () => last && fitAll(last, true));
+setInterval(() => last && fitAll(last), 1000);
+setInterval(() => last && fitAll(last, true), 5000);
+</script>
+</body>
+</html>

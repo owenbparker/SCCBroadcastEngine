@@ -1,0 +1,1369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="assets/app_icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>League HUD Control</title>
+<style>
+  @font-face { font-family: "Inter"; src: url("fonts/Inter.ttf") format("truetype"); font-weight: 100 900; }
+  :root { --bg: #0e1012; --panel: #171a1d; --line: #2a2f34; --text: #e8eaed; --muted: #8b939b;
+          --left: #10815b; --right: #b8191c; --accent: #31c392; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Inter", system-ui, sans-serif; }
+  html, body { height: 100%; }
+  header { display: flex; align-items: center; gap: 14px; height: 54px; padding: 0 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .clock { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 3px 8px; border-radius: 4px; background: #ffcf66; color: #1a1a1a; }
+  .badge:empty { display: none; }
+  .version { font-size: 12px; color: var(--muted); }
+  .update.check { background: #252a2f; color: var(--text); border: 1px solid var(--line); font-weight: 600; }
+  .update.check:hover { filter: none; border-color: var(--muted); }
+  .update { background: var(--accent); color: #06231a; border: 0; font-weight: 700; padding: 6px 12px; }
+  .update:hover { filter: brightness(1.1); }
+  .update[disabled] { background: #2c3a35; color: var(--text); cursor: default; }
+  .update.error { background: #6b2a2a; color: #fff; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: 6px 12px; color: var(--muted); }
+  .seg button.on { background: var(--accent); color: #06231a; font-weight: 600; }
+  /* Desktop layout: settings scroll on the left, preview / outputs / log on the right. */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 440px; height: calc(100% - 54px); }
+  .layout > main, .layout > aside { overflow-y: auto; }
+  aside { border-left: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .out { margin-bottom: 10px; }
+  .out > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .out .row { align-items: stretch; }
+  .out code { display: flex; align-items: center; padding: 6px 8px; min-width: 0; }
+  .out button { flex: 0 0 auto; }
+  .toggle { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; margin: 6px 0 10px; cursor: pointer; }
+  .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .log { height: 190px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+         font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+  .log .t { color: var(--muted); margin-right: 6px; }
+  .log .warn { color: #ffcf66; }
+  .log .error { color: #ff7b7b; }
+  @media (max-width: 900px) { .layout { display: block; height: auto; } aside { border-left: 0; } }
+  header h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #c0392b; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 16px; align-content: start; align-items: start; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  /* Click a section's title to fold it away to just the title and its arrow. */
+  section > h2 { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  section > h2:hover { color: var(--text); }
+  section > h2 .fold { margin-left: auto; flex: 0 0 auto; width: 16px; height: 16px; transition: transform .15s; }
+  section.collapsed > h2 { margin-bottom: 0; }
+  section.collapsed > h2 .fold { transform: rotate(-90deg); }
+  section.collapsed > :not(h2) { display: none !important; }
+  label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 12px; }
+  input, select { width: 100%; padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  input[type=checkbox] { width: auto; }
+  input.swatch { flex: 0 0 64px; height: 38px; padding: 3px; cursor: pointer; }
+  input[type=range] { padding: 0; border: 0; background: none; accent-color: var(--accent); }
+  .logo-adjust label span { color: var(--text); float: right; }
+  button { padding: 8px 12px; background: #252a2f; color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .team { border-top: 4px solid var(--left); padding-top: 8px; }
+  .team.right { border-top-color: var(--right); }
+  .team img { width: 48px; height: 48px; object-fit: contain; background: #000; border-radius: 6px; flex: 0 0 48px; }
+  .wins { display: flex; align-items: center; gap: 8px; }
+  .link-team { border-top: 4px solid var(--left); padding-top: 8px; }
+  .link-team.right { border-top-color: var(--right); }
+  .link-team h3 { margin: 0 0 6px; font-size: 13px; }
+  .link-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 190px; gap: 10px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .link-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .link-row select { padding: 5px 8px; }
+  .linked { color: #3ecf6e; font-size: 12px; }
+  .unlinked { color: #ff5a5a; font-size: 12px; }
+  .wins b { font-size: 22px; min-width: 28px; text-align: center; }
+  .wins button { flex: 0 0 40px; font-size: 18px; padding: 4px; }
+  /* Just the HUD, on a dark checkerboard that shows where it's see-through. */
+  .preview { position: relative; width: 100%; aspect-ratio: 16 / 9; background: repeating-conic-gradient(#1a1e22 0 25%, #121518 0 50%) 0 0 / 20px 20px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+  .preview.bar { aspect-ratio: 934 / 122; }
+  .preview.draft { aspect-ratio: 1920 / 420; }
+  .preview-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .preview-mode { margin-bottom: 10px; }
+  .cam-opts { display: flex; flex-wrap: wrap; gap: 4px 22px; }
+  .cam-opts .toggle { margin: 4px 0; }
+  .cam-team h3 { margin: 0 0 6px; font-size: 13px; padding-top: 8px; border-top: 4px solid var(--left); }
+  .cam-team[data-side=right] h3 { border-top-color: var(--right); }
+  .cam-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) 48px; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 6px; border: 1px solid transparent; }
+  .cam-row.live { border-color: var(--accent); background: rgba(49,195,146,.08); }
+  .cam-row .who b { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .cam-row .who b i { width: 8px; height: 8px; border-radius: 50%; background: #3a4047; flex: 0 0 8px; }
+  .cam-row .who b i.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .cam-row .who small { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cam-row input { padding: 6px 8px; font-size: 12px; }
+  .cam-row button { padding: 5px 6px; font-size: 12px; }
+  #match-enable.on, #timers-auto.on, #draft-demo.on { background: var(--accent); color: #06231a; border-color: var(--accent); font-weight: 600; }
+  .cam-row button.on { background: var(--accent); color: #06231a; border-color: var(--accent); font-weight: 600; }
+  .note a { color: var(--accent); }
+  #cams-test-result img { width: 100%; margin-top: 10px; border-radius: 6px; border: 1px solid var(--line); }
+  .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; }
+  code { background: var(--bg); padding: 2px 6px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 12px; font-size: 12px; max-height: 320px; overflow: auto; }
+  .fields div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 3px 0; cursor: copy; }
+  .fields span:last-child { color: var(--muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%; }
+  .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 0; color: var(--text); font-size: 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .checks input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .obj-icon { width: 20px; height: 20px; object-fit: contain; }
+  .obj-icon.big { flex: 0 0 36px; width: 36px; height: 36px; }
+  .checks .dot { width: 18px; height: 18px; box-shadow: none; display: inline-grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; }
+  .warn { color: #ffcf66; }
+  .countdown { font-size: 18px; font-weight: 700; color: var(--text); margin: 8px 0 12px; font-variant-numeric: tabular-nums; }
+  .countdown.live { color: var(--accent); }
+  .logo3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 8px; }
+  .logo-pick { display: flex; gap: 8px; align-items: center; }
+  .logo-pick img { width: 48px; height: 48px; object-fit: contain; background: #111; border: 1px solid var(--line); border-radius: 6px; }
+  .logo-pick button { flex: 0 0 auto; }
+  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; color: var(--muted); cursor: pointer; }
+  .drop.over { border-color: var(--accent); color: var(--text); background: rgba(49,195,146,.06); }
+  .sponsor-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .sponsor { position: relative; width: 160px; height: 62px; background: #111 center/contain no-repeat; border: 1px solid var(--line); border-radius: 6px; }
+  .sponsor .n { position: absolute; left: 4px; top: 2px; font-size: 11px; color: var(--muted); }
+  .sponsor .tools { position: absolute; right: 2px; bottom: 2px; display: flex; gap: 2px; }
+  .sponsor .tools button { padding: 0 6px; font-size: 12px; line-height: 18px; }
+  #sponsor-save { background: var(--accent); color: #06231a; border-color: var(--accent); font-weight: 600; }
+  .rect4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .rect4 input { width: 100%; }
+  .screen-result { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .screen-result figure { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .screen-result img { width: 100%; image-rendering: pixelated; background: #fff; border-radius: 3px; }
+  .screen-result figcaption { font-size: 12px; margin-top: 4px; }
+  .ok { color: var(--accent); }
+  .report { margin-top: 10px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+  .report .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .report .chips span { background: #252a2f; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+  details ul { margin: 6px 0 0; padding-left: 18px; }
+  .fearless-box { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .fearless-games { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .fearless-game { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .fearless-game b { width: 64px; font-size: 12px; }
+  .fearless-game .fl-team { font-size: 12px; color: var(--muted); margin: 0 4px 0 10px; }
+  .fearless-game img, .fearless-game i { width: 28px; height: 28px; border-radius: 4px; background: #111; display: inline-block; }
+  .fearless-game button { margin-left: auto; padding: 2px 8px; }
+  .bg-video { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .bg-video label span { color: var(--text); float: right; }
+  details li { margin-bottom: 4px; }
+  @media (max-width: 600px) { .teams { grid-template-columns: 1fr; } }
+</style>
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="appearance.css">
+<script src="appearance.js"></script>
+</head>
+<body>
+<header>
+  <h1>League HUD</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
+  <div class="seg" id="mode" role="group" aria-label="Game source">
+    <button data-mode="live">Live game</button><button data-mode="demo">Demo game</button>
+  </div>
+  <select id="demo-speed" title="Demo speed" style="width:auto">
+    <option value="1">1x</option><option value="4">4x</option><option value="8">8x</option><option value="30">30x</option>
+  </select>
+  <div class="seg" id="ow" hidden title="Draws the HUD in a see-through window over the whole screen, on top of League. Clicks go through it to the game. Set League to Borderless or Windowed (not Fullscreen).">
+    <button id="ow-btn">Show HUD on game</button>
+    <select id="ow-screen" title="Which screen the HUD covers" style="width:auto;border:0;border-left:1px solid var(--line);border-radius:0"></select>
+  </div>
+  <div class="status" style="margin-left:auto">
+    <button id="update" class="update" hidden></button>
+    <span class="version" id="version" title="Check for updates"></span>
+    <span class="badge" id="mode-badge"></span><span id="clock" class="clock">00:00</span>
+    <button id="custom-design" title="Design your own HUD on this HUD's live data, or bring in a Photoshop, Figma or GFX Engine design (HUD Builder, built in)">Custom design</button>
+    <button id="fold-all" title="Fold every section down to its title, or open them all again">Collapse all</button>
+    <a href="/start" class="version" style="text-decoration:none" title="Back to the GFX Controller / Observer Client choice">Change client</a>
+  </div>
+</header>
+<div class="layout">
+<main>
+  <section class="wide" data-page="editor">
+    <h2>HUD profile</h2>
+    <div class="row">
+      <select id="profile" aria-label="HUD profile"></select>
+      <button type="button" id="profile-import" style="flex:0 0 auto">Import PSD…</button>
+      <button type="button" id="profile-delete" style="flex:0 0 auto" hidden>Delete</button>
+      <input type="file" id="psd-file" accept=".psd,.psb" hidden>
+      <input type="file" id="font-file" accept=".ttf,.otf,.woff,.woff2" hidden>
+    </div>
+    <label class="toggle"><input type="checkbox" id="scoreboard-show"> Scoreboard and bottom third (SCC 2026 profiles): every player's champion, items, spells, KDA, CS and vision, the webcam, sponsor and minimap frames</label>
+    <div id="bg-video" class="bg-video" hidden>
+      <div class="row">
+        <div><label>Background video</label><div id="bg-name" class="note" style="margin:0"></div></div>
+        <button type="button" id="bg-choose" style="flex:0 0 auto">Choose video…</button>
+        <button type="button" id="bg-default" style="flex:0 0 auto" hidden title="The SCC background loop that comes with the app">Use default loop</button>
+        <button type="button" id="bg-remove" style="flex:0 0 auto" hidden>Remove</button>
+        <input type="file" id="bg-file" accept="video/mp4,video/webm,.mp4,.webm,.m4v" hidden>
+      </div>
+      <label>Playback speed <span id="bg-speed-val">1.00×</span></label>
+      <input type="range" id="bg-speed" min="0.1" max="3" step="0.05">
+      <label class="toggle"><input type="checkbox" id="bg-tint"> Tint with team colours</label>
+      <label>Brightness <span id="bg-bright-val">100%</span></label>
+      <input type="range" id="bg-bright" min="0.2" max="2.5" step="0.05">
+    </div>
+    <div id="profile-report" class="report" hidden></div>
+    <details class="note" style="margin-top:8px">
+      <summary>How to set up a PSD</summary>
+      <p>Name layers after what they show and the HUD keeps working with any design:</p>
+      <ul>
+        <li><b>Text layers</b> named after a live field (<code>KILLS LEFT</code>, <code>GOLD RIGHT</code>, <code>TIMER</code>, <code>TRI-CODE LEFT</code>, <code>TURRETS LEFT</code>, <code>DRAGONS LEFT</code>…, anything in Live fields) become live text in that layer's font, size, colour and alignment.</li>
+        <li><code>TEAM LEFT</code> / <code>TEAM RIGHT</code>: filled with the team colour. <code>TEAM LOGO LEFT</code>: where the logo goes. <code>BO3 1 LEFT</code>, <code>BO3 2 LEFT</code>…: series pips.</li>
+        <li>Optional: <code>LINES</code> (tinted in the team colours), <code>GOLD DIFF LEFT</code> (where the gold-lead tab goes), <code>OBJECTIVE TIMERS</code>, <code>DRAGONS ICON LEFT</code> / <code>HERALDS ICON LEFT</code> / <code>GRUBS ICON LEFT</code> (hide with their counter).</li>
+        <li>Everything else is artwork. Fonts are found in Windows' fonts; any that aren't can be added here after importing.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section class="wide" data-page="teams">
+    <h2>Teams</h2>
+    <div class="teams">
+      <div class="team left" data-side="left"></div>
+      <div class="team right" data-side="right"></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="swap-teams" title="Swap names, logos and series score between left and right">⇄ Swap teams left/right</button>
+      <label class="row" style="margin:0;color:var(--text)"><input type="checkbox" id="swap-sides" style="flex:0"> Left team is on red side</label>
+      <label class="row" style="margin:0;color:var(--text)">Series
+        <select id="best-of"><option value="1">Bo1</option><option value="3">Bo3</option><option value="5">Bo5</option></select></label>
+    </div>
+  </section>
+
+  <section class="wide" data-page="teams">
+    <h2>Players</h2>
+    <p class="note" style="margin-top:0">Links each player in the game to their player in the team's roster on GFX Engine (Teams &gt; Team members), by their in-game name. Linked players show on the engine's graphics with their player name, headshot and flag.</p>
+    <div class="teams">
+      <div class="link-team left" id="links-left"></div>
+      <div class="link-team right" id="links-right"></div>
+    </div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button type="button" id="links-refresh" style="flex:0 0 auto">Refresh</button>
+      <span class="note" id="links-note" style="margin:0"></span>
+    </div>
+  </section>
+
+  <section data-page="live">
+    <h2>Claimed objectives</h2>
+    <div id="counters" class="checks"></div>
+    <p class="note">Each team's count of dragons, Rift Heralds and void grubs taken, in the HUD. Switching one off hides its icon and number.</p>
+  </section>
+
+  <section data-page="live">
+    <h2>Match time</h2>
+    <div class="note" id="match-local" style="margin:0 0 10px"></div>
+    <button type="button" id="sync-all" style="width:100%">Sync all clients to 0:00</button>
+    <div class="note" id="match-status"></div>
+    <button type="button" id="match-enable" style="margin-top:10px">Turn on time control</button>
+    <p class="note">Jumps the League spectator client on this PC, and on every Observer Client connected to it, to 0:00 at the same moment. Needs League's Replay API: click "Turn on time control" once on each PC, then restart the League client.</p>
+  </section>
+
+  <section data-page="editor">
+    <h2>Animations</h2>
+    <div class="checks">
+      <label><input type="checkbox" id="anim-first-blood"><span class="dot" style="background:#c0392b">FB</span>First blood</label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button type="button" id="preview-fb-left">Preview: left team</button>
+      <button type="button" id="preview-fb-right">Preview: right team</button>
+    </div>
+    <p class="note">When a team draws first blood, a stinger wipes across their side of the top bar, which fills with their colour and logo and "FIRST BLOOD", then wipes back (under 3 seconds). Preview plays it on the overlay now.</p>
+  </section>
+
+  <section class="wide" data-page="draft">
+    <h2>Draft</h2>
+    <div class="out"><span>Draft overlay (OBS / vMix browser source, 1920×1080)</span>
+      <div class="row"><code id="url-draft"></code><button data-copy="url-draft">Copy</button></div></div>
+    <div class="row" style="align-items:center;margin-bottom:8px"><label for="draft-layout" style="margin:0">Draft look</label>
+      <select id="draft-layout"></select></div>
+    <label class="toggle"><input type="checkbox" id="draft-read"> Read champ select on this PC (League client in the lobby, as a player or spectator)</label>
+    <div class="note" id="draft-status" style="margin:0 0 8px"></div>
+    <div class="row" style="align-items:center">
+      <label class="toggle" style="margin:0"><input type="checkbox" id="draft-delay-on"> Delay the draft by</label>
+      <input type="number" id="draft-delay" min="0" max="600" step="1" style="width:80px;flex:0 0 auto"> <span class="note" style="margin:0">seconds (2:30 = 150, the spectator delay)</span>
+    </div>
+    <div class="countdown" id="draft-countdown">Time until bans: --:--</div>
+    <div class="logo3">
+      <div><label>Tournament logo (middle)</label>
+        <div class="logo-pick"><img id="draft-logo-img" alt=""><button type="button" id="draft-logo-upload">Upload…</button>
+          <button type="button" id="draft-logo-reset" title="Back to the SCC logo">SCC logo</button>
+          <input type="file" id="draft-logo-file" accept=".png,.jpg,.jpeg,.webp,.svg" hidden></div></div>
+      <div><label>Left team logo</label><div class="note" style="margin:0">From Teams. Size and position here are for the draft only.</div></div>
+      <div><label>Right team logo</label><div class="note" style="margin:0">&nbsp;</div></div>
+    </div>
+    <div class="logo3" id="draft-adjust"></div>
+    <div class="checks" style="margin-top:6px">
+      <label><input type="checkbox" id="draft-team-logos"> Team logos by the team names</label>
+      <label><input type="checkbox" id="draft-score"> Series score</label>
+      <label><input type="checkbox" id="draft-coaches"> Coaches</label>
+      <label><input type="checkbox" id="draft-spells"> Summoner spells</label>
+      <label><input type="checkbox" id="draft-champ-names"> Champion names</label>
+    </div>
+    <div class="bg-video">
+      <div class="row" style="align-items:center">
+        <div><label>Background loop (middle box)</label><div id="dbg-name" class="note" style="margin:0"></div></div>
+        <button type="button" id="dbg-choose" style="flex:0 0 auto">Choose video…</button>
+        <button type="button" id="dbg-default" style="flex:0 0 auto" hidden title="The SCC background loop that comes with the app">Use default loop</button>
+        <button type="button" id="dbg-remove" style="flex:0 0 auto" hidden>Remove</button>
+        <input type="file" id="dbg-file" accept="video/mp4,video/webm,.mp4,.webm,.m4v" hidden>
+      </div>
+      <label>Playback speed <span id="dbg-speed-val">1.00×</span></label>
+      <input type="range" id="dbg-speed" min="0.1" max="3" step="0.05">
+      <label class="toggle"><input type="checkbox" id="dbg-tint"> Tint with team colours</label>
+      <label>Brightness <span id="dbg-bright-val">100%</span></label>
+      <input type="range" id="dbg-bright" min="0.2" max="2.5" step="0.05">
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label>Coach: left team</label><input id="draft-coach-left" placeholder="Coach name"></div>
+      <div><label>Coach: right team</label><input id="draft-coach-right" placeholder="Coach name"></div>
+      <div><label>Sponsor line (SCC 2027 look, middle)</label><input id="draft-sponsor" placeholder="e.g. ALIENWARE"></div>
+    </div>
+    <div class="fearless-box">
+      <div class="row" style="align-items:center">
+        <label class="toggle" style="margin:0"><input type="checkbox" id="fearless-show"> Fearless bans (SCC 2027 look): show each team's picks from earlier games, from game 2</label>
+      </div>
+      <div id="fearless-games" class="fearless-games"></div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <button type="button" id="fearless-record" style="flex:0 0 auto" title="Add the draft just finished (if it wasn't added when the lobby closed)">Add the last draft</button>
+        <button type="button" id="fearless-clear" style="flex:0 0 auto">Clear (new series)</button>
+        <span class="note" style="margin:0">Each draft is added when the lobby closes with all ten picks in. Going back to 0-0 in the series clears it.</span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button type="button" id="draft-demo" style="flex:0 0 auto">Play demo draft</button>
+      <span class="note" style="margin:0">A recorded tournament draft (about 4 minutes), through the same delay.</span>
+    </div>
+    <p class="note">Looks: SCC 2027 (fearless) from the designer's DRAFT-HUD-SCC-2027.psd, LEC, and the Europe layout from RCVolus' lol-pick-ban-ui. Bans and picks come up one by one at the pace they were made; with the delay on they come up that much later, in step with the spectator feed. Team names, colours and series score come from Teams; blue side is the left team unless "Left team is on red side" is ticked. An Observer Client in the lobby can read champ select instead and send it here.</p>
+  </section>
+
+  <section class="wide" data-page="tournament">
+    <h2>Sponsors</h2>
+    <label class="toggle"><input type="checkbox" id="sb-on"> Sponsor box over the observer controls (bottom left)</label>
+    <div id="sponsor-drop" class="drop" tabindex="0">Drop sponsor logos here, or <u>choose files</u>
+      <input type="file" id="sponsor-files" accept=".png,.jpg,.jpeg,.webp,.gif,.svg" multiple hidden></div>
+    <div id="sponsor-list" class="sponsor-list"></div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <label style="margin:0;flex:0 0 auto">Seconds each <input type="number" id="sponsor-seconds" min="1" max="60" step="0.5" style="width:70px"></label>
+      <button type="button" id="sponsor-save" style="flex:0 0 auto">Save sponsors</button>
+      <span class="note" id="sponsor-note" style="margin:0"></span>
+    </div>
+    <p class="note">Shown in turn in the box, in this order. Saving puts them on the HUD now and makes them the rotation every time the app starts.</p>
+    <div class="row" style="margin-top:12px">
+      <div><label>Logo size <span id="sb-size-val"></span></label><input type="range" id="sb-size" min="0.2" max="1" step="0.05"></div>
+      <div><label>Background</label>
+        <div class="row"><select id="sb-video"><option value="">Default loop</option><option value="hud">Same video as the HUD's lines</option>
+          <option value="image">Static image</option><option value="colours">Team colours only</option></select>
+          <button type="button" id="sb-image-pick" style="flex:0 0 auto" hidden>Choose image…</button>
+          <input type="file" id="sb-image-file" accept=".png,.jpg,.jpeg,.webp,.gif,.svg" hidden></div>
+        <div class="note" id="sb-image-name" style="margin:4px 0 0"></div></div>
+    </div>
+    <div class="row">
+      <div><label>Playback speed <span id="sb-speed-val"></span></label><input type="range" id="sb-speed" min="0.1" max="3" step="0.05"></div>
+      <div><label>Brightness <span id="sb-bright-val"></span></label><input type="range" id="sb-bright" min="0.2" max="2.5" step="0.05"></div>
+    </div>
+    <label class="toggle"><input type="checkbox" id="sb-tint"> Tint with both teams' colours</label>
+    <label>Position on the overlay (x, y, width, height)</label>
+    <div class="rect4"><input type="number" id="sb-x"><input type="number" id="sb-y"><input type="number" id="sb-w"><input type="number" id="sb-h"></div>
+    <div class="row" style="margin-top:8px;align-items:center">
+      <label class="toggle" style="margin:0"><input type="checkbox" id="sb-outline"> Outline it, to line it up</label>
+      <button type="button" id="sb-reset" style="flex:0 0 auto">Reset position</button>
+    </div>
+  </section>
+
+  <section class="wide" data-page="teams">
+    <h2>Webcams</h2>
+    <div class="cam-opts">
+      <label class="toggle"><input type="checkbox" id="cams-on"> Show webcams on the HUD</label>
+      <label class="toggle"><input type="checkbox" id="cams-auto"> Switch to the players in the action</label>
+      <label class="toggle" title="Reads the player name tags on this PC's League screen. Turn it on on the PC whose game goes to air (here, or in the Observer Client)."><input type="checkbox" id="cams-director"> Read this PC's screen to see who's on camera</label>
+      <label class="toggle">Stay on a player at least <input type="number" id="cams-hold" min="0" max="30" step="0.5" style="width:64px;padding:4px 6px"> s</label>
+      <label class="toggle" title="League's spectator feed is 2:30 behind the game, so the cams wait the same time to show the players' reactions with the play. A cam appears that long after it connects. 0:00 = live. Links (VDO.Ninja) aren't delayed.">Delay the cams by <input id="cams-delay" placeholder="2:30" style="width:64px;padding:4px 6px"> (m:ss)</label>
+    </div>
+    <div class="teams cam-teams">
+      <div class="cam-team" data-side="left"><h3></h3></div>
+      <div class="cam-team" data-side="right"><h3></h3></div>
+    </div>
+    <div class="row" style="margin-top:12px;align-items:flex-start">
+      <div id="cams-status" class="note" style="margin:0"></div>
+      <button type="button" id="cams-test" style="flex:0 0 auto">Test screen read</button>
+    </div>
+    <div id="cams-test-result"></div>
+    <div class="out" style="margin-top:12px"><span>Player cam link (players open it in Chrome or Edge on their PC)</span>
+      <div class="row"><code id="cams-link"></code><button data-copy="cams-link" id="cams-link-copy">Copy</button></div></div>
+    <details class="note"><summary>How players connect their cams</summary>
+      <ul>
+        <li><b>In a browser:</b> send players the link above. The first time, the browser warns that the connection isn't private (the HUD makes its own certificate): <b>Advanced -> Continue</b>. Then allow the camera and pick their team and role. Their cam goes straight to the HUD, peer to peer, for the least delay.</li>
+        <li><b>SCC Player Cam app:</b> the same, as its own small app: <a href="https://github.com/owenbparker/playercam_SCC/releases/latest/download/SCC-Player-Cam-Setup.exe" target="_blank" rel="noopener">SCC-Player-Cam-Setup.exe</a>. Players enter <span id="cams-lan">this PC's address</span> instead of using the link. No certificate warning, and it remembers their choices.</li>
+        <li>Both need "Let other PCs on the network read the HUD" ticked (Outputs) and the players on this network. Leave those players' link boxes blank.</li>
+        <li><b>Link:</b> paste a VDO.Ninja view link (or any page showing just the cam) in the player's box. Works from anywhere, with a little more delay.</li>
+        <li><b>Who's on camera:</b> with "Read this PC's screen" on, the cams follow the player name tags nearest the middle of the screen (Windows, League in Borderless or Windowed). Otherwise they follow the latest kill. <b>Pin</b> keeps a team's cam on one player.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section data-page="live">
+    <h2>Objective timers</h2>
+    <div class="row" style="margin-bottom:10px;align-items:center">
+      <button type="button" id="timers-auto" style="flex:1">Auto objective timers</button>
+      <select id="timers-auto-count" title="How many of Void Grubs, Rift Herald and Baron to show" style="flex:0 0 auto;width:auto">
+        <option value="1">Show next 1</option><option value="2">Show next 2</option><option value="3">Show next 3</option></select>
+    </div>
+    <div id="objectives" class="checks"></div>
+    <label for="next-dragon">Next dragon (its timer's icon)</label>
+    <div class="row"><select id="next-dragon">
+      <option value="">Automatic</option><option>Infernal</option><option>Ocean</option><option>Mountain</option>
+      <option>Cloud</option><option>Hextech</option><option>Chemtech</option></select>
+      <img id="next-dragon-icon" class="obj-icon big" alt=""></div>
+    <p class="note" id="next-dragon-note"></p>
+    <p class="note">Shown in the top-left of the overlay. A timer appears while its objective is counting down or LIVE, and drops off once it's gone for the game. Elder appears after a team takes soul. Switched-off timers are also left blank in the CSV.</p>
+  </section>
+
+  <section data-page="live">
+    <h2>Gold</h2>
+    <label for="gold-mode">Source</label>
+    <select id="gold-mode">
+      <option value="screen">Read from the spectator top bar (exact)</option>
+      <option value="estimate">Estimate from CS, kills and time</option>
+      <option value="items">Value of items held (always a bit low)</option>
+      <option value="manual">Type it in manually</option>
+    </select>
+    <div id="manual-gold" class="row" style="margin-top:8px">
+      <input type="number" id="manual-left" placeholder="Left gold" step="100">
+      <input type="number" id="manual-right" placeholder="Right gold" step="100">
+    </div>
+    <div id="screen-gold">
+      <div class="row" style="margin-top:10px">
+        <span id="screen-status" class="note" style="margin:0"></span>
+        <button type="button" id="screen-test" style="flex:0 0 auto">Test read</button>
+      </div>
+      <div id="screen-result" class="screen-result" hidden></div>
+      <p class="note">Reads the gold and the dragon, herald and grub counters off the League window on this PC. Keep the spectator top bar showing. Falls back to the estimate below when it can't be read.</p>
+    </div>
+    <label for="gold-scale">Estimate adjustment (1.00 = no change)</label>
+    <input type="number" id="gold-scale" step="0.01" min="0.5" max="1.5">
+    <p class="note">League's game client doesn't share other players' gold, so this is an estimate. If you see it running high or low against the in-game scoreboard, nudge the adjustment.</p>
+  </section>
+
+  <section class="wide" data-page="overview">
+    <h2>Live fields <span style="text-transform:none;letter-spacing:0">(click to copy the name)</span></h2>
+    <div class="fields" id="fields"></div>
+  </section>
+</main>
+<aside>
+  <section data-page="editor live">
+    <h2>Preview</h2>
+    <div class="seg preview-mode" id="preview-mode" role="group" aria-label="Preview size">
+      <button data-view="bar">Top bar</button><button data-view="full">Full 16:9</button>
+    </div>
+    <div class="preview" id="preview"><iframe src="/overlay" title="Overlay preview"></iframe></div>
+    <label style="margin-top:12px">Draft</label>
+    <div class="preview draft" id="preview-draft"><iframe src="/draft" title="Draft preview"></iframe>
+      <div class="preview-empty" id="preview-draft-empty">No draft on air</div></div>
+  </section>
+
+  <section data-page="overview">
+    <h2>Outputs</h2>
+    <div class="out"><span>Overlay (OBS / vMix browser source, 1920×1080)</span>
+      <div class="row"><code id="url-overlay"></code><button data-copy="url-overlay">Copy</button></div></div>
+    <div class="out"><span>vMix data source (CSV; also /hud.json, /hud.xml)</span>
+      <div class="row"><code id="url-csv"></code><button data-copy="url-csv">Copy</button></div></div>
+    <div class="out"><span>CSV / JSON / XML files</span>
+      <div class="row"><code id="out-dir"></code><button data-open="output">Open folder</button></div></div>
+    <label class="toggle"><input type="checkbox" id="network"> Let other PCs on the network read the HUD</label>
+    <div class="out" id="lan-row" hidden><span>From another PC</span>
+      <div class="row"><code id="url-lan"></code><button data-copy="url-lan">Copy</button></div></div>
+    <p class="note">In GT Title Designer, name your fields to match the Live fields list, then bind them in vMix's Data Sources Manager. Image fields (logos, pips) are file paths.</p>
+  </section>
+
+  <section data-page="overview">
+    <h2>Companion</h2>
+    <div class="out"><span>In Companion, add an "SCC League HUD" connection with this address and port</span>
+      <div class="row"><code id="companion-addr"></code><button data-copy="companion-addr">Copy</button></div></div>
+    <label class="toggle"><input type="checkbox" id="companion-lan"> Let Companion on another PC control this app</label>
+    <p class="note">Stream Deck buttons for the HUD's toggles, Match time and the background video, lit green while a setting is on. Get <b>SCC-LoL-Companion-module.tgz</b> from the latest release, then in Companion go to Modules, Import module package. The Presets tab has a button for everything.</p>
+  </section>
+
+  <section data-page="overview">
+    <h2>Log</h2>
+    <div class="log" id="log"></div>
+  </section>
+</aside>
+</div>
+<script>window.SHELL = {"app": "League HUD", "logo": "assets/lol_logo.svg", "pages": [{"id": "overview", "label": "Overview"}, {"id": "editor", "label": "HUD Editor"}, {"id": "teams", "label": "Players & Teams", "group": "Event setup"}, {"id": "tournament", "label": "Sponsors", "icon": "sponsors", "group": "Event setup"}, {"id": "live", "label": "Live Game", "group": "Live game"}, {"id": "draft", "label": "Champ Select", "group": "Live game"}, {"id": "engine", "label": "GFX Engine", "icon": "engine", "group": "Connections"}]};</script>
+<script src="enginelink.js"></script>
+<script src="shell.js"></script>
+<script src="update.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let state = null;
+
+function teamForm(side) {
+  return `
+    <div class="row"><img id="${side}-logo-img" alt="">
+      <div><label>Tricode</label><input data-k="tricode" maxlength="5"></div></div>
+    <label>Team name</label><input data-k="name">
+    <label>Logo</label>
+    <div class="row"><select data-k="logo" id="${side}-logo"></select>
+      <button type="button" onclick="document.getElementById('${side}-upload').click()" style="flex:0 0 auto">Upload…</button>
+      <input type="file" id="${side}-upload" accept="image/*" hidden></div>
+    <div class="logo-adjust">
+      <label>Logo size <span id="${side}-scale-val">100%</span></label>
+      <input type="range" id="${side}-scale" data-adj="scale" min="40" max="250" step="1">
+      <div class="row">
+        <div><label>Left / right <span id="${side}-x-val">0</span></label>
+          <input type="range" id="${side}-x" data-adj="x" min="-30" max="30" step="1"></div>
+        <div><label>Up / down <span id="${side}-y-val">0</span></label>
+          <input type="range" id="${side}-y" data-adj="y" min="-30" max="30" step="1"></div>
+      </div>
+      <button type="button" id="${side}-adj-reset" style="margin-top:6px">Reset logo size &amp; position</button>
+    </div>
+    <label>Team colour</label>
+    <div class="row"><input type="color" class="swatch" id="${side}-color">
+      <input id="${side}-hex" maxlength="7" spellcheck="false" placeholder="#0a6d4c"></div>
+    <label>Series wins</label>
+    <div class="wins"><button data-w="-1">−</button><b id="${side}-wins">0</b><button data-w="1">+</button></div>`;
+}
+
+document.getElementById("custom-design").addEventListener("click", () => post("/api/custom-design", {}));
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (data.error) alert(data.error); else apply(data);
+}
+
+for (const el of document.querySelectorAll(".team")) {
+  const side = el.dataset.side;
+  el.innerHTML = teamForm(side);
+  el.querySelectorAll("[data-k]").forEach(input => input.addEventListener("change", () =>
+    post("/api/config", { [side]: { [input.dataset.k]: input.value } })));
+  el.querySelectorAll("[data-w]").forEach(b => b.addEventListener("click", () => {
+    const wins = Math.max(0, state.config[side].wins + Number(b.dataset.w));
+    post("/api/config", { [side]: { wins } });
+  }));
+  // Colour: the picker updates the overlay live while you drag; the hex box
+  // takes a typed or pasted #rrggbb.
+  let colorTimer = null;
+  $(`${side}-color`).addEventListener("input", e => {
+    $(`${side}-hex`).value = e.target.value;
+    clearTimeout(colorTimer);
+    colorTimer = setTimeout(() => post("/api/config", { [side]: { color: e.target.value } }), 120);
+  });
+  $(`${side}-hex`).addEventListener("change", e => {
+    let v = e.target.value.trim();
+    if (!v.startsWith("#")) v = "#" + v;
+    if (/^#[0-9a-f]{6}$/i.test(v)) post("/api/config", { [side]: { color: v.toLowerCase() } });
+    else e.target.value = state.config[side].color;
+  });
+  // Logo size and nudge: saved against the logo file, live while dragging.
+  let adjTimer = null;
+  const readAdj = () => ({ scale: $(`${side}-scale`).value / 100, x: Number($(`${side}-x`).value), y: Number($(`${side}-y`).value) });
+  const sendAdj = async adj => {
+    await post("/api/config", { logo_adjust: { [state.config[side].logo]: adj } });
+    adjPending[side] = false;
+  };
+  el.querySelectorAll("[data-adj]").forEach(input => input.addEventListener("input", () => {
+    adjPending[side] = true;  // don't let a refresh reset the sliders before this is saved
+    showAdj(side, readAdj());
+    clearTimeout(adjTimer);
+    adjTimer = setTimeout(() => sendAdj(readAdj()), 120);
+  }));
+  $(`${side}-adj-reset`).addEventListener("click", () => sendAdj({ scale: 1, x: 0, y: 0 }));
+  $(`${side}-upload`).addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => post("/api/logo", { side, filename: file.name, data: reader.result.split(",")[1] });
+    reader.readAsDataURL(file);
+  });
+}
+
+const OBJECTIVES = [["grubs", "Void Grubs", "grubs"], ["dragon", "Dragon", "dragon-unknown"],
+  ["herald", "Rift Herald", "herald"], ["elder", "Elder Drake", "elder"], ["baron", "Baron", "baron"]];
+$("objectives").innerHTML = OBJECTIVES.map(([key, name, icon]) =>
+  `<label><input type="checkbox" data-obj="${key}"><img class="obj-icon" src="assets/objectives/${icon}.png" alt="">${name}</label>`).join("");
+$("timers-auto-count").onchange = e => post("/api/config", { objective_timers_auto_count: Number(e.target.value) });
+$("timers-auto").onclick = () => post("/api/config", { objective_timers_auto: !state.config.objective_timers_auto });
+$("next-dragon").onchange = e => post("/api/config", { next_dragon: e.target.value });
+$("anim-first-blood").onchange = e => post("/api/config", { animations: { first_blood: e.target.checked } });
+for (const side of ["left", "right"])
+  $(`preview-fb-${side}`).onclick = () => post("/api/animation/preview", { name: "first_blood", side });
+$("objectives").querySelectorAll("input").forEach(box => box.addEventListener("change", () =>
+  post("/api/config", { objective_timers: { [box.dataset.obj]: box.checked } })));
+
+// Claimed-objective counters in the HUD.
+const COUNTERS = [["dragons", "Dragons", "D", "#2aa7a0"], ["heralds", "Rift Heralds", "H", "#c2449e"], ["grubs", "Void grubs", "G", "#8e44d6"]];
+$("counters").innerHTML = COUNTERS.map(([key, name, letter, color]) =>
+  `<label><input type="checkbox" data-counter="${key}"><span class="dot" style="background:${color}">${letter}</span>${name}</label>`).join("");
+$("counters").querySelectorAll("input").forEach(box => box.addEventListener("change", () =>
+  post("/api/config", { strip_counters: { [box.dataset.counter]: box.checked } })));
+
+// HUD profiles.
+let profileList = [], profilesVersion = -1;
+async function loadProfiles(current) {
+  profileList = await (await fetch("/api/profiles")).json();
+  $("profile").innerHTML = profileList.map(p =>
+    `<option value="${p.id}">${p.name}${p.builtin ? "" : " (imported)"}</option>`).join("");
+  $("profile").value = current;
+  showProfile(current);
+}
+function showProfile(id) {
+  const p = profileList.find(x => x.id === id);
+  $("profile-delete").hidden = !p || p.builtin;
+  $("bg-video").hidden = !p || !p.background_video;
+  const box = $("profile-report");
+  if (!p || !p.report) { box.hidden = true; return; }
+  const r = p.report, chips = list => `<div class="chips">${list.map(x => `<span>${x}</span>`).join("")}</div>`;
+  box.hidden = false;
+  box.innerHTML = `<b>${p.name}</b>: imported from a PSD.
+    <div style="margin-top:6px">Recognised layers (${r.fields.length}):</div>${chips(r.fields)}
+    ${r.missing_fields.length ? `<div class="warn" style="margin-top:6px">No layer for: ${r.missing_fields.join(", ")}</div>` : ""}
+    <div style="margin-top:6px">Pips: ${r.pips.left} left / ${r.pips.right} right · Logos: ${r.logos.join(", ") || "none"}</div>
+    ${p.missing_fonts.length ? `<div class="warn" style="margin-top:6px">Fonts not found: ${p.missing_fonts.join(", ")}
+      <button type="button" id="add-font" style="margin-left:8px">Add font file…</button></div>`
+      : `<div class="ok" style="margin-top:6px">All fonts found (${r.fonts.join(", ")})</div>`}`;
+  const add = $("add-font");
+  if (add) add.onclick = () => $("font-file").click();
+}
+// Background video (profiles with a video area, like SCC 2026).
+const DEFAULT_BG = "profiles/scc-2026/bg_loop.mp4";
+$("bg-choose").onclick = () => $("bg-file").click();
+$("bg-remove").onclick = () => post("/api/config", { bg_video: "" });
+$("bg-default").onclick = () => post("/api/config", { bg_video: DEFAULT_BG });
+$("bg-file").addEventListener("change", e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  // Sent as raw bytes with progress (a background loop can be 50+ MB).
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `/api/media?filename=${encodeURIComponent(file.name)}`);
+  xhr.upload.onprogress = ev => { if (ev.lengthComputable) $("bg-name").textContent = `Copying ${file.name}… ${Math.round(ev.loaded * 100 / ev.total)}%`; };
+  xhr.onload = () => { const d = JSON.parse(xhr.responseText); if (d.error) alert(d.error); else apply(d); };
+  xhr.onerror = () => alert("Couldn't copy the video");
+  xhr.send(file);
+});
+$("ow-btn").onclick = () => post("/api/overlay-window", { open: !state.app.overlay_window.open });
+$("ow-screen").onchange = e => post("/api/overlay-window", { open: state.app.overlay_window.open, screen: Number(e.target.value) });
+$("bg-tint").onchange = e => post("/api/config", { bg_tint: e.target.checked });
+$("scoreboard-show").onchange = e => post("/api/config", { scoreboard: { show: e.target.checked } });
+let speedTimer = null;
+let brightTimer = null;
+$("bg-bright").addEventListener("input", e => {
+  $("bg-bright-val").textContent = Math.round(e.target.value * 100) + "%";
+  clearTimeout(brightTimer);
+  brightTimer = setTimeout(() => post("/api/config", { bg_brightness: Number(e.target.value) }), 100);
+});
+$("bg-speed").addEventListener("input", e => {
+  $("bg-speed-val").textContent = Number(e.target.value).toFixed(2) + "×";
+  clearTimeout(speedTimer);
+  speedTimer = setTimeout(() => post("/api/config", { bg_speed: Number(e.target.value) }), 100);
+});
+
+$("profile").onchange = e => { post("/api/config", { profile: e.target.value }); showProfile(e.target.value); };
+$("profile-import").onclick = () => $("psd-file").click();
+$("profile-delete").onclick = () => {
+  const p = profileList.find(x => x.id === $("profile").value);
+  if (p && confirm(`Delete the "${p.name}" profile?`)) post("/api/profiles/delete", { id: p.id });
+};
+function readFile(file) {
+  return new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result.split(",")[1]); r.readAsDataURL(file); });
+}
+$("psd-file").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const name = prompt("Name for this HUD profile:", file.name.replace(/\.ps[db]$/i, ""));
+  if (name === null) return;
+  const box = $("profile-report");
+  box.hidden = false;
+  box.innerHTML = `Importing ${file.name}…`;
+  const r = await fetch("/api/profiles/import", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, filename: file.name, data: await readFile(file) }) });
+  const data = await r.json();
+  if (data.error) { box.innerHTML = `<span class="warn">${data.error}</span>`; return; }
+  apply(data);
+  await loadProfiles(data.report.id);
+});
+$("font-file").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (file) await post("/api/profiles/font", { id: $("profile").value, filename: file.name, data: await readFile(file) });
+});
+
+$("swap-teams").onclick = () => post("/api/teams/swap", {});
+$("swap-sides").onchange = e => post("/api/config", { swap_sides: e.target.checked });
+$("best-of").onchange = e => post("/api/config", { best_of: Number(e.target.value) });
+$("gold-mode").onchange = e => post("/api/config", { gold_mode: e.target.value });
+$("gold-scale").onchange = e => post("/api/config", { gold_estimate_scale: Number(e.target.value) || 1 });
+for (const side of ["left", "right"])
+  $(`manual-${side}`).onchange = e => post("/api/config", { manual_gold: { [side]: Number(e.target.value) || 0 } });
+
+async function loadLogos(cfg) {
+  const logos = await (await fetch("/api/logos")).json();
+  for (const side of ["left", "right"]) {
+    const sel = $(`${side}-logo`), current = cfg[side].logo;
+    const all = [...new Set([current, `assets/logo_${side}.png`, ...logos])];
+    sel.innerHTML = all.map(l => `<option value="${l}">${l.split("/").pop()}</option>`).join("");
+    sel.value = current;
+  }
+}
+
+const adjPending = { left: false, right: false };
+
+function showAdj(side, adj) {
+  $(`${side}-scale-val`).textContent = Math.round(adj.scale * 100) + "%";
+  $(`${side}-x-val`).textContent = adj.x;
+  $(`${side}-y-val`).textContent = adj.y;
+}
+
+function setIfIdle(el, value) { if (document.activeElement !== el) el.value = value; }
+
+$("sync-all").onclick = () => post("/api/match/sync-all", {});
+$("match-enable").onclick = () => post("/api/match/enable", {});
+// Clocks shown here run on between updates (the app reads them once a
+// second): from when the game reported them, so they match the game's.
+let gameClock = { base: -1, at: 0, running: false }, replayClock = null;
+function mmss(t) { t = Math.max(0, Math.floor(t)); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); }
+function tickClocks() {
+  if (gameClock.base >= 0)
+    $("clock").textContent = mmss(gameClock.base + (gameClock.running ? Math.min(2.5, (performance.now() - gameClock.at) / 1000) : 0));
+  if (replayClock) {
+    const r = replayClock, run = r.paused ? 0 : Math.min(2.5, (performance.now() - r.at) / 1000) * r.speed;
+    $("match-local").textContent = `This PC's game: ${mmss(r.time + run)}${r.paused ? " (paused)" : ""}`;
+  }
+}
+setInterval(tickClocks, 100);
+function applyMatchTime(info) {
+  const m = info || {}, local = m.local || {};
+  replayClock = !local.error && local.time !== undefined
+    ? { time: local.time, paused: local.paused, speed: local.speed || 1, at: performance.now() - 1000 * (local.age || 0) } : null;
+  if (local.error) $("match-local").textContent = "This PC's game: " + local.error;
+  else if (!replayClock) $("match-local").textContent = "";
+  tickClocks();
+  $("match-status").textContent = m.status || "";
+  const on = m.enabled === true;
+  $("match-enable").classList.toggle("on", on);
+  $("match-enable").textContent = on ? "Time control: on" : "Turn on time control";
+  $("match-enable").title = on ? "EnableReplayApi=1 is in League's game.cfg (restart League after turning it on)"
+    : m.enabled === null ? "League's game.cfg wasn't found in the usual folders" : "";
+}
+
+$("companion-lan").onchange = e => post("/api/companion/network", { enabled: e.target.checked });
+function applyCompanion(c) {
+  if (!c) return;
+  $("companion-lan").checked = !!c.lan;
+  $("companion-addr").textContent = `${c.lan ? c.host : "127.0.0.1"}  port ${c.port}`;
+}
+
+// Sponsors: the box over the observer controls, and its logos.
+let sponsors = null, sponsorsSaved = "";
+const SB_RECT = [0, 964, 304, 116];
+function sponsorUrl(p) { return "/" + p.split("/").map(encodeURIComponent).join("/"); }
+function drawSponsors() {
+  const list = $("sponsor-list");
+  list.innerHTML = "";
+  sponsors.forEach((p, i) => {
+    const d = document.createElement("div");
+    d.className = "sponsor";
+    d.style.backgroundImage = `url("${sponsorUrl(p)}")`;
+    d.title = p.split("/").pop();
+    d.innerHTML = `<span class="n">${i + 1}</span><span class="tools"><button type="button" title="Earlier">◀</button><button type="button" title="Later">▶</button><button type="button" title="Remove">✕</button></span>`;
+    const [back, fwd, del] = d.querySelectorAll("button");
+    back.onclick = () => { if (i > 0) { [sponsors[i - 1], sponsors[i]] = [sponsors[i], sponsors[i - 1]]; drawSponsors(); } };
+    fwd.onclick = () => { if (i < sponsors.length - 1) { [sponsors[i + 1], sponsors[i]] = [sponsors[i], sponsors[i + 1]]; drawSponsors(); } };
+    del.onclick = () => { sponsors.splice(i, 1); drawSponsors(); };
+    list.appendChild(d);
+  });
+  const changed = JSON.stringify([sponsors, Number($("sponsor-seconds").value)]) !== sponsorsSaved;
+  $("sponsor-note").textContent = changed ? "Not saved yet" : (sponsors.length ? `${sponsors.length} on the HUD` : "None yet: the box shows just the loop");
+  $("sponsor-note").className = "note" + (changed ? " warn" : "");
+}
+async function addSponsorFiles(files) {
+  for (const file of files) {
+    if (!/\.(png|jpe?g|webp|gif|svg)$/i.test(file.name)) continue;
+    const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.readAsDataURL(file); });
+    const r = await (await fetch("/api/sponsor", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                  body: JSON.stringify({ filename: file.name, data }) })).json();
+    if (r.error) { alert(r.error); continue; }
+    sponsors.push(r.path);
+    drawSponsors();
+  }
+}
+const drop = $("sponsor-drop");
+drop.onclick = () => $("sponsor-files").click();
+$("sponsor-files").onchange = e => { addSponsorFiles([...e.target.files]); e.target.value = ""; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); addSponsorFiles([...e.dataTransfer.files]); };
+$("sponsor-seconds").oninput = drawSponsors;
+$("sponsor-save").onclick = async () => {
+  await post("/api/sponsors", { sponsors, seconds: Number($("sponsor-seconds").value) || 5 });
+  sponsorsSaved = JSON.stringify([sponsors, Number($("sponsor-seconds").value)]);
+  drawSponsors();
+};
+const sbPost = changes => post("/api/config", { sponsor_box: changes });
+$("sb-on").onchange = e => sbPost({ enabled: e.target.checked });
+$("sb-tint").onchange = e => sbPost({ bg_tint: e.target.checked });
+$("sb-outline").onchange = e => sbPost({ outline: e.target.checked });
+$("sb-video").onchange = e => {
+  sbPost({ bg_video: e.target.value });
+  if (e.target.value === "image" && !(state.config.sponsor_box || {}).bg_image) $("sb-image-file").click();
+};
+$("sb-image-pick").onclick = () => $("sb-image-file").click();
+$("sb-image-file").onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.readAsDataURL(file); });
+  const r = await (await fetch("/api/sponsor", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ filename: file.name, data }) })).json();
+  if (r.error) return alert(r.error);
+  sbPost({ bg_video: "image", bg_image: r.path });
+};
+for (const [id, key] of [["sb-size", "logo_size"], ["sb-speed", "bg_speed"], ["sb-bright", "bg_brightness"]]) {
+  let t = null;
+  $(id).addEventListener("input", e => { clearTimeout(t); t = setTimeout(() => sbPost({ [key]: Number(e.target.value) }), 120); });
+}
+for (const id of ["sb-x", "sb-y", "sb-w", "sb-h"])
+  $(id).addEventListener("change", () => sbPost({ rect: ["sb-x", "sb-y", "sb-w", "sb-h"].map(k => Number($(k).value) || 0) }));
+$("sb-reset").onclick = () => sbPost({ rect: SB_RECT });
+function applySponsorBox(cfg) {
+  const b = cfg.sponsor_box || {};
+  if (sponsors === null) {   // loaded once; then edited here until saved
+    sponsors = [...(b.sponsors || [])];
+    $("sponsor-seconds").value = b.seconds || 5;
+    sponsorsSaved = JSON.stringify([sponsors, Number($("sponsor-seconds").value)]);
+    drawSponsors();
+  }
+  $("sb-on").checked = b.enabled !== false;
+  $("sb-tint").checked = b.bg_tint !== false;
+  $("sb-outline").checked = !!b.outline;
+  const mode = ["hud", "image", "colours"].includes(b.bg_video) ? b.bg_video : "";
+  setIfIdle($("sb-video"), mode);
+  $("sb-image-pick").hidden = mode !== "image";
+  $("sb-image-name").textContent = mode === "image"
+    ? (b.bg_image ? `Image: ${b.bg_image.split("/").pop()}` : "Choose an image (until then, the team colours show).") : "";
+  // Speed only matters for a video.
+  $("sb-speed").disabled = mode === "image" || mode === "colours";
+  for (const [id, key, d, fmt] of [["sb-size", "logo_size", .75, v => Math.round(v * 100) + "%"],
+                                   ["sb-speed", "bg_speed", 1, v => v.toFixed(2) + "×"],
+                                   ["sb-bright", "bg_brightness", 1, v => Math.round(v * 100) + "%"]]) {
+    const v = Number(b[key] ?? d);
+    setIfIdle($(id), v);
+    $(id + "-val").textContent = fmt(v);
+  }
+  (b.rect || SB_RECT).forEach((v, i) => setIfIdle($(["sb-x", "sb-y", "sb-w", "sb-h"][i]), v));
+}
+
+// Draft.
+const draftPost = changes => post("/api/config", { draft: changes });
+$("draft-read").onchange = e => post("/api/draft/read", { enabled: e.target.checked });
+$("draft-delay-on").onchange = e => draftPost({ delay_on: e.target.checked });
+$("draft-delay").onchange = e => draftPost({ delay: Math.max(0, Number(e.target.value) || 0) });
+for (const k of ["score", "coaches", "spells"]) $(`draft-${k}`).onchange = e => draftPost({ [k]: e.target.checked });
+for (const side of ["left", "right"]) $(`draft-coach-${side}`).onchange = e => draftPost({ [`coach_${side}`]: e.target.value.trim() });
+$("draft-demo").onclick = () => post("/api/draft/demo", { on: !(state.app.draft || {}).demo });
+// Draft logos: the tournament logo, and each logo's size / nudge (draft only).
+$("draft-logo-upload").onclick = () => $("draft-logo-file").click();
+$("draft-logo-file").onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.readAsDataURL(file); });
+  post("/api/draft/logo", { filename: file.name, data });
+};
+$("draft-logo-reset").onclick = () => draftPost({ logo: "" });
+$("draft-team-logos").onchange = e => draftPost({ team_logos: e.target.checked });
+$("draft-champ-names").onchange = e => draftPost({ champ_names: e.target.checked });
+$("draft-layout").onchange = e => draftPost({ layout: e.target.value });
+$("draft-sponsor").onchange = e => draftPost({ sponsor: e.target.value.trim() });
+$("fearless-show").onchange = e => post("/api/config", { fearless: { show: e.target.checked } });
+$("fearless-record").onclick = () => post("/api/fearless/record", {});
+$("fearless-clear").onclick = () => { if (confirm("Clear the earlier games' picks?")) post("/api/fearless/clear", {}); };
+$("dbg-choose").onclick = () => $("dbg-file").click();
+$("dbg-remove").onclick = () => draftPost({ bg_video: "" });
+$("dbg-default").onclick = () => draftPost({ bg_video: DEFAULT_BG });
+$("dbg-file").addEventListener("change", e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `/api/media?for=draft&filename=${encodeURIComponent(file.name)}`);
+  xhr.upload.onprogress = ev => { if (ev.lengthComputable) $("dbg-name").textContent = `Copying ${file.name}… ${Math.round(ev.loaded * 100 / ev.total)}%`; };
+  xhr.onload = () => { const d = JSON.parse(xhr.responseText); if (d.error) alert(d.error); else apply(d); };
+  xhr.onerror = () => alert("Couldn't copy the video");
+  xhr.send(file);
+});
+$("dbg-tint").onchange = e => draftPost({ bg_tint: e.target.checked });
+for (const [id, key, fmt] of [["dbg-speed", "bg_speed", v => v.toFixed(2) + "×"], ["dbg-bright", "bg_brightness", v => Math.round(v * 100) + "%"]]) {
+  let t;
+  $(id).addEventListener("input", e => {
+    $(`${id}-val`).textContent = fmt(Number(e.target.value));
+    clearTimeout(t);
+    t = setTimeout(() => draftPost({ [key]: Number(e.target.value) }), 100);
+  });
+}
+const DRAFT_ADJ = [["scale", "Size", 0.3, 3, 0.05, v => Math.round(v * 100) + "%"],
+                   ["x", "Left / right", -80, 80, 1, v => v], ["y", "Up / down", -60, 60, 1, v => v]];
+$("draft-adjust").innerHTML = ["event", "left", "right"].map(k => `<div>${DRAFT_ADJ.map(([a, label, min, max, step]) =>
+  `<label>${label} <span id="dadj-${k}-${a}-val"></span></label><input type="range" id="dadj-${k}-${a}" min="${min}" max="${max}" step="${step}">`).join("")}
+  <button type="button" id="dadj-${k}-reset" style="margin-top:6px">Reset</button></div>`).join("");
+for (const k of ["event", "left", "right"]) {
+  let t = null;
+  const send = () => draftPost({ logo_adjust: { [k]: Object.fromEntries(DRAFT_ADJ.map(([a]) => [a, Number($(`dadj-${k}-${a}`).value)])) } });
+  for (const [a, , , , , fmt] of DRAFT_ADJ)
+    $(`dadj-${k}-${a}`).addEventListener("input", e => {
+      $(`dadj-${k}-${a}-val`).textContent = fmt(Number(e.target.value));
+      clearTimeout(t); t = setTimeout(send, 120);
+    });
+  $(`dadj-${k}-reset`).onclick = () => draftPost({ logo_adjust: { [k]: { scale: 1, x: 0, y: 0 } } });
+}
+// Time until bans: counts down between updates.
+let banClock = null;
+function tickBans() {
+  const el = $("draft-countdown");
+  if (!banClock) { el.textContent = "Time until bans: --:--"; el.classList.remove("live"); return; }
+  if (banClock.onAir) { el.textContent = "Time until bans: on air"; el.classList.add("live"); return; }
+  const left = Math.max(0, Math.ceil(banClock.left - (performance.now() - banClock.at) / 1000));
+  el.textContent = `Time until bans: ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  el.classList.toggle("live", left === 0);
+}
+setInterval(tickBans, 200);
+
+function applyDraft(s) {
+  const d = s.config.draft || {}, info = s.app.draft || {};
+  $("url-draft").textContent = `${location.origin}/draft`;
+  $("draft-read").checked = !!d.read;
+  $("draft-delay-on").checked = !!d.delay_on;
+  setIfIdle($("draft-delay"), d.delay ?? 150);
+  for (const k of ["score", "coaches", "spells"]) $(`draft-${k}`).checked = d[k] !== false;
+  for (const side of ["left", "right"]) setIfIdle($(`draft-coach-${side}`), d[`coach_${side}`] || "");
+  $("draft-demo").textContent = info.demo ? "Stop demo draft" : "Play demo draft";
+  $("draft-team-logos").checked = d.team_logos !== false;
+  $("draft-champ-names").checked = d.champ_names !== false;
+  setIfIdle($("draft-sponsor"), d.sponsor || "");
+  const fl = info.fearless || { games: [] };
+  $("fearless-show").checked = fl.show !== false;
+  $("fearless-record").disabled = !fl.finished;
+  const flKey = JSON.stringify(fl.games);
+  if ($("fearless-games").dataset.key !== flKey) {
+    $("fearless-games").dataset.key = flKey;
+    $("fearless-games").innerHTML = fl.games.length ? fl.games.map((g, i) => `<div class="fearless-game"><b>Game ${i + 1}</b>` +
+      g.teams.map(t => `<span class="fl-team">${esc(t.key)}</span>` + t.champs.map(c => c ? `<img src="${esc(c)}" alt="">` : "<i></i>").join("")).join("") +
+      `<button type="button" data-fl-remove="${i}" title="Remove this game">✕</button></div>`).join("")
+      : `<div class="note" style="margin:0">No earlier games in this series yet (game 1: the panel stays hidden).</div>`;
+    $("fearless-games").querySelectorAll("[data-fl-remove]").forEach(b => b.onclick = () => post("/api/fearless/remove", { index: Number(b.dataset.flRemove) }));
+  }
+  if (!$("dbg-name").textContent.startsWith("Copying"))
+    $("dbg-name").textContent = d.bg_video === DEFAULT_BG ? "Default SCC loop" : d.bg_video ? d.bg_video.split("/").pop() : "None: just the team colours";
+  $("dbg-remove").hidden = !d.bg_video;
+  $("dbg-default").hidden = d.bg_video === DEFAULT_BG;
+  $("dbg-tint").checked = d.bg_tint !== false;
+  for (const [id, key, fmt] of [["dbg-speed", "bg_speed", v => v.toFixed(2) + "×"], ["dbg-bright", "bg_brightness", v => Math.round(v * 100) + "%"]])
+    if (document.activeElement !== $(id)) { $(id).value = d[key] ?? 1; $(`${id}-val`).textContent = fmt(Number(d[key] ?? 1)); }
+  const layouts = info.layouts || [], sel = $("draft-layout");
+  if (sel.dataset.ids !== layouts.map(l => l.id).join()) {
+    sel.dataset.ids = layouts.map(l => l.id).join();
+    sel.innerHTML = layouts.map(l => `<option value="${l.id}">${l.name}</option>`).join("");
+  }
+  if (document.activeElement !== sel) sel.value = d.layout || "europe";
+  const logoUrl = d.logo || "assets/logos/scc.png";
+  if ($("draft-logo-img").dataset.src !== logoUrl) { $("draft-logo-img").dataset.src = logoUrl; $("draft-logo-img").src = "/" + logoUrl.split("/").map(encodeURIComponent).join("/"); }
+  for (const k of ["event", "left", "right"]) {
+    const a = Object.assign({ scale: 1, x: 0, y: 0 }, (d.logo_adjust || {})[k]);
+    for (const [key, , , , , fmt] of DRAFT_ADJ) {
+      const input = $(`dadj-${k}-${key}`);
+      if (document.activeElement !== input) { input.value = a[key]; $(`dadj-${k}-${key}-val`).textContent = fmt(Number(a[key])); }
+    }
+  }
+  banClock = info.shown_active ? { onAir: true }
+    : info.starts_in == null ? null : { left: info.starts_in, at: performance.now(), onAir: false };
+  tickBans();
+  $("preview-draft-empty").style.display = info.shown_active ? "none" : "";
+  $("draft-demo").classList.toggle("on", !!info.demo);
+  const parts = [];
+  if (d.read) parts.push(info.reader || "");
+  if (info.source) parts.push(`Last from ${info.source}${info.age != null ? ` ${info.age}s ago` : ""}`);
+  if (info.live_active) parts.push(`live: ${info.live_phase || "champ select"}`);
+  if (info.delay && (info.live_active || info.shown_active))
+    parts.push(info.shown_active ? `on air, ${info.delay}s behind` : `on air in up to ${info.delay}s`);
+  $("draft-status").textContent = parts.filter(Boolean).join(" · ") || "No draft yet.";
+}
+
+function apply(s) {
+  applyMatchTime(s.app.match_time);
+  applySponsorBox(s.config);
+  applyDraft(s);
+  applyCompanion(s.app.companion);
+  const first = !state;
+  const logosChanged = !state || ["left", "right"].some(x => state.config[x].logo !== s.config[x].logo);
+  state = s;
+  const cfg = s.config, f = s.fields;
+  $("dot").classList.toggle("on", s.detail.connected);
+  // Short status here; the full error is in the log.
+  $("status").textContent = s.detail.connected ? "Game connected" : "Waiting for a game…";
+  $("status").title = s.detail.error || "";
+  // Run the clock on between updates, from when the game reported it.
+  if (s.detail.game_time !== gameClock.base)
+    gameClock = { base: s.detail.game_time, at: performance.now() - 1000 * (s.game_time_age || 0),
+                  running: s.detail.connected && s.detail.game_time > gameClock.base };
+  for (const side of ["left", "right"]) {
+    const el = document.querySelector(`.team.${side}`);
+    el.querySelectorAll("input[data-k]").forEach(i => setIfIdle(i, cfg[side][i.dataset.k]));
+    $(`${side}-wins`).textContent = cfg[side].wins;
+    if (!adjPending[side]) {
+      const adj = Object.assign({ scale: 1, x: 0, y: 0 }, (cfg.logo_adjust || {})[cfg[side].logo]);
+      setIfIdle($(`${side}-scale`), Math.round(adj.scale * 100));
+      setIfIdle($(`${side}-x`), adj.x);
+      setIfIdle($(`${side}-y`), adj.y);
+      if (![`${side}-scale`, `${side}-x`, `${side}-y`].includes(document.activeElement?.id)) showAdj(side, adj);
+    }
+    setIfIdle($(`${side}-color`), cfg[side].color);
+    setIfIdle($(`${side}-hex`), cfg[side].color);
+    el.style.borderTopColor = cfg[side].color;
+    $(`${side}-logo-img`).src = cfg[side].logo;
+    setIfIdle($(`manual-${side}`), cfg.manual_gold[side] || "");
+  }
+  if (logosChanged) loadLogos(cfg);
+  $("swap-sides").checked = cfg.swap_sides;
+  $("objectives").querySelectorAll("input").forEach(box => box.checked = cfg.objective_timers[box.dataset.obj] !== false);
+  $("timers-auto").classList.toggle("on", !!cfg.objective_timers_auto);
+  $("timers-auto").textContent = cfg.objective_timers_auto ? "Auto objective timers: on" : "Auto objective timers";
+  setIfIdle($("timers-auto-count"), String(cfg.objective_timers_auto_count || 2));
+  $("timers-auto").title = "Of Void Grubs, Rift Herald and Baron, show only the next few still to come "
+    + "(with 2: grubs + herald, then herald + baron, then baron). Dragon and Elder follow their own switches.";
+  setIfIdle($("next-dragon"), cfg.next_dragon || "");
+  const dragon = cfg.next_dragon || s.detail.next_dragon;
+  $("next-dragon-icon").src = `assets/objectives/dragon-${dragon ? dragon.toLowerCase() : "unknown"}.png`;
+  $("next-dragon-note").textContent = cfg.next_dragon ? "Set by hand. Automatic works it out from the screen and the rift."
+    : s.detail.next_dragon ? `Next dragon: ${s.detail.next_dragon} (from its spawn banner on screen, or the rift once it forms).`
+    : "Automatic: read from the \"Dragon has spawned!\" banner on this PC's screen, and known for good once the third dragon sets the rift. Until then a grey dragon, or pick one.";
+  $("anim-first-blood").checked = (cfg.animations || {}).first_blood !== false;
+  applyCams(s);
+  $("counters").querySelectorAll("input").forEach(box => box.checked = (cfg.strip_counters || {})[box.dataset.counter] !== false);
+  if (!$("bg-name").textContent.startsWith("Copying"))
+    $("bg-name").textContent = cfg.bg_video === DEFAULT_BG ? "Default SCC loop" : cfg.bg_video ? cfg.bg_video.split("/").pop() : "None chosen: showing the static lines";
+  $("bg-remove").hidden = !cfg.bg_video;
+  $("bg-default").hidden = cfg.bg_video === DEFAULT_BG;
+  $("bg-tint").checked = cfg.bg_tint !== false;
+  $("scoreboard-show").checked = (cfg.scoreboard || {}).show !== false;
+  if (document.activeElement !== $("bg-bright")) {
+    $("bg-bright").value = cfg.bg_brightness ?? 1;
+    $("bg-bright-val").textContent = Math.round((cfg.bg_brightness ?? 1) * 100) + "%";
+  }
+  if (document.activeElement !== $("bg-speed")) {
+    $("bg-speed").value = cfg.bg_speed ?? 1;
+    $("bg-speed-val").textContent = Number(cfg.bg_speed ?? 1).toFixed(2) + "×";
+  }
+  if (s.profiles_version !== profilesVersion) { profilesVersion = s.profiles_version; loadProfiles(cfg.profile); }
+  else if (document.activeElement !== $("profile") && $("profile").value !== cfg.profile && profileList.length) { $("profile").value = cfg.profile; showProfile(cfg.profile); }
+  $("best-of").value = cfg.best_of;
+  setIfIdle($("gold-mode"), cfg.gold_mode);
+  setIfIdle($("gold-scale"), cfg.gold_estimate_scale);
+  $("manual-gold").style.display = cfg.gold_mode === "manual" ? "" : "none";
+  $("screen-gold").style.display = cfg.gold_mode === "screen" ? "" : "none";
+  const sg = s.app.screen_gold;
+  const fmt = v => (v / 1000).toFixed(1) + "k";
+  $("screen-status").innerHTML = !sg.available ? `<span class="warn">${sg.status}</span>`
+    : sg.values ? `<span class="ok">Reading: blue ${fmt(sg.values.blue)} · red ${fmt(sg.values.red)}</span>`
+    : `<span class="warn">Using the estimate - ${sg.status}</span>`;
+  const app = s.app;
+  // Opened directly (not from the start screen): this PC is the GFX PC.
+  if (first && app.role !== "gfx") fetch("/api/role", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"role":"gfx"}' }).catch(() => {});
+  showUpdate(app.update);
+  if (first) {
+    $("url-overlay").textContent = `http://localhost:${app.port}/overlay`;
+    $("url-csv").textContent = `http://localhost:${app.port}/hud.csv`;
+    $("out-dir").textContent = s.output_dir;
+  }
+  document.querySelectorAll("#mode button").forEach(b => b.classList.toggle("on", b.dataset.mode === app.mode));
+  const ow = app.overlay_window;
+  $("ow").hidden = !ow.available;
+  if (ow.available) {
+    $("ow-btn").classList.toggle("on", ow.open);
+    $("ow-btn").textContent = ow.open ? "HUD on game: on" : "Show HUD on game";
+    const opts = ow.screens.map((label, i) => `<option value="${i}">${label}</option>`).join("");
+    if ($("ow-screen").dataset.opts !== opts) { $("ow-screen").innerHTML = opts; $("ow-screen").dataset.opts = opts; }
+    $("ow-screen").hidden = ow.screens.length < 2;
+    setIfIdle($("ow-screen"), String(ow.screen));
+  }
+  $("mode-badge").textContent = app.mode === "live" ? "" : app.mode.toUpperCase();
+  $("demo-speed").hidden = app.mode !== "demo";
+  setIfIdle($("demo-speed"), String(app.demo_speed));
+  $("network").checked = app.network;
+  $("lan-row").hidden = !app.lan_url;
+  $("url-lan").textContent = app.lan_url ? `${app.lan_url}/overlay` : "";
+  $("fields").innerHTML = Object.entries(f).map(([k, v]) =>
+    `<div title="${k}" data-k="${k}"><span>${k}</span><span>${String(v).replace(/</g, "&lt;")}</span></div>`).join("");
+}
+
+$("fields").addEventListener("click", e => {
+  const row = e.target.closest("[data-k]");
+  if (row) navigator.clipboard?.writeText(row.dataset.k);
+});
+
+// Gold: one-off screen read showing exactly what was captured and read.
+$("screen-test").onclick = async () => {
+  const box = $("screen-result");
+  box.hidden = false;
+  box.innerHTML = '<span class="note">Reading…</span>';
+  const r = await (await fetch("/api/screen-gold/test", { method: "POST", body: "{}" })).json();
+  if (!r.blue) { box.innerHTML = `<span class="warn">${r.error}</span>`; return; }
+  const counts = c => c ? ["dragons", "heralds", "grubs", "towers"].map(n =>
+    `${n} <b>${c.values[n] ?? '<span class="warn">?</span>'}</b>`).join(" · ") : "";
+  box.innerHTML = ["blue", "red"].map(t => `<figure><img src="${r[t].image}" alt="">
+    <figcaption>${t} gold: read <b>${r[t].text || "nothing"}</b> → ${r[t].value != null ? (r[t].value / 1000).toFixed(1) + "k" : '<span class="warn">not a gold value</span>'}</figcaption>
+    ${r.counters[t] ? `<img src="${r.counters[t].image}" alt="" style="margin-top:6px"><figcaption>${counts(r.counters[t])}</figcaption>` : ""}
+    </figure>`).join("") + (r.counters_error ? `<span class="warn">Counters: ${r.counters_error}</span>` : "");
+};
+
+// Updates: a button in the top bar when GitHub has a newer version.
+const showUpdate = updateButton($("update"), $("version"));
+
+// Header: game source.
+document.querySelectorAll("#mode button").forEach(b => b.addEventListener("click", () => {
+  if (b.dataset.mode !== state?.app.mode) post("/api/mode", { mode: b.dataset.mode, speed: Number($("demo-speed").value) });
+}));
+$("demo-speed").onchange = e => post("/api/mode", { mode: "demo", speed: Number(e.target.value) });
+
+// Outputs.
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  const t = document.createElement("textarea");
+  t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove();
+}
+document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => {
+  copyText($(b.dataset.copy).textContent);
+  const label = b.textContent; b.textContent = "Copied"; setTimeout(() => b.textContent = label, 1200);
+}));
+document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => post("/api/open", { folder: b.dataset.open })));
+$("network").onchange = e => post("/api/network", { enabled: e.target.checked });
+
+// Log: what used to print in the command window.
+let logAfter = 0;
+async function pollLog() {
+  try {
+    const lines = await (await fetch(`/api/log?after=${logAfter}`, { cache: "no-store" })).json();
+    if (lines.length) {
+      const box = $("log"), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 20;
+      for (const l of lines) {
+        const row = document.createElement("div");
+        row.className = l.level;
+        row.innerHTML = `<span class="t">${l.time}</span>`;
+        row.append(l.message);
+        box.appendChild(row);
+        logAfter = l.id;
+      }
+      while (box.childElementCount > 500) box.firstChild.remove();
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) { /* app closing */ }
+  setTimeout(pollLog, 1000);
+}
+pollLog();
+
+// Webcams: a row per player, with their cam link, what's connected, and a pin.
+const ROLES = ["Top", "Jungle", "Mid", "Bot", "Support"];
+for (const box of document.querySelectorAll(".cam-team")) {
+  const side = box.dataset.side;
+  ROLES.forEach((role, i) => {
+    const row = document.createElement("div");
+    row.className = "cam-row";
+    row.dataset.slot = i + 1;
+    row.innerHTML = `<div class="who"><b><i></i>${role}</b><small></small></div>
+      <input class="cam-link" spellcheck="false">
+      <button type="button" class="pin" title="Keep this team's cam on this player">Pin</button>`;
+    row.querySelector("input").onchange = e => {
+      const links = [...(state.config[side].cam_links || ["", "", "", "", ""])];
+      links[i] = e.target.value.trim();
+      post("/api/config", { [side]: { cam_links: links } });
+    };
+    row.querySelector(".pin").onclick = () => {
+      const pinned = (state.config.cams.pin || {})[side] === i + 1;
+      post("/api/config", { cams: { pin: { [side]: pinned ? 0 : i + 1 } } });
+    };
+    box.appendChild(row);
+  });
+}
+$("cams-on").onchange = e => post("/api/config", { cams: { enabled: e.target.checked } });
+$("cams-auto").onchange = e => post("/api/config", { cams: { auto: e.target.checked } });
+$("cams-director").onchange = e => post("/api/config", { cams: { director: e.target.checked } });
+$("cams-hold").onchange = e => post("/api/config", { cams: { hold: Math.max(0, Number(e.target.value) || 0) } });
+// "2:30" or "150" (seconds) -> 150
+function mss(t) {
+  const [m, sec] = String(t).trim().includes(":") ? String(t).split(":") : [0, t];
+  return Math.max(0, Math.round((Number(m) || 0) * 60 + (Number(sec) || 0)));
+}
+const fmtMss = n => `${Math.floor(n / 60)}:${String(Math.round(n % 60)).padStart(2, "0")}`;
+$("cams-delay").onchange = e => {
+  const delay = mss(e.target.value);
+  e.target.value = fmtMss(delay);
+  post("/api/config", { cams: { delay } });
+};
+$("cams-test").onclick = async () => {
+  $("cams-test-result").innerHTML = '<p class="note">Reading the screen…</p>';
+  try {
+    const r = await (await fetch("/api/cams/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
+    if (!r.ok) { $("cams-test-result").innerHTML = `<p class="note warn">${esc(r.error)}</p>`; return; }
+    const found = r.seen.map(p => `${p.side} ${ROLES[p.slot - 1]}`).join(", ") || "no player name tags";
+    $("cams-test-result").innerHTML = `<p class="note">Found: ${esc(found)}. Text read (yellow boxes): ${esc(r.lines.join(" · ") || "none")}</p><img src="${r.image}" alt="What was read">`;
+  } catch (e) { $("cams-test-result").innerHTML = '<p class="note warn">Couldn\'t read the screen</p>'; }
+};
+// Players: "Save IGN to player" links each in-game player to their player in
+// the GFX Engine's team roster (by in-game name).
+async function linksCall(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  return r.json();
+}
+function renderLinks(data) {
+  const attr = t => esc(t).replace(/"/g, "&quot;");
+  for (const side of ["left", "right"]) {
+    const box = $(`links-${side}`), s = data && data.sides && data.sides[side];
+    if (!s) { box.innerHTML = ""; continue; }
+    const members = s.members.map(m => `<option value="${m.index}">${esc(m.name || m.ign || `Player ${m.index + 1}`)}</option>`).join("");
+    const rows = s.players.map(p => {
+      const m = p.linked === null ? null : s.members[p.linked];
+      return `<div class="link-row"><b title="${attr(p.ign)}">${esc(p.ign)}</b>` +
+        (m ? `<span class="linked">linked: ${esc(m.name || m.ign)}</span>` : `<span class="unlinked">unlinked</span>`) +
+        `<select data-side="${side}" data-ign="${attr(p.ign)}"${s.members.length ? "" : " disabled"}><option value="">Save IGN to player ▾</option>${members}</select></div>`;
+    }).join("");
+    box.innerHTML = `<h3>${esc(s.team || side + " team")}</h3>` +
+      (!s.found ? `<p class="note">No team called "${esc(s.team)}" in GFX Engine's Teams, so there's no roster to link to.</p>`
+        : !s.members.length ? `<p class="note">${esc(s.team)} has no team members in GFX Engine yet (Teams &gt; Team members).</p>` : "") +
+      (rows || `<p class="note">No players yet: they show once a game is on.</p>`);
+  }
+  for (const sel of document.querySelectorAll(".link-row select")) sel.addEventListener("change", async () => {
+    if (sel.value === "") return;
+    const data = await linksCall("/api/engine/link", { side: sel.dataset.side, player: Number(sel.value), ign: sel.dataset.ign });
+    if (data.error) { alert(data.error); sel.value = ""; return; }
+    $("links-note").textContent = `Saved ${sel.dataset.ign}.`;
+    renderLinks(data);
+  });
+}
+async function refreshLinks(force) {
+  const box = $("links-left").closest("section");
+  if (!force && (document.hidden || !box.offsetParent || box.contains(document.activeElement))) return;
+  try {
+    const data = await linksCall("/api/engine/roster");
+    if (data.error) { renderLinks(null); $("links-note").textContent = data.error.startsWith("Connect") ? "Connect to a GFX Engine (GFX Engine page) to link players." : data.error; return; }
+    if (!$("links-note").textContent.startsWith("Saved")) $("links-note").textContent = "";
+    renderLinks(data);
+  } catch (e) { /* the HUD is restarting */ }
+}
+$("links-refresh").addEventListener("click", () => { $("links-note").textContent = ""; refreshLinks(true); });
+setInterval(refreshLinks, 4000);
+refreshLinks();
+
+function esc(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+
+function applyCams(s) {
+  const cfg = s.config, cams = cfg.cams || {}, info = s.cams || {}, pubs = info.publishers || {};
+  $("cams-on").checked = cams.enabled !== false;
+  $("cams-auto").checked = cams.auto !== false;
+  $("cams-director").checked = !!cams.director;
+  setIfIdle($("cams-hold"), cams.hold ?? 3);
+  setIfIdle($("cams-delay"), fmtMss(cams.delay ?? 150));
+  const focus = info.focus || {};
+  for (const box of document.querySelectorAll(".cam-team")) {
+    const side = box.dataset.side;
+    box.querySelector("h3").textContent = `${cfg[side].name} (${cfg[side].tricode})`;
+    const roster = (s.detail.roster || {})[side] || [];
+    box.querySelectorAll(".cam-row").forEach(row => {
+      const slot = Number(row.dataset.slot), seat = `${side}-${slot}`;
+      const link = (cfg[side].cam_links || [])[slot - 1] || "";
+      const p = roster[slot - 1];
+      row.querySelector("small").textContent = p ? `${p.name} · ${p.champion_name}` : "";
+      const input = row.querySelector("input");
+      setIfIdle(input, link);
+      // A Player Cam shows in the box while it's empty (a link takes over).
+      input.placeholder = pubs[seat] ? `Player Cam connected${pubs[seat].label ? ": " + pubs[seat].label : ""}`
+                                     : "VDO.Ninja link";
+      const dot = row.querySelector("i");
+      dot.classList.toggle("on", !!(link || pubs[seat]));
+      dot.title = link ? "Cam link" : pubs[seat] ? "Player Cam connected" : "No cam";
+      row.querySelector(".pin").classList.toggle("on", (cams.pin || {})[side] === slot);
+      row.classList.toggle("live", focus[side] === slot && cams.enabled !== false);
+    });
+  }
+  const why = focus.why || {};
+  const on = side => focus[side] ? `${ROLES[focus[side] - 1]}${why[side] ? " (" + why[side] + ")" : ""}` : "nobody yet";
+  $("cams-status").innerHTML = `On the cams: left ${esc(on("left"))} · right ${esc(on("right"))}`
+    + (cams.director ? `<br>Screen: ${esc(s.app.director || "")}` : "");
+  $("cams-lan").textContent = s.app.lan_url ? s.app.lan_url.replace(/^http:\/\//, "").replace(/:\d+$/, "") : "this PC's address";
+  $("cams-link").textContent = !s.app.network ? 'Tick "Let other PCs on the network read the HUD" under Outputs first'
+    : s.app.cam_url || "Unavailable: see the Log";
+  $("cams-link-copy").disabled = !(s.app.network && s.app.cam_url);
+}
+
+// localStorage can be missing or blocked; the panel still works without it.
+function stored(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch (e) { return fallback; } }
+function store(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* not saved */ } }
+
+// Preview: the whole 1920x1080 HUD, or just the top bar (x 495-1429, y 0-122).
+const BAR = { x: 495, w: 934 };
+let previewView = stored("previewView", "full");
+function fitPreview() {
+  const box = $("preview"), bar = previewView === "bar";
+  box.classList.toggle("bar", bar);
+  const k = box.clientWidth / (bar ? BAR.w : 1920);
+  box.querySelector("iframe").style.transform = bar ? `scale(${k}) translateX(${-BAR.x}px)` : `scale(${k})`;
+  document.querySelectorAll("#preview-mode button").forEach(b => b.classList.toggle("on", b.dataset.view === previewView));
+}
+document.querySelectorAll("#preview-mode button").forEach(b => b.onclick = () => {
+  previewView = b.dataset.view; store("previewView", previewView); fitPreview();
+});
+new ResizeObserver(fitPreview).observe($("preview"));
+fitPreview();
+// The draft: its bottom part (y 660-1080), where the Europe layout sits.
+function fitDraftPreview() {
+  const box = $("preview-draft"), k = box.clientWidth / 1920;
+  box.querySelector("iframe").style.transform = `scale(${k}) translateY(-660px)`;
+}
+new ResizeObserver(fitDraftPreview).observe($("preview-draft"));
+fitDraftPreview();
+
+// Collapsible sections, remembered by title.
+const folded = new Set(stored("foldedSections", []));
+const sections = [...document.querySelectorAll("section")].filter(s => s.firstElementChild?.tagName === "H2");
+const sectionKey = s => s.firstElementChild.firstChild.textContent.trim();
+function setFolded(sec, fold) {
+  sec.classList.toggle("collapsed", fold);
+  sec.firstElementChild.setAttribute("aria-expanded", String(!fold));
+  fold ? folded.add(sectionKey(sec)) : folded.delete(sectionKey(sec));
+}
+function syncFoldAll() {
+  const all = sections.every(s => s.classList.contains("collapsed"));
+  $("fold-all").textContent = all ? "Expand all" : "Collapse all";
+  store("foldedSections", [...folded]);
+}
+sections.forEach(sec => {
+  const h = sec.firstElementChild;
+  h.insertAdjacentHTML("beforeend", '<svg class="fold" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  h.setAttribute("role", "button");
+  h.tabIndex = 0;
+  const toggle = () => { setFolded(sec, !sec.classList.contains("collapsed")); syncFoldAll(); if (!sec.classList.contains("collapsed")) fitPreview(); };
+  h.onclick = toggle;
+  h.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
+  setFolded(sec, folded.has(sectionKey(sec)));
+});
+$("fold-all").onclick = () => {
+  const fold = !sections.every(s => s.classList.contains("collapsed"));
+  sections.forEach(s => setFolded(s, fold));
+  syncFoldAll();
+  fitPreview();
+};
+syncFoldAll();
+
+async function poll() {
+  try { apply(await (await fetch("/api/state", { cache: "no-store" })).json()); }
+  catch (e) { $("dot").classList.remove("on"); $("status").textContent = "HUD app not running"; }
+  setTimeout(poll, 1000);
+}
+poll();
+</script>
+</body>
+</html>

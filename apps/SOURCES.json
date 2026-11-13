@@ -1,0 +1,47 @@
+{
+  "codhud": {
+    "repo": "owenbparker/COD_SCC_HUD",
+    "branch": "claude/project-thread-7aamdb",
+    "commit": "6b9e53e96110adf70cdf75ec0d1165c768f366b0"
+  },
+  "gfxengine": {
+    "repo": "owenbparker/GFX-Engine",
+    "branch": "claude/project-thread-25uy3g",
+    "commit": "09813dae2fdc8e7b663d5803be4dbd04a59811b4"
+  },
+  "hudbuilder": {
+    "repo": "owenbparker/HUD-Builder",
+    "branch": "claude/project-thread-7aamdb",
+    "commit": "70108265be941351c96ff82b17ebe67efab45233"
+  },
+  "lolhud": {
+    "repo": "owenbparker/LeagueHUDSCC",
+    "branch": "claude/project-thread-7aamdb",
+    "commit": "dcbdce17cf15d6cb09b16a177baf26d7c0e91731"
+  },
+  "multistream": {
+    "repo": "owenbparker/multistream_scc",
+    "branch": "claude/project-thread-p3dr1d",
+    "commit": "4d119ef698e01f78a8cf743de7805ac42d3607cb"
+  },
+  "owhud": {
+    "repo": "owenbparker/OWHUD_SCC",
+    "branch": "claude/project-thread-7aamdb",
+    "commit": "85b2e0d504448c72fea35056e6fdc467dac8300d"
+  },
+  "rlhud": {
+    "repo": "owenbparker/RLHUD_SCC",
+    "branch": "claude/project-thread-7aamdb",
+    "commit": "18d7ccbd257772a0605d06561e35409b576fa2d2"
+  },
+  "smashhud": {
+    "repo": "owenbparker/SmashHUD_SCC",
+    "branch": "claude/project-thread-7aamdb",
+    "commit": "772e53f74427e09f87a717b470695f03e16d4b30"
+  },
+  "valhud": {
+    "repo": "owenbparker/VALHUDSCC",
+    "branch": "claude/project-thread-7aamdb",
+    "commit": "04cd650785f058dc4f07270a35b651bac579f4b2"
+  }
+}

@@ -1,0 +1,670 @@
+"""Reads team gold off the spectator top bar on screen.
+
+League's game data doesn't include other players' gold, but the spectator
+HUD shows each team's total ("8.0k") at the top of the screen. This captures
+that part of the League window a couple of times a second and reads the
+numbers with Windows' built-in text recognition (Windows.Media.Ocr), so
+there's nothing extra to install.
+
+Windows only; elsewhere (or if anything goes wrong) the HUD falls back to
+its gold estimate.
+
+    python -m lolhud.ocr screenshot.png    read a saved 1920x1080 screenshot
+"""
+
+import asyncio
+import io
+import os
+import re
+import sys
+import threading
+import time
+
+from .log import log
+
+# Where the two gold numbers are on a 1920x1080 spectator screen: x, y, w, h.
+# They scale with the window's height and stay centred, like the top bar.
+REF_HEIGHT = 1080
+DEFAULT_BOXES = {"blue": [804, 16, 54, 24], "red": [1106, 16, 54, 24]}
+# The objective and tower counters next to their icons (room for two digits).
+COUNTER_BOXES = {
+    "blue": {"dragons": [517, 16, 26, 24], "heralds": [592, 16, 26, 24], "grubs": [662, 16, 26, 24],
+                 "towers": [742, 16, 26, 24]},
+    "red": {"towers": [1185, 16, 26, 24], "grubs": [1250, 16, 26, 24], "heralds": [1328, 16, 26, 24],
+                "dragons": [1407, 16, 26, 24]},
+}
+COUNTERS = ("dragons", "heralds", "grubs", "towers")
+WINDOW_TITLE = "League of Legends (TM) Client"
+WINDOW_CLASS = "RiotWindowClass"
+
+_NUMBER = re.compile(r"(\d{1,3})(?:[.,](\d))?\s*([kK])?")
+# Letters OCR sometimes returns for these digits.
+_FIXES = str.maketrans({"O": "0", "o": "0", "D": "0", "Q": "0", "l": "1", "I": "1", "|": "1", "i": "1",
+                        "S": "5", "s": "5", "B": "8", "Z": "2", "z": "2", "g": "9", "q": "9"})
+
+
+def parse_gold(text):
+    """"8.0k" -> 8000, "12.4k" -> 12400. None if it doesn't look like gold."""
+    if not text:
+        return None
+    cleaned = text.strip().replace(" ", "")
+    # Keep a trailing k/K, translate look-alike letters everywhere else.
+    k = cleaned[-1:] if cleaned[-1:] in "kK" else ""
+    body = (cleaned[:-1] if k else cleaned).translate(_FIXES)
+    m = _NUMBER.search(body + k)
+    if not m:
+        return None
+    whole, tenth, has_k = m.group(1), m.group(2), m.group(3)
+    if tenth is None and not has_k:
+        return None  # a bare number isn't the "8.0k" format; probably junk
+    return int(whole) * 1000 + int(tenth or 0) * 100
+
+
+def scaled_box(box, width, height):
+    """Map a 1920x1080 box onto a window of this size (centred, scaled by height)."""
+    x, y, w, h = box
+    s = height / REF_HEIGHT
+    left = width / 2 + (x - 960) * s
+    return (round(left), round(y * s), round(left + w * s), round((y + h) * s))
+
+
+# Ways to prepare a number for text recognition, tried in order until one
+# reads as gold. Windows OCR is fussy about single short words, so having a
+# couple of alternatives makes a big difference: (scale, sharp edges?, border).
+VARIANTS = [(4, False, 24), (4, True, 24), (3, False, 48), (6, True, 32)]
+
+
+def prepare(crop, variant=0):
+    """Bright coloured text on dark teal -> large black text on white."""
+    from PIL import Image, ImageChops, ImageOps
+    scale, sharp, border = VARIANTS[variant]
+    r, g, b = crop.convert("RGB").split()
+    # Brightest channel: the blue or red digits stand out, the teal bar doesn't.
+    gray = ImageChops.lighter(ImageChops.lighter(r, g), b)
+    gray = ImageOps.autocontrast(gray, cutoff=2)
+    big = gray.resize((gray.width * scale, gray.height * scale), Image.LANCZOS)
+    if sharp:
+        big = big.point(lambda v: 0 if v > 110 else 255)  # black text on white
+    else:
+        big = ImageOps.invert(big)  # keep smooth edges
+    return ImageOps.expand(big, border=border, fill=255)
+
+
+class WindowsOcr:
+    """Windows.Media.Ocr through the winrt packages."""
+
+    def __init__(self):
+        from winrt.windows.globalization import Language
+        from winrt.windows.media.ocr import OcrEngine
+        engine = OcrEngine.try_create_from_user_profile_languages()
+        if engine is None:
+            engine = OcrEngine.try_create_from_language(Language("en-US"))
+        if engine is None:
+            raise RuntimeError("Windows text recognition isn't installed for any of your languages")
+        self.engine = engine
+
+    def recognize(self, image):
+        from winrt.windows.graphics.imaging import BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap
+        from winrt.windows.storage.streams import DataWriter
+        rgba = image.convert("RGBA")
+        writer = DataWriter()
+        writer.write_bytes(rgba.tobytes("raw", "BGRA"))
+        buffer = writer.detach_buffer()
+        try:
+            bitmap = SoftwareBitmap.create_copy_from_buffer(buffer, BitmapPixelFormat.BGRA8, rgba.width, rgba.height)
+        except TypeError:  # older winrt wrappers
+            bitmap = SoftwareBitmap(BitmapPixelFormat.BGRA8, rgba.width, rgba.height, BitmapAlphaMode.PREMULTIPLIED)
+            bitmap.copy_from_buffer(buffer)
+
+        async def run():
+            return await self.engine.recognize_async(bitmap)
+
+        return asyncio.run(run())
+
+    def read(self, image):
+        return self.recognize(image).text
+
+    def read_lines(self, image):
+        """[(text, (x, y, w, h)), ...] for every line of text found."""
+        lines = []
+        for line in self.recognize(image).lines:
+            rects = [w.bounding_rect for w in line.words]
+            if not rects:
+                continue
+            x0, y0 = min(r.x for r in rects), min(r.y for r in rects)
+            x1, y1 = max(r.x + r.width for r in rects), max(r.y + r.height for r in rects)
+            lines.append((line.text, (x0, y0, x1 - x0, y1 - y0)))
+        return lines
+
+    def read_words(self, image):
+        """[(text, x_centre), ...] for every word found."""
+        words = []
+        for line in self.recognize(image).lines:
+            for word in line.words:
+                rect = word.bounding_rect
+                words.append((word.text, rect.x + rect.width / 2))
+        return words
+
+
+# --- capturing the League window -------------------------------------------
+
+def make_dpi_aware():
+    """Use real pixels, so Windows display scaling (125%, 150%...) doesn't
+    shift where the capture lands. Must run before any window is created."""
+    import ctypes
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except (AttributeError, OSError):
+            ctypes.windll.user32.SetProcessDPIAware()
+
+
+def _win32():
+    import ctypes
+    from ctypes import wintypes
+    user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+    H = ctypes.c_void_p
+    for fn, res, args in [
+        (user32.FindWindowW, H, [wintypes.LPCWSTR, wintypes.LPCWSTR]),
+        (user32.IsIconic, wintypes.BOOL, [H]),
+        (user32.GetClientRect, wintypes.BOOL, [H, ctypes.POINTER(wintypes.RECT)]),
+        (user32.ClientToScreen, wintypes.BOOL, [H, ctypes.POINTER(wintypes.POINT)]),
+        (user32.GetDC, H, [H]),
+        (user32.ReleaseDC, ctypes.c_int, [H, H]),
+        (user32.PrintWindow, wintypes.BOOL, [H, H, wintypes.UINT]),
+        (gdi32.CreateCompatibleDC, H, [H]),
+        (gdi32.CreateCompatibleBitmap, H, [H, ctypes.c_int, ctypes.c_int]),
+        (gdi32.SelectObject, H, [H, H]),
+        (gdi32.BitBlt, wintypes.BOOL, [H, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                       H, ctypes.c_int, ctypes.c_int, wintypes.DWORD]),
+        (gdi32.GetDIBits, ctypes.c_int, [H, H, wintypes.UINT, wintypes.UINT, ctypes.c_void_p, ctypes.c_void_p,
+                                         wintypes.UINT]),
+        (gdi32.DeleteObject, wintypes.BOOL, [H]),
+        (gdi32.DeleteDC, wintypes.BOOL, [H]),
+    ]:
+        fn.restype, fn.argtypes = res, args
+    return ctypes, wintypes, user32, gdi32
+
+
+def _bitmap_to_image(ctypes, gdi32, mdc, bmp, width, height):
+    from PIL import Image
+
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32), ("biHeight", ctypes.c_int32),
+                    ("biPlanes", ctypes.c_uint16), ("biBitCount", ctypes.c_uint16),
+                    ("biCompression", ctypes.c_uint32), ("biSizeImage", ctypes.c_uint32),
+                    ("biXPelsPerMeter", ctypes.c_int32), ("biYPelsPerMeter", ctypes.c_int32),
+                    ("biClrUsed", ctypes.c_uint32), ("biClrImportant", ctypes.c_uint32)]
+
+    info = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), width, -height, 1, 32, 0, 0, 0, 0, 0, 0)
+    buf = ctypes.create_string_buffer(width * height * 4)
+    gdi32.GetDIBits(mdc, bmp, 0, height, buf, ctypes.byref(info), 0)
+    return Image.frombuffer("RGB", (width, height), buf.raw, "raw", "BGRX", 0, 1)
+
+
+def capture_league(full=False, top=None):
+    """The League window's client area as an image (just the top bar unless
+    full), or (None, reason)."""
+    ctypes, wintypes, user32, gdi32 = _win32()
+    hwnd = user32.FindWindowW(None, WINDOW_TITLE) or user32.FindWindowW(WINDOW_CLASS, None)
+    if not hwnd:
+        return None, "League window not found"
+    if user32.IsIconic(hwnd):
+        return None, "League window is minimised"
+    rect = wintypes.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(rect))
+    width, height = rect.right, rect.bottom
+    if width < 100 or height < 100:
+        return None, "League window is too small"
+    # Only the top bar is needed for the gold.
+    strip = height if full else max(1, int(height * 0.05) + 2)
+    if top and not full:   # more of the screen, in 1080p rows (e.g. down to the dragon banner)
+        strip = min(height, max(strip, round(top * height / REF_HEIGHT)))
+
+    screen = user32.GetDC(None)
+    mdc = gdi32.CreateCompatibleDC(screen)
+    try:
+        # 1) Ask the window to draw itself (works even if other windows cover it).
+        whole = gdi32.CreateCompatibleBitmap(screen, width, height)
+        old = gdi32.SelectObject(mdc, whole)
+        image = None
+        if user32.PrintWindow(hwnd, mdc, 3):  # PW_CLIENTONLY | PW_RENDERFULLCONTENT
+            image = _bitmap_to_image(ctypes, gdi32, mdc, whole, width, strip)
+            if max(image.convert("L").getextrema()) < 16:
+                image = None  # came back black: some fullscreen modes don't support it
+        gdi32.SelectObject(mdc, old)
+        gdi32.DeleteObject(whole)
+        # 2) Otherwise copy it from the screen (it must be visible).
+        if image is None:
+            point = wintypes.POINT(0, 0)
+            user32.ClientToScreen(hwnd, ctypes.byref(point))
+            bmp = gdi32.CreateCompatibleBitmap(screen, width, strip)
+            old = gdi32.SelectObject(mdc, bmp)
+            gdi32.BitBlt(mdc, 0, 0, width, strip, screen, point.x, point.y, 0x00CC0020 | 0x40000000)
+            image = _bitmap_to_image(ctypes, gdi32, mdc, bmp, width, strip)
+            gdi32.SelectObject(mdc, old)
+            gdi32.DeleteObject(bmp)
+    finally:
+        gdi32.DeleteDC(mdc)
+        user32.ReleaseDC(None, screen)
+    return (image, height), None
+
+
+def read_image(image, ocr, height=None, boxes=None):
+    """Read both teams' gold from a capture of the top of the League window."""
+    height = height or image.height
+    boxes = boxes or DEFAULT_BOXES
+    out = {}
+    for team, box in boxes.items():
+        crop = image.crop(locate(image, scaled_box(box, image.width, height), team, height))
+        for variant in range(len(VARIANTS)):
+            ready = prepare(crop, variant)
+            text = ocr.read(ready)
+            value = parse_gold(text)
+            if value is not None:
+                break
+        out[team] = {"text": text, "value": value, "image": ready, "variant": variant}
+    return out
+
+
+def parse_count(text):
+    """"3" -> 3, "O" -> 0, "l1" -> 11. None if it isn't a small number."""
+    digits = re.sub(r"\D", "", (text or "").translate(_FIXES))
+    return int(digits) if 1 <= len(digits) <= 2 else None
+
+
+# ".0k" cut from a real gold number on a 1079px-high spectator screen.
+# Windows OCR won't read a lone digit, but it reads gold values reliably, so
+# each counter digit is read with this stuck on the end: "3" -> "3.0k".
+_SUFFIX_HEIGHT = 1079
+_SUFFIX_PNG = (
+    "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"
+)
+
+
+def _suffix(height):
+    import base64
+    from PIL import Image
+    img = Image.open(io.BytesIO(base64.b64decode(_SUFFIX_PNG))).convert("RGB")
+    s = height / _SUFFIX_HEIGHT
+    return img.resize((max(1, round(img.width * s)), max(1, round(img.height * s))), Image.LANCZOS)
+
+
+def _team_mask(img, team, strength):
+    """White where a pixel is clearly the team's text colour (blue or red).
+    Beige bounty text, grey icons and the teal bar are left out."""
+    from PIL import ImageChops
+    r, g, b = img.convert("RGB").split()
+    if team == "blue":
+        diff = ImageChops.subtract(b, ImageChops.lighter(r, g))
+    else:
+        diff = ImageChops.subtract(r, ImageChops.lighter(g, b))
+    return diff.point(lambda v: 255 if v > strength else 0)
+
+
+def _text_only(img, team):
+    """Keep the team-coloured text, blank everything else."""
+    from PIL import Image, ImageFilter
+    rgb = img.convert("RGB")
+    # Red digits are ~160 redder than green/blue, beige bounty text only ~40.
+    mask = _team_mask(rgb, team, 30 if team == "blue" else 80)
+    mask = mask.filter(ImageFilter.MaxFilter(3))  # keep the soft edges of each digit
+    return Image.composite(rgb, Image.new("RGB", rgb.size), mask)
+
+
+def locate(image, box, team, height):
+    """Find where the text in this box actually is this frame.
+
+    When objective bounties show, League moves that side's counters up
+    (about 9px at 1080p) and prints the bounty underneath; this finds the
+    team-coloured digits within a taller band and returns the box moved to
+    them, or the box unchanged if nothing is found."""
+    s = height / REF_HEIGHT
+    x0, y0, x1, y1 = box
+    top, bottom = max(0, y0 - round(14 * s)), min(image.height, y1 + round(6 * s))
+    mask = _team_mask(image.crop((x0, top, x1, bottom)), team, 30 if team == "blue" else 80)
+    rows = [any(mask.crop((0, y, mask.width, y + 1)).getextrema()[1:]) for y in range(mask.height)]
+    run, start = 0, None
+    for y, hit in enumerate(rows):
+        run = run + 1 if hit else 0
+        if run >= max(4, round(5 * s)):
+            start = y - run + 1
+            break
+    if start is None:
+        return box
+    text_top = top + start
+    dy = text_top - (y0 + round(6 * s))  # normally the digits start 6px into the box
+    return (x0, y0 + dy, x1, y1 + dy)
+
+
+def counter_image(crop, height, team):
+    """The counter's digit(s) followed by ".0k", or None if there's no digit."""
+    from PIL import Image
+    text = _text_only(crop, team)
+    box = text.convert("L").point(lambda v: 255 if v > 60 else 0).getbbox()
+    if not box:
+        return None
+    digits = text.crop((0, 0, box[2], text.height))
+    suffix = _text_only(_suffix(height), "blue")  # cut from blue's gold
+    gap = max(1, round(height / 1080))
+    out = Image.new("RGB", (digits.width + gap + suffix.width, max(digits.height, suffix.height)))
+    out.paste(digits, (0, 0))
+    out.paste(suffix, (digits.width + gap, 0))
+    return out
+
+
+def read_counters(image, ocr, height=None, boxes=None):
+    """Read each team's dragon / herald / grub counters."""
+    height = height or image.height
+    boxes = boxes or COUNTER_BOXES
+    out = {}
+    for team, slots in boxes.items():
+        values, texts, shown = {}, [], []
+        for name, box in slots.items():
+            where = locate(image, scaled_box(box, image.width, height), team, height)
+            combined = counter_image(image.crop(where), height, team)
+            value, text = None, ""
+            if combined is not None:
+                for variant in range(len(VARIANTS)):
+                    ready = prepare(combined, variant)
+                    text = ocr.read(ready)
+                    gold = parse_gold(text)
+                    if gold is not None and gold % 1000 == 0:
+                        value = gold // 1000
+                        break
+                shown.append(ready)
+            values[name] = value
+            texts.append(f"{name}={text!r}")
+        out[team] = {"values": values, "text": " ".join(texts), "image": _stack(shown)}
+    return out
+
+
+def _stack(images):
+    from PIL import Image
+    if not images:
+        return Image.new("L", (1, 1), 255)
+    out = Image.new("L", (sum(i.width for i in images) + 8 * len(images), max(i.height for i in images)), 255)
+    x = 0
+    for i in images:
+        out.paste(i, (x, 0))
+        x += i.width + 8
+    return out
+
+
+class ScreenGold:
+    """Keeps reading the gold and objective counters in the background and
+    keeps the last good values."""
+
+    STALE_AFTER = 5.0  # seconds without a good read before the estimate takes over
+
+    def __init__(self, config):
+        self.config = config
+        self.values = {"blue": None, "red": None}
+        self.read_at = 0.0
+        self.counts = {t: {c: None for c in COUNTERS} for t in ("blue", "red")}
+        self.counts_at = {}          # (team, counter) -> when it was last read cleanly
+        self.dragon_spawned = (None, 0.0)   # (element or None, when its banner was read)
+        self._pending_counts = {}
+        self._last_missed = []
+        self.bars, self.bars_at = None, 0.0   # each player's health and mana (sidebar.py)
+        self.status = "starting"
+        self.ocr = None
+        self._pending = {"blue": None, "red": None}
+        self._stop = threading.Event()
+        self.paused = False  # observer client: the GFX PC reads the screen
+        self.available, self.reason = self._check()
+
+    def _check(self):
+        if sys.platform != "win32":
+            return False, "Reading the screen only works on Windows"
+        make_dpi_aware()
+        try:
+            import PIL  # noqa: F401
+            self.ocr = WindowsOcr()
+        except Exception as e:
+            return False, f"Windows text recognition unavailable: {e}"
+        return True, ""
+
+    def start(self):
+        if self.available:
+            threading.Thread(target=self._run, daemon=True).start()
+        else:
+            self.status = self.reason
+            log(f"Screen gold off: {self.reason}", "warn")
+
+    def stop(self):
+        self._stop.set()
+
+    def fresh(self):
+        """Last good values ({"blue": 8000, "red": 8900}) if recent enough, else None."""
+        if time.time() - self.read_at > self.STALE_AFTER:
+            return None
+        if None in self.values.values():
+            return None
+        return dict(self.values)
+
+    def fresh_counts(self):
+        """Recently read counters, each on its own: {"blue": {"dragons": 1,
+        "towers": None, ...}, ...}. A counter that can't be read right now is
+        None (the HUD uses the game's events for it); the others still count."""
+        now = time.time()
+        out = {t: {c: (v if now - self.counts_at.get((t, c), 0) <= self.STALE_AFTER else None)
+                   for c, v in counts.items()} for t, counts in self.counts.items()}
+        return out if any(v is not None for c in out.values() for v in c.values()) else None
+
+    def fresh_bars(self):
+        """Each player's health and mana off the side bars, if read recently:
+        {"blue": [{"hp": 0.9, "mana": 0.4}, ...], "red": [...]}, else None."""
+        if not self.bars or time.time() - self.bars_at > self.STALE_AFTER:
+            return None
+        return self.bars
+
+    def reset(self):
+        self.values = {"blue": None, "red": None}
+        self._pending = {"blue": None, "red": None}
+        self.counts = {t: {c: None for c in COUNTERS} for t in ("blue", "red")}
+        self.counts_at = {}
+        self._pending_counts = {}
+        self.bars, self.bars_at = None, 0.0
+
+    def _accept_count(self, team, name, value):
+        """Counters only go up, a few at a time; anything else needs two
+        reads in a row (a new game, or a misread corrected)."""
+        prev = self.counts[team][name]
+        key = (team, name)
+        if value is None:
+            return False  # unreadable this time; its last value goes stale on its own
+        if prev is None or prev <= value <= prev + 3 or self._pending_counts.get(key) == value:
+            self.counts[team][name] = value
+            self.counts_at[key] = time.time()
+            self._pending_counts.pop(key, None)
+            return True
+        self._pending_counts[key] = value
+        return False
+
+    def _accept(self, team, value):
+        """Team gold only goes up, and not by huge jumps. A surprising value is
+        taken only once it's been read twice in a row (e.g. a new game)."""
+        prev = self.values[team]
+        if value is None:
+            return False
+        if prev is None or prev <= value <= prev + 3000:
+            self.values[team], self._pending[team] = value, None
+            return True
+        if self._pending[team] == value:
+            self.values[team], self._pending[team] = value, None
+            return True
+        self._pending[team] = value
+        return False
+
+    def _wanted(self, cfg):
+        """What to read off the screen: (gold and the top bar, the side bars)."""
+        return cfg.get("gold_mode") == "screen", cfg.get("screen_bars", True) is not False
+
+    def read_once(self):
+        from .dragons import TOP_ROWS
+        from .sidebar import ROWS, plausible, read_bars
+        cfg = self.config.get()
+        gold, bars = self._wanted(cfg)
+        captured, reason = capture_league(top=max(TOP_ROWS, ROWS if bars else 0))
+        if not captured:
+            return None, reason
+        image, height = captured
+        if bars:
+            try:
+                found = read_bars(image, height, cfg.get("sidebar_bars"))
+                if plausible(found):
+                    self.bars, self.bars_at = found, time.time()
+            except Exception as e:   # a bonus; never lose the gold over it
+                log(f"Couldn't read the side bars: {e!r}", "warn")
+        if not gold:
+            return {}, None
+        result = read_image(image, self.ocr, height, cfg.get("gold_ocr_boxes"))
+        try:
+            result["_counters"] = read_counters(image, self.ocr, height, cfg.get("counter_ocr_boxes"))
+        except Exception as e:  # counters are a bonus; never lose the gold over them
+            result["_counters"] = {"error": repr(e)}
+        try:
+            self._check_dragon_banner(image, height)
+        except Exception as e:   # a bonus too
+            log(f"Couldn't read the dragon banner: {e!r}", "warn")
+        return result, None
+
+    def _check_dragon_banner(self, image, height):
+        """The "Dragon has spawned!" banner: which element (see dragons.py)."""
+        from .config import DATA_DIR
+        from .dragons import read_banner
+        if time.time() - self.dragon_spawned[1] < 20:
+            return   # this banner's been read already
+        found = read_banner(image, self.ocr, height, os.path.join(DATA_DIR, "dragon-banners"))
+        if found:
+            element, text = found
+            self.dragon_spawned = (element, time.time())
+            log(f"Dragon spawned: {element or 'element not clear from the banner'} ({text.strip()!r})")
+
+    def _run(self):
+        last_reason = None
+        while not self._stop.is_set():
+            if any(self._wanted(self.config.get())) and not self.paused:
+                try:
+                    result, reason = self.read_once()
+                    if result == {}:
+                        reason = None if self.fresh_bars() else "Couldn't see the side bars (health and mana)"
+                    elif result:
+                        counters = result.pop("_counters", {})
+                        if "error" not in counters:
+                            for t, r in counters.items():
+                                for n, v in r["values"].items():
+                                    self._accept_count(t, n, v)
+                            missed = [f"{t} {n}" for t, r in counters.items()
+                                      for n, v in r["values"].items() if v is None]
+                            if missed and missed != self._last_missed:
+                                log("Couldn't read on the top bar: " + ", ".join(missed)
+                                    + " (using game events for those)", "warn")
+                            self._last_missed = missed
+                        ok = [self._accept(t, r["value"]) for t, r in result.items()]
+                        if all(ok):
+                            self.read_at = time.time()
+                            reason = None
+                        else:
+                            reason = "Couldn't read the gold on screen: " + ", ".join(
+                                f"{t} {r['text']!r}" for t, r in result.items())
+                except Exception as e:
+                    reason = f"Screen read failed: {e!r}"
+                self.status = reason or "reading"
+                if reason != last_reason and reason:
+                    log(reason, "warn")
+                elif reason != last_reason:
+                    log("Reading the spectator screen (" + " and ".join(
+                        n for n, on in zip(("team gold", "health and mana"), self._wanted(self.config.get())) if on) + ")")
+                last_reason = reason
+            self._stop.wait(0.5)
+
+    def test(self):
+        """One read for the control panel's Test button, with the images it read."""
+        import base64
+        if not self.available:
+            return {"ok": False, "error": self.reason}
+        try:
+            result, reason = self.read_once()
+        except Exception as e:
+            return {"ok": False, "error": repr(e)}
+        if not result:
+            return {"ok": False, "error": reason}
+
+        def data_url(image):
+            buf = io.BytesIO()
+            image.save(buf, "PNG")
+            return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+        counters = result.pop("_counters", {})
+        out = {"ok": all(r["value"] is not None for r in result.values()), "counters": {}}
+        for team, r in result.items():
+            out[team] = {"text": r["text"], "value": r["value"], "image": data_url(r["image"])}
+        if "error" in counters:
+            out["counters_error"] = counters["error"]
+        else:
+            for team, r in counters.items():
+                out["counters"][team] = {"values": r["values"], "text": r["text"], "image": data_url(r["image"])}
+        return out
+
+
+def main(argv):
+    """Read a saved screenshot (the top of a spectator screen):
+
+    python -m lolhud.ocr IMAGE [--height 1079] [--gold 8000 8900] [--counts 0,0,0,0 0,0,3,0]
+
+    --counts gives dragons,heralds,grubs,towers for blue then red. Exits 1 on a mismatch.
+    """
+    import argparse
+    from PIL import Image
+    parser = argparse.ArgumentParser()
+    parser.add_argument("image")
+    parser.add_argument("--height", type=int, help="full window height the image was cut from")
+    parser.add_argument("--gold", nargs=2, type=int, metavar=("BLUE", "RED"))
+    parser.add_argument("--counts", nargs=2, metavar=("BLUE", "RED"))
+    args = parser.parse_args(argv)
+    image = Image.open(args.image)
+    ocr, ok = WindowsOcr(), True
+    gold = read_image(image, ocr, args.height)
+    for team, r in gold.items():
+        print(f"{team} gold: text={r['text']!r} value={r['value']} (variant {r['variant']})")
+        if args.gold and r["value"] != args.gold[0 if team == "blue" else 1]:
+            ok = False
+    counters = read_counters(image, ocr, args.height)
+    for i, (team, r) in enumerate(counters.items()):
+        print(f"{team} counters: {r['values']} (words: {r['text']!r})")
+        if args.counts:
+            expected = dict(zip(COUNTERS, map(int, args.counts[0 if team == "blue" else 1].split(","))))
+            if r["values"] != expected:
+                ok = False
+    print("OK" if ok else "MISMATCH")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

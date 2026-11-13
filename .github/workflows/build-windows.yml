@@ -1,0 +1,119 @@
+# Builds SCC Broadcast Engine (SCCBroadcastEngine.exe) on Windows and publishes
+# it as a GitHub release (v1.0.<run number>) with SCCBroadcastEngine-windows.zip
+# and SCC-Broadcast-Engine-Setup.exe (an installer that downloads the latest
+# release when it runs). The app checks the latest release on launch and
+# offers to update itself: the engine, every game HUD, HUD Builder and
+# Multistream in one go.
+#
+# A commit with [no release] in its message builds and tests without publishing.
+#
+# Every run also leaves the zip on the run's summary page (Actions tab).
+name: Build Windows app
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      VERSION: v1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller -r requirements-windows.txt
+
+      - name: Run tests (the app's own, and every part's)
+        run: python tools/run_tests.py
+
+      - name: Read a real VALORANT spectator screenshot (agents, weapons, text)
+        working-directory: apps/valhud
+        run: |
+          python -m valhud.reader tests/fixtures/tab_scoreboard.png --expect tests/fixtures/tab_scoreboard.json
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Fetch MediaMTX and FFmpeg (Multistream)
+        run: python apps/multistream/tools/fetch_binaries.py
+
+      - name: Stamp the version
+        shell: pwsh
+        run: |
+          # The app, and each part (their pages show it)
+          Set-Content sccbe/version.py "VERSION = `"$env:VERSION`"" -Encoding utf8
+          Get-ChildItem apps/*/*/version.py | ForEach-Object { Set-Content $_.FullName "VERSION = `"$env:VERSION`"" -Encoding utf8 }
+          Get-Content sccbe/version.py
+
+      - name: Build SCCBroadcastEngine.exe
+        run: pyinstaller --noconfirm SCCBroadcastEngine.spec
+
+      - name: Smoke test the built app (every part starts and serves its pages)
+        shell: pwsh
+        run: |
+          $app = "dist\SCCBroadcastEngine"
+          $p = Start-Process "$app\SCCBroadcastEngine.exe" -ArgumentList '--smoke-test', '--port', '8769' -PassThru -Wait
+          Get-Content "$app\smoke-test.txt"
+          if ($p.ExitCode -ne 0) { throw "Smoke test failed (exit code $($p.ExitCode))" }
+          Remove-Item "$app\smoke-test.txt" -ErrorAction SilentlyContinue
+          # (a data folder in the download would replace everyone's settings and graphics on every update)
+          foreach ($d in "data", "_update") { if (Test-Path "$app\$d") { throw "$d left in the download" } }
+          foreach ($f in @("_internal\apps\multistream\bin\ffmpeg.exe", "_internal\apps\multistream\bin\mediamtx.exe", "_internal\apps\gfxengine\starter", "_internal\web\index.html")) {
+            if (-not (Test-Path "$app\$f")) { throw "$f missing from the build" }
+          }
+
+      - name: Add readme and version.txt
+        shell: pwsh
+        run: |
+          Copy-Item README.md dist\SCCBroadcastEngine\
+          Set-Content dist\SCCBroadcastEngine\version.txt $env:VERSION -NoNewline
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCCBroadcastEngine-windows
+          path: dist/SCCBroadcastEngine
+
+      - name: Build the installer
+        if: "!contains(github.event.head_commit.message, '[no release]')"
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
+          & $iscc "/DAppVersion=$($env:VERSION.TrimStart('v'))" installer\SCC-Broadcast-Engine.iss
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Publish release
+        if: "!contains(github.event.head_commit.message, '[no release]')"
+        # The app zip and the installer go up together, so the latest release
+        # always has both (the installer link never 404s mid-build).
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\SCCBroadcastEngine\* -DestinationPath SCCBroadcastEngine-windows.zip
+          $notes = git log -1 --format=%B | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }
+          $notes = ($notes -join "`n").Trim()
+          gh release create "$env:VERSION" SCCBroadcastEngine-windows.zip dist\SCC-Broadcast-Engine-Setup.exe --target "${{ github.sha }}" --title "SCC Broadcast Engine $env:VERSION" --notes "$notes"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Test the installer (silent, to a folder of our choosing; installs the release just published)
+        if: "!contains(github.event.head_commit.message, '[no release]')"
+        shell: pwsh
+        run: |
+          $dir = "$env:RUNNER_TEMP\My SCC Broadcast Engine"
+          $installArgs = '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$dir`"", '/MERGETASKS="!desktopicon"', '/LOG=install.log'
+          $p = Start-Process dist\SCC-Broadcast-Engine-Setup.exe -ArgumentList $installArgs -PassThru -Wait
+          Get-Content install.log -Tail 25
+          if ($p.ExitCode -ne 0) { throw "Installer failed (exit code $($p.ExitCode))" }
+          if (-not (Test-Path "$dir\SCCBroadcastEngine.exe")) { throw "SCCBroadcastEngine.exe wasn't installed" }
+          if (-not (Test-Path "$dir\_internal")) { throw "_internal wasn't installed" }
+          Write-Host "Installed OK to $dir"

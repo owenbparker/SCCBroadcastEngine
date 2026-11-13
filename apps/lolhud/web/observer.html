@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="assets/app_icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>League HUD Observer</title>
+<!-- Observer client: shows the HUD from the GFX PC over the game on this PC. -->
+<style>
+  @font-face { font-family: "Inter"; src: url("fonts/Inter.ttf") format("truetype"); font-weight: 100 900; }
+  :root { --bg: #0e1012; --panel: #171a1d; --line: #2a2f34; --text: #e8eaed; --muted: #8b939b; --accent: #31c392; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Inter", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; height: 54px; padding: 0 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  header span { color: var(--muted); }
+  header .right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  header a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  header a:hover { color: var(--text); }
+  main { height: calc(100% - 54px); display: grid; place-items: center; padding: 16px; }
+  section { width: min(560px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px; }
+  label { display: block; margin: 0 0 6px; color: var(--muted); font-size: 12px; }
+  input, select { width: 100%; padding: 10px 12px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .status { min-height: 20px; margin: 8px 0 20px; font-size: 12px; color: var(--muted); }
+  .status.ok { color: var(--accent); }
+  .status.bad { color: #ffcf66; }
+  .row { display: flex; gap: 10px; }
+  .row > :first-child { flex: 1; }
+  #show { width: 100%; padding: 14px; font: 700 16px "Inter", system-ui, sans-serif; border-radius: 8px; cursor: pointer;
+          background: #252a2f; color: var(--text); border: 1px solid var(--line); transition: background .15s, color .15s; }
+  #show:hover { border-color: var(--muted); }
+  #match-enable.on { background: var(--accent); color: #06231a; border-color: var(--accent); font-weight: 600; }
+  #show.on { background: var(--accent); color: #06231a; border-color: var(--accent); }
+  #screen { width: auto; }
+  #connect[disabled] { opacity: .6; cursor: progress; }
+  .found { display: grid; gap: 6px; margin-top: 10px; }
+  .found[hidden] { display: none; }
+  .found button { text-align: left; padding: 10px 12px; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+                  border-radius: 6px; font: inherit; cursor: pointer; }
+  .found button:hover { border-color: var(--accent); }
+  .found button small { color: var(--muted); margin-left: 8px; }
+  .note { color: var(--muted); font-size: 12px; margin: 14px 0 0; }
+  .cams { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .check { display: flex; gap: 10px; align-items: center; color: var(--text); font-size: 14px; margin: 0; cursor: pointer; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .cams .status { margin: 6px 0 10px; }
+  .small { padding: 8px 12px; background: #252a2f; color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; cursor: pointer; }
+  #director-result img { width: 100%; margin-top: 10px; border-radius: 6px; }
+  main { overflow-y: auto; }
+  .update { padding: 6px 12px; background: var(--accent); color: #06231a; border: 0; border-radius: 6px; font: 700 13px "Inter", system-ui, sans-serif; cursor: pointer; }
+  .update:hover { filter: brightness(1.1); }
+  .update[disabled] { background: #2c3a35; color: var(--text); cursor: default; }
+  .update.error { background: #6b2a2a; color: #fff; }
+  .version { font-size: 12px; color: var(--muted); }
+  .update.check { background: #252a2f; color: var(--text); border: 1px solid var(--line); font-weight: 600; }
+  .update.check:hover { filter: none; border-color: var(--muted); }
+  /* Dark scroll bars (WebView2 otherwise draws the light Windows ones). */
+  ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #3a3d44; border: 3px solid transparent; border-radius: 8px; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #50545c; border: 3px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-button { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>League HUD</h1><span>Observer Client</span>
+  <div class="right">
+    <button id="update" class="update" hidden></button>
+    <span class="version" id="version"></span>
+    <a href="/start" id="switch">Change client</a>
+  </div>
+</header>
+<main>
+  <section>
+    <label for="url">GFX PC address</label>
+    <div class="row">
+      <input id="url" spellcheck="false" placeholder="http://192.168.2.40:8777/overlay">
+      <button id="connect" class="small" style="flex:0 0 auto;font-weight:700">Connect to HUD</button>
+    </div>
+    <div class="found" id="found" hidden></div>
+    <div class="status" id="status"></div>
+    <div class="row">
+      <button id="show">Show HUD on game</button>
+      <select id="screen" title="Which screen the HUD covers" hidden></select>
+    </div>
+    <p class="note" id="note"></p>
+    <div class="cams">
+      <label class="check"><input type="checkbox" id="director"> Switch the HUD's webcams to the players on this PC's screen</label>
+      <div class="status" id="director-status"></div>
+      <button id="director-test" class="small">Test screen read</button>
+      <div id="director-result"></div>
+    </div>
+    <div class="cams">
+      <label class="check"><input type="checkbox" id="draft-read"> Read champ select on this PC and send it to the GFX PC's draft overlay</label>
+      <div class="status" id="draft-status"></div>
+    </div>
+    <div class="cams">
+      <label>Match time</label>
+      <div class="status" id="match-local"></div>
+      <div class="row" style="gap:8px">
+        <button id="sync-all" class="small" style="flex:1">Sync all clients to 0:00</button>
+        <button id="sync-gfx" class="small" style="flex:1">Sync GFX to my time</button>
+      </div>
+      <div class="status" id="match-status"></div>
+      <button id="match-enable" class="small">Turn on time control</button>
+      <p class="note">"Sync all clients" jumps every League client (the GFX PC's and every observer's) to 0:00 together. "Sync GFX to my time" puts the GFX PC's League client half a second ahead of this one. Each PC needs League's Replay API: click "Turn on time control" once, then restart the League client.</p>
+    </div>
+    <div class="cams">
+      <label>Companion</label>
+      <div class="status" id="companion-addr"></div>
+      <label class="check"><input type="checkbox" id="companion-lan"> Let Companion on another PC control this app</label>
+      <p class="note">Add an "SCC League HUD" connection in Companion with the address above to put this PC's buttons (HUD on game, Sync GFX to my time, Sync all clients) on a Stream Deck. The module, SCC-LoL-Companion-module.tgz, comes with each release.</p>
+    </div>
+  </section>
+</main>
+<script src="update.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const showUpdate = updateButton($("update"), $("version"));
+let state = null, checkTimer = null, checking = 0;
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (data.error) alert(data.error); else apply(data);
+}
+
+// This PC's game time, run on between updates from when League reported it.
+let replayClock = null;
+function tickClock() {
+  const r = replayClock;
+  if (!r) return;
+  let t = Math.max(0, Math.floor(r.time + (r.paused ? 0 : Math.min(2.5, (performance.now() - r.at) / 1000) * r.speed)));
+  $("match-local").textContent = `This PC's game: ${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}${r.paused ? " (paused)" : ""}`;
+}
+setInterval(tickClock, 100);
+
+function apply(s) {
+  const first = !state;
+  state = s;
+  showUpdate(s.app.update);
+  if (first || document.activeElement !== $("url")) $("url").value = s.config.observer_url || "";
+  const ow = s.app.overlay_window;
+  $("show").disabled = !ow.available;
+  $("show").classList.toggle("on", !!ow.open);
+  $("show").textContent = ow.open ? "HUD on game: on" : "Show HUD on game";
+  $("note").textContent = ow.available
+    ? "Run League in Borderless or Windowed mode. On the GFX PC, tick \"Let other PCs on the network read the HUD\"."
+    : "The HUD window needs the Windows desktop app.";
+  const opts = (ow.screens || []).map((label, i) => `<option value="${i}">${label}</option>`).join("");
+  if ($("screen").dataset.opts !== opts) { $("screen").innerHTML = opts; $("screen").dataset.opts = opts; }
+  $("screen").hidden = (ow.screens || []).length < 2;
+  $("director").checked = !!(s.config.cams || {}).director;
+  $("director-status").textContent = (s.config.cams || {}).director
+    ? s.app.director + " (League in Borderless or Windowed on this PC)"
+    : "Reads the player name tags nearest the middle of the screen and tells the GFX PC whose cam to show.";
+  if (document.activeElement !== $("screen")) $("screen").value = String(ow.screen || 0);
+  $("draft-read").checked = !!(s.config.draft || {}).read;
+  $("draft-status").textContent = (s.config.draft || {}).read
+    ? (s.app.draft || {}).reader || "" : "For when this PC's League client is the one in the lobby (as a player or spectator).";
+  const mt = s.app.match_time || {}, local = mt.local || {};
+  replayClock = !local.error && local.time !== undefined
+    ? { time: local.time, paused: local.paused, speed: local.speed || 1, at: performance.now() - 1000 * (local.age || 0) } : null;
+  if (local.error) $("match-local").textContent = "This PC's game: " + local.error;
+  else if (!replayClock) $("match-local").textContent = "";
+  tickClock();
+  $("match-status").textContent = mt.status || "";
+  const cp = s.app.companion;
+  if (cp) {
+    $("companion-lan").checked = !!cp.lan;
+    $("companion-addr").textContent = `Address for Companion: ${cp.lan ? cp.host : "127.0.0.1"}, port ${cp.port}`;
+  }
+  const on = mt.enabled === true;
+  $("match-enable").classList.toggle("on", on);
+  $("match-enable").textContent = on ? "Time control: on" : "Turn on time control";
+  $("match-enable").title = on ? "EnableReplayApi=1 is in League's game.cfg (restart League after turning it on)"
+    : mt.enabled === null ? "League's game.cfg wasn't found in the usual folders" : "";
+  if (first) {
+    if ($("url").value.trim()) check(); else findHud();
+    if (s.app.role !== "observer") fetch("/api/role", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"role":"observer"}' }).catch(() => {});
+  }
+}
+
+// Can this PC reach the GFX PC's HUD?
+$("companion-lan").onchange = e => post("/api/companion/network", { enabled: e.target.checked });
+$("draft-read").onchange = e => post("/api/draft/read", { enabled: e.target.checked });
+$("sync-all").onclick = () => post("/api/match/sync-all", {});
+$("sync-gfx").onclick = () => post("/api/match/sync-gfx", {});
+$("match-enable").onclick = () => post("/api/match/enable", {});
+
+async function check() {
+  const url = $("url").value.trim();
+  const id = ++checking;
+  if (!url) { $("status").className = "status"; $("status").textContent = "Enter the address shown under Outputs > From another PC on the GFX PC."; return; }
+  $("status").className = "status"; $("status").textContent = "Connecting…";
+  try {
+    const r = await (await fetch(`/api/observer/check?url=${encodeURIComponent(url)}`)).json();
+    if (id !== checking) return;
+    $("status").className = "status " + (r.ok ? "ok" : "bad");
+    $("status").textContent = r.ok ? `Connected to the GFX PC (${r.overlay})` : r.error;
+  } catch (e) {
+    if (id === checking) { $("status").className = "status bad"; $("status").textContent = "Couldn't check the address"; }
+  }
+}
+
+function useHud(url) {
+  $("url").value = url;
+  $("found").hidden = true;
+  post("/api/config", { observer_url: url });
+  check();
+}
+
+// Connect to HUD: look on the network for a PC running the HUD; if there's
+// none, ask for its address.
+async function findHud() {
+  const button = $("connect");
+  button.disabled = true;
+  button.textContent = "Searching…";
+  $("found").hidden = true;
+  $("status").className = "status";
+  $("status").textContent = "Looking for the HUD on the network…";
+  let huds = [];
+  try { huds = (await (await fetch("/api/observer/find")).json()).huds || []; } catch (e) {}
+  button.disabled = false;
+  button.textContent = "Connect to HUD";
+  if (huds.length === 1) return useHud(huds[0].overlay);
+  if (huds.length > 1) {
+    $("status").textContent = "More than one PC is running the HUD. Pick the GFX PC:";
+    $("found").innerHTML = "";
+    for (const h of huds) {
+      const b = document.createElement("button");
+      b.innerHTML = `${h.ip}<small>${h.teams || ""}</small>`;
+      b.onclick = () => useHud(h.overlay);
+      $("found").appendChild(b);
+    }
+    $("found").hidden = false;
+    return;
+  }
+  const typed = prompt("No PC running the HUD was found on the network.\n\n" +
+    "Enter the GFX PC's address (shown on the GFX PC under Outputs > From another PC). " +
+    "On the GFX PC, \"Let other PCs on the network read the HUD\" must be ticked.", $("url").value.trim() || "http://");
+  if (typed && typed.trim() && typed.trim() !== "http://") useHud(typed.trim());
+  else check();
+}
+
+$("connect").onclick = findHud;
+$("url").addEventListener("input", () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, 600); });
+$("url").addEventListener("change", () => post("/api/config", { observer_url: $("url").value.trim() }));
+$("show").onclick = () => {
+  const open = !state.app.overlay_window.open;
+  post("/api/overlay-window", { open, url: $("url").value.trim() });
+};
+$("screen").onchange = e => post("/api/overlay-window",
+  { open: state.app.overlay_window.open, screen: Number(e.target.value), url: $("url").value.trim() });
+
+$("director").onchange = e => post("/api/config", { cams: { director: e.target.checked } });
+$("director-test").onclick = async () => {
+  const box = $("director-result");
+  box.textContent = "Reading the screen…";
+  try {
+    const r = await (await fetch("/api/cams/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
+    box.textContent = "";
+    const p = document.createElement("p");
+    p.className = "note";
+    p.textContent = r.ok ? "Found: " + (r.seen.map(x => `${x.side} player ${x.slot}`).join(", ") || "no player name tags") : r.error;
+    box.appendChild(p);
+    if (r.ok) { const img = document.createElement("img"); img.src = r.image; box.appendChild(img); }
+  } catch (e) { box.textContent = "Couldn't read the screen"; }
+};
+
+async function poll() {
+  try { apply(await (await fetch("/api/state")).json()); } catch (e) {}
+  setTimeout(poll, 1500);
+}
+poll();
+setInterval(check, 10000);
+</script>
+</body>
+</html>

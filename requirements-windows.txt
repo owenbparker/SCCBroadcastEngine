@@ -1,0 +1,26 @@
+# Everything the parts need on Windows (each part's own requirements-windows.txt, merged).
+# The app window.
+pywebview
+# Pictures, Photoshop / Excel import and FFmpeg (GFX Engine, HUD Builder, Custom design).
+pillow
+psd-tools
+openpyxl
+imageio-ffmpeg
+# Figma files (HUD Builder, Custom design).
+zstandard
+# The https certificate for players' browser cams (League, VALORANT, Rocket League).
+cryptography
+# Reading the game's picture (VALORANT, CoD, Smash).
+numpy
+opencv-python-headless
+# When Windows' screen copy gives a black game: copied off the graphics card (VALORANT).
+dxcam==0.3.0
+comtypes
+# Windows text recognition (League gold, VALORANT, CoD names, Overwatch scoreboards).
+winrt-runtime
+winrt-Windows.Foundation
+winrt-Windows.Foundation.Collections
+winrt-Windows.Globalization
+winrt-Windows.Graphics.Imaging
+winrt-Windows.Media.Ocr
+winrt-Windows.Storage.Streams

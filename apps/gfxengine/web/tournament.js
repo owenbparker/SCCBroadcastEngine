@@ -1,0 +1,471 @@
+// The Global page's ticker, the Teams page (the team list every workspace
+// shares) and the Tournament page (the brackets the bracket graphics show).
+"use strict";
+
+(function globalExtras() {
+  const pic = p => !p ? "" : /^https?:/.test(p) ? p : "/" + encodeURI(p);
+  const table = () => (App.state && App.state.data.tables.Tournament) || [];
+  const val = k => GFX.lookup(table(), k);
+
+  // --- the ticker -----------------------------------------------------------------
+  const ticker = $("#g-ticker");
+  const saveTicker = debounce(() => api("/api/global", { global: { ticker: ticker.value.split("\n").map(s => s.trim()).filter(Boolean) } }), 400);
+  ticker.addEventListener("input", saveTicker);
+  function renderTicker() {
+    const lines = (App.state.global.ticker || []).join("\n");
+    if (document.activeElement !== ticker && ticker.value.split("\n").map(s => s.trim()).filter(Boolean).join("\n") !== lines) ticker.value = lines;
+  }
+
+  // --- the team list (its own tab): the list, and the picked team to edit -------------
+  // Each team: its name, short name, game, colour and logo, and its roster (each
+  // player's headshot, name, in-game ID and country).
+  let teams = null;          // as edited here
+  let sel = 0;               // the team being edited
+  let teamsPending = false;
+  let countries = [];        // [{code, name}] of the flags that come with the engine
+  fetch("/flags/countries.json").then(r => r.json()).then(c => { countries = c; if (App.tab === "teams" && teams) renderTeamEditor(); }).catch(() => {});
+  const flagOf = code => code ? `/flags/${code}.svg` : "";
+  const saveTeams = debounce(() => { teamsPending = false; api("/api/teams", { teams }); }, 400);
+  const teamChanged = () => { teamsPending = true; saveTeams(); renderTeamList(); };
+  const find = $("#t-find");
+  const gameFilter = $("#t-game");
+  find.addEventListener("input", () => renderTeamList());
+  gameFilter.addEventListener("change", () => renderTeamList());
+  const label = t => t.name + (t.game ? ` · ${t.game}` : "");
+  function dropZone(cls, src, empty, onfile) {
+    const fileIn = h("input", { type: "file", accept: "image/*", hidden: true,
+      onchange: e => { const f = e.target.files[0]; e.target.value = ""; if (f) onfile(f); } });
+    const drop = h("div", { class: cls + (src ? " has" : ""), title: "Click or drop a picture",
+      style: { backgroundImage: src ? `url("${pic(src)}")` : "" },
+      onclick: () => fileIn.click(),
+      ondragover: e => { e.preventDefault(); e.stopPropagation(); drop.classList.add("over"); },
+      ondragleave: () => drop.classList.remove("over"),
+      ondrop: e => { e.preventDefault(); e.stopPropagation(); drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) onfile(f); } },
+      src ? "" : empty, fileIn);
+    return drop;
+  }
+  async function uploadTeamLogo(t, file) {
+    if (!t.name.trim()) return toast("Name the team first", true);
+    if (teamsPending) await new Promise(r => setTimeout(r, 450));    // (a name being typed is saved first)
+    const r = await postFile(`/api/teams/logo?team=${encodeURIComponent(t.name.trim())}&game=${encodeURIComponent(t.game || "")}`, file);
+    teams = r.teams;
+    sel = Math.max(0, teams.findIndex(x => x.name === t.name.trim() && (x.game || "") === (t.game || "")));
+    renderTeams();
+    toast("Logo saved");
+  }
+  async function uploadHeadshot(t, p, file) {
+    const r = await postFile(`/api/teams/photo?player=${encodeURIComponent(p.ign || p.name || t.name)}`, file);
+    p.photo = r.photo;
+    teamChanged();
+    renderTeamEditor();
+  }
+  // The games there are HUDs for, then any other a team has (from a CSV, say).
+  const allGames = () => [...new Set([...(App.state.games || []), ...teams.map(t => t.game).filter(Boolean)])];
+  function gameSelect(t) {
+    const sel = h("select", { "data-k": "game", onchange: e => { t.game = e.target.value; teamChanged(); renderTeamEditor(); } },
+      h("option", { value: "" }, "Pick the game…"), ...allGames().map(g => h("option", { value: g }, g)));
+    sel.value = t.game || "";
+    return sel;
+  }
+  function renderGames() {
+    const games = allGames();
+    const sig = JSON.stringify(games);
+    if (gameFilter.dataset.sig !== sig) {
+      gameFilter.dataset.sig = sig;
+      const was = gameFilter.value;
+      gameFilter.replaceChildren(h("option", { value: "" }, "All games"), ...games.map(g => h("option", { value: g }, g)));
+      gameFilter.value = games.includes(was) ? was : "";
+    }
+  }
+  function renderTeamList() {
+    renderGames();
+    const list = $("#t-list");
+    const q = find.value.trim().toLowerCase(), g = gameFilter.value;
+    const shown = teams.map((t, i) => [t, i]).filter(([t]) => (!g || t.game === g) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q)));
+    $("#t-count").textContent = `${teams.length} team${teams.length === 1 ? "" : "s"}`;
+    list.replaceChildren(...(shown.length ? shown.map(([t, i]) => h("div", { class: "t-row" + (i === sel ? " sel" : ""), onclick: () => { sel = i; renderTeams(); } },
+      h("div", { class: "t-logo" + (t.logo ? " has" : ""), style: { backgroundImage: t.logo ? `url("${pic(t.logo)}")` : "" } }),
+      h("div", { class: "t-who" }, h("div", { class: "t-name" }, t.name || h("span", { class: "muted" }, "(no name)")),
+        h("div", { class: "t-sub" }, [t.short, t.game].filter(Boolean).join(" · "))),
+      h("span", { class: "t-count", title: "Players" }, String((t.players || []).length))))
+      : [h("div", { class: "empty" }, q || g ? "No team matches." : "No teams yet: + Add team, Import CSV, or “Save to the team list” on a team in Global.")]));
+  }
+  function countrySelect(p) {
+    const flag = h("img", { class: "t-flag", src: flagOf(p.country), hidden: !p.country, alt: "" });
+    const sel = h("select", { onchange: e => { p.country = e.target.value; flag.src = flagOf(p.country); flag.hidden = !p.country; teamChanged(); } },
+      h("option", { value: "" }, "—"), ...countries.map(c => h("option", { value: c.code }, c.name)));
+    sel.value = p.country || "";
+    return h("div", { class: "t-country" }, flag, sel);
+  }
+  function playerRow(t, p, i) {
+    const players = t.players;
+    const move = d => { const j = i + d; if (j < 0 || j >= players.length) return; [players[i], players[j]] = [players[j], players[i]]; teamChanged(); renderTeamEditor(); };
+    return h("tr", {},
+      h("td", { class: "t-num" }, String(i + 1)),
+      h("td", {}, dropZone("t-head", p.photo, "+", f => uploadHeadshot(t, p, f))),
+      h("td", {}, h("input", { value: p.name, placeholder: "Player name", oninput: e => { p.name = e.target.value; teamChanged(); } })),
+      h("td", {}, h("input", { value: p.ign, placeholder: "Name in the game", oninput: e => { p.ign = e.target.value; teamChanged(); } })),
+      h("td", {}, countrySelect(p)),
+      h("td", { class: "t-acts" },
+        h("button", { class: "ghost small", title: "Move up", disabled: i === 0, onclick: () => move(-1) }, "↑"),
+        h("button", { class: "ghost small", title: "Move down", disabled: i === players.length - 1, onclick: () => move(1) }, "↓"),
+        p.photo ? h("button", { class: "ghost small", title: "Remove the headshot", onclick: () => { p.photo = ""; teamChanged(); renderTeamEditor(); } }, "⌫") : null,
+        h("button", { class: "ghost small", title: "Remove the player", onclick: () => { players.splice(i, 1); teamChanged(); renderTeamEditor(); } }, "✕")));
+  }
+  function renderTeamEditor() {
+    const box = $("#t-edit");
+    const t = teams[sel];
+    if (!t) { box.replaceChildren(h("div", { class: "empty" }, "Pick a team on the left, or add one.")); return; }
+    t.players = t.players || [];
+    const useAs = side => api("/api/global", { global: { [side]: Object.assign({ name: t.name, short: t.short, logo: t.logo, game: t.game || "" }, t.color ? { color: t.color } : {}) } })
+      .then(() => toast(`${t.name} is the ${side} team`));
+    const head = h("div", { class: "t-head-title" }, h("b", {}, t.name || "New team"), h("span", { class: "muted" }, t.short ? ` / ${t.short}` : ""),
+      h("div", { class: "muted small" }, t.game || "No game set"));
+    box.replaceChildren(
+      h("div", { class: "t-top" },
+        h("div", { class: "t-logo big" + (t.logo ? " has" : ""), style: t.logo ? { backgroundImage: `url("${pic(t.logo)}")` } : { background: t.color || "" } }),
+        head, h("div", { class: "spacer" }),
+        h("button", { class: "small", onclick: () => useAs("left") }, "Use as left team"),
+        h("button", { class: "small", onclick: () => useAs("right") }, "Use as right team"),
+        h("button", { class: "small danger", title: "Remove the team", onclick: () => {
+          if (t.name && !confirm(`Remove ${label(t)} from the team list?`)) return;
+          teams.splice(sel, 1); sel = Math.max(0, sel - 1); teamChanged(); renderTeamEditor();
+        } }, "🗑")),
+      h("section", { class: "t-sect" },
+        h("div", { class: "t-sect-head" }, h("h4", {}, "Team details"), h("p", { class: "muted small" }, "What the graphics show for this team.")),
+        h("div", { class: "t-fields" },
+          h("label", {}, "Name", h("input", { value: t.name, placeholder: "e.g. St. Clair Saints", "data-k": "name",
+            oninput: e => { t.name = e.target.value; head.querySelector("b").textContent = t.name || "New team"; teamChanged(); } })),
+          h("label", {}, "Short name", h("input", { value: t.short, maxlength: 12, placeholder: "e.g. SCC",
+            oninput: e => { t.short = e.target.value; teamChanged(); } })),
+          h("label", {}, "Game", gameSelect(t)),
+          h("label", {}, "Colour", h("input", { type: "color", value: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#333333",
+            oninput: e => { t.color = e.target.value; teamChanged(); } })))),
+      h("section", { class: "t-sect" },
+        h("div", { class: "t-sect-head" }, h("h4", {}, "Team logo"), h("p", { class: "muted small" }, "Click or drop the logo. A big PNG looks sharpest.")),
+        h("div", { class: "row-gap t-logo-row" }, dropZone("logo-drop big", t.logo, "Click or drop the logo", f => uploadTeamLogo(t, f)),
+          t.logo ? h("button", { class: "ghost small", onclick: () => { t.logo = ""; teamChanged(); renderTeamEditor(); } }, "Remove logo") : null)),
+      h("section", { class: "t-sect" },
+        h("div", { class: "t-sect-head row-gap" }, h("div", {}, h("h4", {}, "Team members"),
+          h("p", { class: "muted small" }, "In-game ID is the player's name in the game, exactly (a game HUD's \"Save IGN to player\" fills it in): it's how the game's stats find them. Player name is only how graphics show them (blank: the in-game ID). The player graphics show these in this order.")),
+          h("div", { class: "spacer" }),
+          h("button", { class: "small", onclick: () => { t.players.push({ name: "", ign: "", country: "", photo: "" }); teamChanged(); renderTeamEditor();
+            const rows = box.querySelectorAll(".t-roster tbody tr"); rows[rows.length - 1].querySelector("input").focus(); } }, "+ Add player")),
+        t.players.length ? h("table", { class: "t-roster" },
+          h("thead", {}, h("tr", {}, h("th", {}, "#"), h("th", {}, "Headshot"), h("th", {}, "Player name"), h("th", {}, "In-game ID"), h("th", {}, "Country"), h("th", {}))),
+          h("tbody", {}, ...t.players.map((p, i) => playerRow(t, p, i))))
+          : h("div", { class: "empty" }, "No players yet: + Add player.")));
+    return head;
+  }
+  function renderTeams(reload) {
+    if (!teams || reload) teams = JSON.parse(JSON.stringify(App.state.teams || []));
+    sel = Math.min(sel, Math.max(0, teams.length - 1));
+    renderTeamList();
+    renderTeamEditor();
+    renderNames();
+  }
+  $("#t-add").addEventListener("click", () => {
+    find.value = "";
+    teams.unshift({ name: "", short: "", logo: "", color: "", game: gameFilter.value || "", players: [] });
+    sel = 0;
+    renderTeams();
+    $("#t-edit input[data-k=name]").focus();
+  });
+  $("#t-import").addEventListener("click", () => $("#t-import-file").click());
+  $("#t-import-file").addEventListener("change", async e => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    const r = await fetch("/api/teams/import", { method: "POST", body: f }).then(r => r.json());
+    if (r.error) return toast(r.error, true);
+    teams = r.teams;
+    renderTeams();
+    toast(`${r.added} team${r.added === 1 ? "" : "s"} imported`);
+  });
+  // The names to pick from.
+  function renderNames() {
+    const dl = $("#team-names");
+    const names = [...new Set((App.state.teams || []).map(t => t.name).filter(Boolean))];
+    const sig = JSON.stringify(names);
+    if (dl.dataset.sig === sig) return;
+    dl.dataset.sig = sig;
+    dl.replaceChildren(...names.map(n => h("option", { value: n })));
+  }
+  window.teamList = () => App.state.teams || [];
+
+  // --- the tournament -----------------------------------------------------------------
+  let t = null;              // as edited here
+  let pending = false;
+  const saveT = debounce(() => { pending = false; api("/api/global", { global: { tournament: t } }); }, 350);
+  const changed = () => { pending = true; saveT(); };
+  const ROUNDS = { 8: ["Quarter-finals", "Semi-finals", "Final"], 16: ["Round of 16", "Quarter-finals", "Semi-finals", "Final"] };
+  const GROUP_MATCHES = ["Opening 1", "Opening 2", "Winners", "Elimination", "Decider"];
+
+  function teamInput(value, onchange) {
+    return h("input", { class: "tn-team", list: "team-names", value, placeholder: "Team",
+      oninput: e => { onchange(e.target.value); } });
+  }
+  function scoreInput(scores, key, side) {
+    return h("input", { class: "tn-score", value: (scores[key] || ["", ""])[side], inputmode: "numeric", "data-score": key + "|" + side,
+      oninput: e => {
+        const pair = scores[key] || ["", ""];
+        pair[side] = e.target.value.trim();
+        if (pair[0] || pair[1]) scores[key] = pair; else delete scores[key];
+        changed();
+      } });
+  }
+  const logoOf = name => { const tm = (App.state.teams || []).find(x => x.name.toLowerCase() === String(name || "").toLowerCase()); return tm && tm.logo; };
+  const nameBox = row => h("div", { class: "tn-name", "data-row": row });
+
+  // Double elimination: the lower bracket's rounds (matches in each), and their names.
+  const lowerCounts = size => { const out = []; for (let n = size / 4; n >= 1; n = n / 2) out.push(n, n); return out; };
+  const lowerName = (r, n) => r === n - 1 ? "Lower final" : `Lower round ${r + 1}`;
+  const upperName = (r, n) => r === n - 1 ? "Upper final" : r === n - 2 ? "Upper semi-finals" : `Upper round ${r + 1}`;
+  function matchBox(top, key, first, m) {
+    const side = s => h("div", { class: "tn-slot" },
+      h("i", { class: "tn-logo", "data-logo": `Top ${key} team ${s + 1}` }),
+      first ? teamInput(top.teams[2 * m + s], v => { top.teams[2 * m + s] = v; changed(); }) : nameBox(`Top ${key} team ${s + 1}`),
+      scoreInput(top.scores, key, s));
+    return h("div", { class: "tn-match" }, side(0), side(1));
+  }
+  const champCol = () => h("div", { class: "tn-col champ" }, h("div", { class: "tn-title" }, "Champion"),
+    h("div", { class: "tn-col-body" }, h("div", { class: "tn-match" }, h("div", { class: "tn-slot" },
+      h("i", { class: "tn-logo", "data-logo": "Top champion" }), nameBox("Top champion")))));
+  function renderDouble(top, box) {
+    const size = top.size, ur = Math.log2(size), lc = lowerCounts(size);
+    const col = (title, matches) => h("div", { class: "tn-col" }, h("div", { class: "tn-title" }, title), h("div", { class: "tn-col-body" }, ...matches));
+    const upper = [];
+    for (let r = 0; r < ur; r++) {
+      const ms = [];
+      for (let m = 0; m < size >> (r + 1); m++) ms.push(matchBox(top, `R${r + 1} M${m + 1}`, r === 0, m));
+      upper.push(col(upperName(r, ur), ms));
+    }
+    const lower = lc.map((n, r) => {
+      const ms = [];
+      for (let m = 0; m < n; m++) ms.push(matchBox(top, `L${r + 1} M${m + 1}`, false, m));
+      return col(lowerName(r, lc.length), ms);
+    });
+    const gf = [h("div", { class: "tn-mname muted small" }, "Grand final"), matchBox(top, "GF", false, 0)];
+    if (top.reset) gf.push(h("div", { class: "tn-mname muted small" }, "Reset (if the lower team wins)"), matchBox(top, "GF2", false, 0));
+    box.replaceChildren(h("div", { class: "tn-double" },
+      h("div", { class: "tn-dbl-brackets" },
+        h("div", { class: "tn-dbl-label" }, "Upper bracket"), h("div", { class: "tn-rounds" }, ...upper),
+        h("div", { class: "tn-dbl-label" }, "Lower bracket"), h("div", { class: "tn-rounds" }, ...lower)),
+      h("div", { class: "tn-col tn-gf" }, h("div", { class: "tn-title" }, "Grand final"), h("div", { class: "tn-col-body" }, h("div", { class: "tn-gf-box" }, ...gf))),
+      champCol()));
+  }
+
+  function renderTop() {
+    const top = t.top, size = top.size, box = $("#tn-top");
+    for (const b of document.querySelectorAll("#tn-size button")) b.classList.toggle("on", +b.dataset.size === size);
+    const fmt = top.format === "double" ? "double" : "single";
+    for (const b of document.querySelectorAll("#tn-format button")) b.classList.toggle("on", b.dataset.format === fmt);
+    $("#tn-reset-wrap").hidden = fmt !== "double";
+    $("#tn-reset").checked = top.reset !== false;
+    $("#tn-short").checked = !!top.short;
+    if (fmt === "double") return renderDouble(top, box);
+    const cols = ROUNDS[size].map((title, r) => {
+      const matches = [];
+      for (let m = 0; m < size >> (r + 1); m++) {
+        const key = `R${r + 1} M${m + 1}`;
+        const side = s => h("div", { class: "tn-slot" },
+          h("i", { class: "tn-logo", "data-logo": `Top ${key} team ${s + 1}` }),
+          r === 0 ? teamInput(top.teams[2 * m + s], v => { top.teams[2 * m + s] = v; changed(); }) : nameBox(`Top ${key} team ${s + 1}`),
+          scoreInput(top.scores, key, s));
+        matches.push(h("div", { class: "tn-match" }, side(0), side(1)));
+      }
+      return h("div", { class: "tn-col" }, h("div", { class: "tn-title" }, title), h("div", { class: "tn-col-body" }, ...matches));
+    });
+    cols.push(h("div", { class: "tn-col champ" }, h("div", { class: "tn-title" }, "Champion"),
+      h("div", { class: "tn-col-body" }, h("div", { class: "tn-match" }, h("div", { class: "tn-slot" },
+        h("i", { class: "tn-logo", "data-logo": "Top champion" }), nameBox("Top champion"))))));
+    box.replaceChildren(...cols);
+  }
+  document.querySelectorAll("#tn-size button").forEach(b => b.addEventListener("click", () => {
+    t.top.size = +b.dataset.size; changed(); renderTop(); refresh();
+  }));
+  document.querySelectorAll("#tn-format button").forEach(b => b.addEventListener("click", () => {
+    t.top.format = b.dataset.format; changed(); renderTop(); refresh();
+  }));
+  $("#tn-short").addEventListener("change", e => { t.top.short = e.target.checked; changed(); });
+  $("#tn-reset").addEventListener("change", e => { t.top.reset = e.target.checked; changed(); renderTop(); refresh(); });
+  $("#tn-top-scores").addEventListener("click", () => { if (confirm("Clear every score in the knockout bracket?")) { t.top.scores = {}; changed(); renderTop(); } });
+  $("#tn-group-scores").addEventListener("click", () => { if (confirm("Clear every score in the groups?")) { t.groups.forEach(g => (g.scores = {})); changed(); renderGroups(); } });
+
+  function renderGroups() {
+    $("#tn-groups").replaceChildren(...t.groups.map((g, gi) => {
+      const L = "ABCD"[gi];
+      return h("div", { class: "tn-group" },
+        h("input", { class: "tn-gname", value: g.name, oninput: e => { g.name = e.target.value; changed(); } }),
+        h("div", { class: "tn-seeds" }, ...g.teams.map((name, i) => h("div", { class: "tn-slot" },
+          h("span", { class: "muted small tn-seed" }, String(i + 1)),
+          teamInput(name, v => { g.teams[i] = v; changed(); })))),
+        ...GROUP_MATCHES.map(m => h("div", { class: "tn-gmatch" },
+          h("div", { class: "tn-mname muted small" }, m === "Winners" ? "Winners' match" : m === "Elimination" ? "Elimination" : m),
+          h("div", { class: "tn-match" },
+            ...[0, 1].map(s => h("div", { class: "tn-slot" }, nameBox(`Group ${L} ${m} team ${s + 1}`), scoreInput(g.scores, m, s)))))),
+        h("div", { class: "tn-result" }, h("span", { class: "muted small" }, "1st"), nameBox(`Group ${L} 1st`),
+          h("span", { class: "muted small" }, "2nd"), nameBox(`Group ${L} 2nd`)));
+    }));
+  }
+
+  // The winners (worked out by the engine), the logos and the values typed elsewhere.
+  function refresh() {
+    for (const el of document.querySelectorAll(".g-tournament [data-row]")) el.textContent = val(el.dataset.row) || "—";
+    for (const el of document.querySelectorAll(".g-tournament [data-logo]")) {
+      const logo = val(el.dataset.logo + " logo");
+      el.style.backgroundImage = logo ? `url("${pic(logo)}")` : "";
+    }
+    for (const el of document.querySelectorAll(".g-tournament .tn-team")) el.title = logoOf(el.value) ? "" : el.value ? "Not in the team list (no logo)" : "";
+  }
+  function renderTournament(force) {
+    const panel = document.querySelector(".g-tournament");
+    const editing = panel.contains(document.activeElement) || pending;
+    const server = App.state.global.tournament;
+    if (!t || (force && !pending)) { t = JSON.parse(JSON.stringify(server)); force = true; }
+    else if (!editing && JSON.stringify(t) !== JSON.stringify(server)) { t = JSON.parse(JSON.stringify(server)); force = true; }
+    if (force) { renderTop(); renderGroups(); }
+    refresh();
+  }
+
+  // --- the standings ------------------------------------------------------------------
+  // The teams the Standings graphics list (8 or 16), each one's wins, losses,
+  // points and map difference, and what the boxes show.
+  const STATS = { record: "Record (W-L)", wins: "Wins", losses: "Losses", points: "Points", winpct: "Win %", diff: "Map difference (+/-)" };
+  let st = null;             // as edited here
+  let stPending = false;
+  const saveSt = debounce(() => { stPending = false; api("/api/global", { global: { standings: st } }); }, 350);
+  const stChanged = () => { stPending = true; saveSt(); };
+  const typing = new Set();  // rows typing a name that isn't in the team list
+  const teamNames = () => [...new Set((App.state.teams || []).map(x => x.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const fileTeam = f => f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+  for (const [id, none] of [["#st-stat", false], ["#st-stat2", true]])
+    $(id).replaceChildren(...(none ? [h("option", { value: "" }, "Nothing")] : []), ...Object.entries(STATS).map(([k, n]) => h("option", { value: k }, n)));
+
+  // A logo for a team: into the team list (the team's added if it isn't there).
+  async function stLogo(row, file) {
+    const name = row.name || fileTeam(file);
+    if (!name) return;
+    const r = await postFile(`/api/teams/logo?team=${encodeURIComponent(name)}`, file);
+    App.state.teams = r.teams;
+    row.name = name;
+  }
+  function stTeam(row, i) {
+    const names = teamNames();
+    if (typing.has(i) || (row.name && !names.some(n => n.toLowerCase() === row.name.toLowerCase()))) {
+      return h("div", { class: "st-team" }, h("input", { value: row.name, placeholder: "Team name", "data-st": i,
+        oninput: e => { row.name = e.target.value; stChanged(); },
+        onblur: e => { if (!e.target.value.trim()) { typing.delete(i); renderStRows(); } } }),
+        h("button", { class: "ghost small", title: "Pick from the team list", onclick: () => { typing.delete(i); row.name = ""; stChanged(); renderStRows(); } }, "▾"));
+    }
+    const sel = h("select", { onchange: e => {
+      if (e.target.value === "\u0000type") { typing.add(i); renderStRows(); const inp = $(`#st-rows [data-st="${i}"]`); if (inp) inp.focus(); return; }
+      row.name = e.target.value; stChanged(); renderStRows();
+    } }, h("option", { value: "" }, "—"), ...names.map(n => h("option", { value: n }, n)), h("option", { value: "\u0000type" }, "Type a name…"));
+    sel.value = row.name ? names.find(n => n.toLowerCase() === row.name.toLowerCase()) : "";
+    return h("div", { class: "st-team" }, sel);
+  }
+  function stNum(row, k, title) {
+    return h("input", { class: "st-num-in", value: row[k], inputmode: "numeric", title, placeholder: "–",
+      oninput: e => { row[k] = e.target.value.trim(); stChanged(); } });
+  }
+  function renderStRows() {
+    const n = st.count, half = n / 2, box = $("#st-rows");
+    const heads = () => h("div", { class: "st-heads" }, h("span", { style: { flex: "0 0 64px" } }), h("div", { class: "st-team" }, "Team"),
+      h("span", {}, "W"), h("span", {}, "L"), h("span", {}, "Pts"), h("span", {}, "+/-"));
+    const rows = st.teams.slice(0, n).map((row, i) => {
+      const logo = logoOf(row.name);
+      const fileIn = h("input", { type: "file", accept: "image/*", hidden: true,
+        onchange: async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { await stLogo(row, f); stChanged(); renderStRows(); } } });
+      const el = h("div", { class: "st-row" },
+        h("span", { class: "muted small st-num" }, String(i + 1)),
+        h("div", { class: "st-logo" + (logo ? " has" : ""), style: { backgroundImage: logo ? `url("${pic(logo)}")` : "" },
+          title: "Click or drop the team's logo", onclick: () => fileIn.click() }, "+", fileIn),
+        stTeam(row, i), stNum(row, "w", "Wins"), stNum(row, "l", "Losses"), stNum(row, "pts", "Points"), stNum(row, "diff", "Map difference"));
+      // (a logo dropped anywhere on the row is that team's)
+      el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("over"); });
+      el.addEventListener("dragleave", () => el.classList.remove("over"));
+      el.addEventListener("drop", async e => {
+        e.preventDefault(); e.stopPropagation(); el.classList.remove("over");
+        const f = e.dataTransfer.files[0];
+        if (f) { await stLogo(row, f); stChanged(); renderStRows(); toast(`${row.name}'s logo saved`); }
+      });
+      return el;
+    });
+    box.style.gridTemplateRows = `repeat(${half + 1}, auto)`;
+    box.replaceChildren(heads(), ...rows.slice(0, half), heads(), ...rows.slice(half));
+  }
+  function renderSt() {
+    for (const b of document.querySelectorAll("#st-count button")) b.classList.toggle("on", +b.dataset.count === st.count);
+    $("#st-stat").value = st.stat;
+    $("#st-stat2").value = st.stat2;
+    for (const [id, k] of [["#st-title", "title"], ["#st-subtitle", "subtitle"]]) if (document.activeElement !== $(id)) $(id).value = st[k];
+    $("#st-title").placeholder = (App.state.global.event || "") ? `${App.state.global.event} (Global's event)` : "(Global's event)";
+    renderStRows();
+  }
+  document.querySelectorAll("#st-count button").forEach(b => b.addEventListener("click", () => { st.count = +b.dataset.count; stChanged(); renderSt(); }));
+  $("#st-stat").addEventListener("change", e => { st.stat = e.target.value; if (st.stat2 === st.stat) st.stat2 = ""; stChanged(); renderSt(); });
+  $("#st-stat2").addEventListener("change", e => { st.stat2 = e.target.value === st.stat ? "" : e.target.value; stChanged(); renderSt(); });
+  $("#st-title").addEventListener("input", e => { st.title = e.target.value; stChanged(); });
+  $("#st-subtitle").addEventListener("input", e => { st.subtitle = e.target.value; stChanged(); });
+  $("#st-sort").addEventListener("click", () => {
+    const f = v => v === "" || v == null || isNaN(+v) ? 0 : +v;
+    const shown = st.teams.slice(0, st.count), rest = st.teams.slice(st.count);
+    const named = shown.filter(r => r.name), empty = shown.filter(r => !r.name);
+    named.sort((a, b) => f(b.w) - f(a.w) || f(a.l) - f(b.l) || f(b.pts) - f(a.pts) || f(b.diff) - f(a.diff));
+    st.teams = [...named, ...empty, ...rest];
+    typing.clear(); stChanged(); renderStRows();
+  });
+  $("#st-clear").addEventListener("click", () => {
+    if (!confirm("Clear every team's wins, losses, points and map difference?")) return;
+    st.teams.forEach(r => Object.assign(r, { w: "", l: "", pts: "", diff: "" })); stChanged(); renderStRows();
+  });
+  // Many logos at once: each fills the next empty row (or the row already named after it).
+  const stDrop = $("#st-drop");
+  const stFiles = h("input", { type: "file", accept: "image/*", multiple: true, hidden: true,
+    onchange: e => { const fs = [...e.target.files]; e.target.value = ""; dropLogos(fs); } });
+  stDrop.appendChild(stFiles);
+  stDrop.addEventListener("click", e => { if (e.target !== stFiles) stFiles.click(); });
+  stDrop.addEventListener("dragover", e => { e.preventDefault(); stDrop.classList.add("over"); });
+  stDrop.addEventListener("dragleave", () => stDrop.classList.remove("over"));
+  stDrop.addEventListener("drop", e => { e.preventDefault(); stDrop.classList.remove("over"); dropLogos([...e.dataTransfer.files].filter(f => /^image\//.test(f.type) || /\.(png|jpe?g|webp|svg|gif)$/i.test(f.name))); });
+  async function dropLogos(files) {
+    let added = 0;
+    for (const f of files) {
+      const name = fileTeam(f);
+      let row = st.teams.slice(0, st.count).find(r => r.name && r.name.toLowerCase() === name.toLowerCase())
+        || st.teams.slice(0, st.count).find(r => !r.name);
+      if (!row) { toast(`No empty row left for ${name}`, true); break; }
+      try { await stLogo(row, f); added++; } catch (e) { break; }
+    }
+    if (added) { stChanged(); renderStRows(); toast(`${added} logo${added === 1 ? "" : "s"} added`); }
+  }
+  function renderStandings(force) {
+    const editing = $("#st-part").contains(document.activeElement) || stPending;
+    const server = App.state.global.standings;
+    if (!server) return;
+    if (!st || (force && !stPending)) { st = JSON.parse(JSON.stringify(server)); force = true; }
+    else if (!editing && JSON.stringify(st) !== JSON.stringify(server)) { st = JSON.parse(JSON.stringify(server)); force = true; }
+    if (force) { typing.clear(); renderSt(); }
+    // (a team added to the list, or a new logo: the dropdowns and logos again)
+    const sig = JSON.stringify((App.state.teams || []).map(x => [x.name, x.logo]));
+    if (sig !== stTeamsSig) { stTeamsSig = sig; if (!force && !editing) renderStRows(); }
+  }
+  let stTeamsSig = "";
+
+  // --- in step with the engine ----------------------------------------------------------
+  let lastTeams = "";
+  App.on(s => {
+    renderNames();
+    if (App.tab === "global") renderTicker();
+    if (App.tab === "tournament") { renderTournament(false); renderStandings(false); }
+    const sig = JSON.stringify(s.teams);
+    if (App.tab === "teams" && sig !== lastTeams) {
+      lastTeams = sig;
+      if (!teamsPending && !$("#t-edit").contains(document.activeElement)) renderTeams(true);
+    }
+  });
+  const shown = pages.global.shown;
+  pages.global.shown = () => { shown(); if (App.state) renderTicker(); };
+  pages.teams = { shown() { if (App.state) { lastTeams = JSON.stringify(App.state.teams); renderTeams(true); } } };
+  pages.tournament = { shown() { if (App.state) { renderTournament(true); renderStandings(true); } } };
+})();

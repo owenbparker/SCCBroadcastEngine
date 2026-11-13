@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>League HUD Overlay</title>
+<!--
+  Browser source for OBS / vMix: 1920x1080, transparent background.
+  Draws the active HUD profile (control panel > HUD profile); each profile is
+  a list of elements in web/profiles/<id>/profile.json or an imported PSD.
+
+  URL options (add to the end, e.g. /overlay?timers=0&dragons=1):
+    profile=ID one particular profile instead of the active one
+    timers=0   hide all objective timers in the top-left
+    diff=0     hide the gold-lead tab
+    dragons=1  show each team's dragons as coloured dots
+    idle=0     hide the whole HUD while no game is running
+    cams=0     hide the player webcams
+    scoreboard=0  hide the scoreboard and bottom third
+    fit=1      scale the HUD to the window, centred at the top (used by the
+               desktop app's window over the game, whatever the screen size)
+-->
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+  svg { display: block; }
+  #hud { transition: opacity .4s ease; }
+  #hud.hidden { opacity: 0; }
+  text { fill: #fff; }
+  .objective-off { display: none; }
+  /* Gold lead: a team-coloured tab that slides down out of the bar. */
+  .diff-tab { transform: translateY(-19px); transition: transform .3s cubic-bezier(.5,0,.75,0); }
+  .diff-tab.show { transform: translateY(0); transition: transform .5s cubic-bezier(.2,.9,.25,1.15); }
+  .diff-tab rect { transition: x .3s ease, width .3s ease; }
+  .diff-tab text { font-family: "Inter", sans-serif; font-weight: 700; font-size: 12.5px; letter-spacing: .02em; text-anchor: middle; }
+  .diff-tab.fade { opacity: 0; transition: transform .3s ease, opacity .3s ease; }
+  .diff-tab.fade.show { opacity: 1; }
+  .diff-tab .shine { opacity: 0; }
+  .diff-tab.show .shine { animation: shine .9s .35s ease-out; }
+  @keyframes shine { 0% { opacity: .9; transform: translateX(-40px); } 100% { opacity: 0; transform: translateX(40px); } }
+  /* Series pips: dark when not yet won, bright team colour when won. */
+  .pip { fill: rgba(0,0,0,.62); stroke: rgba(255,255,255,.22); stroke-width: 1; }
+  .pip.won { stroke: rgba(255,255,255,.85); }
+  /* Objective timers, top left. */
+  .timers .box { fill: rgba(0,0,0,.79); stroke: rgba(120,120,120,.79); stroke-width: 1; }
+  .timers .alive .box { stroke: rgba(255,255,255,.2); }
+  .timers .tile { fill-opacity: .31; stroke: rgba(255,255,255,.26); stroke-width: 1; }
+  .timers .alive .tile { stroke: rgba(255,255,255,.3); }
+  .timers .time { font-family: "Heathergreen", "Inter", sans-serif; font-size: 39px; text-anchor: middle; fill: #fff; }
+  .obj { transition: transform .4s ease, opacity .3s ease; }
+  .obj.off { opacity: 0; }
+  .drake { stroke: rgba(0,0,0,.6); stroke-width: 1; }
+  /* Animations (first blood): a layer over the top bar, cut to its shape. */
+  #fx { position: absolute; pointer-events: none; overflow: hidden; display: none; }
+  #fx .half { position: absolute; top: 0; height: 100%; overflow: hidden; }
+  #fx .panel { position: absolute; inset: 0; }
+  #fx .stripe { position: absolute; top: -20%; height: 140%; transform: skewX(-24deg); }
+  #fx .right .stripe { transform: skewX(24deg); }
+  #fx .words { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; }
+  #fx .words img { height: 74%; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,.45)); }
+  #fx .words span { font-family: "Heathergreen", "Inter", sans-serif; font-weight: 700; font-size: 58px; line-height: 1;
+                    color: #fff; white-space: nowrap; text-shadow: 0 3px 8px rgba(0,0,0,.4); }
+  #fx .shine { position: absolute; top: -20%; height: 140%; width: 90px; transform: skewX(-24deg);
+               background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.55), rgba(255,255,255,0)); }
+</style>
+<style id="fonts"></style>
+</head>
+<body>
+<svg id="hud" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tab-shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <!-- Built-in objective badges: 17px white shield with a symbol cut out. -->
+    <path id="badge" d="M8.5 1 L16 4.2 L14.6 12.8 L8.5 16.5 L2.4 12.8 L1 4.2 Z"
+          fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+    <mask id="dragon-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="17" height="17">
+      <use href="#badge"/>
+      <path d="M8.5 3.6 L9.6 6.6 L14 5.2 L11.6 9 L9.4 9.6 L8.5 13.4 L7.6 9.6 L5.4 9 L3 5.2 L7.4 6.6 Z" fill="#000"/>
+    </mask>
+    <mask id="herald-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="17" height="17">
+      <use href="#badge"/>
+      <path d="M3.2 8.8 Q8.5 3.4 13.8 8.8 Q8.5 14.2 3.2 8.8 Z" fill="#000"/>
+      <circle cx="8.5" cy="8.8" r="1.9" fill="#fff"/>
+    </mask>
+    <g id="icon-dragon"><rect width="17" height="17" fill="#fff" mask="url(#dragon-cut)"/></g>
+    <g id="icon-herald"><rect width="17" height="17" fill="#fff" mask="url(#herald-cut)"/></g>
+  </defs>
+  <g id="stage"></g>
+</svg>
+<div id="fx"></div>
+<script src="overlay_scoreboard.js"></script>
+<script src="overlay_cams.js"></script>
+<script src="overlay_sponsor.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const opt = (k, d) => params.has(k) ? params.get(k) !== "0" : d;
+const SHOW = { timers: opt("timers", true), diff: opt("diff", true), dragons: opt("dragons", false), idle: opt("idle", true),
+               cams: opt("cams", true), sponsors: opt("sponsors", true), scoreboard: opt("scoreboard", true) };
+let hasScoreboard = false;   // the profile has the bottom third (scoreboard)
+const $ = id => document.getElementById(id);
+if (opt("fit", false)) {
+  // Scales with the screen's height like League's own top bar does.
+  const fit = () => {
+    const k = Math.min(innerHeight / 1080, innerWidth / 1920);
+    Object.assign(document.body.style, { transformOrigin: "0 0",
+      transform: `translateX(${(innerWidth - 1920 * k) / 2}px) scale(${k})` });
+  };
+  addEventListener("resize", fit);
+  fit();
+}
+const SVGNS = "http://www.w3.org/2000/svg";
+const SIDES = ["left", "right"];
+const DRAKE_COLORS = { Infernal: "#d86c2b", Ocean: "#3fb8ff", Mountain: "#b9874f", Cloud: "#c7e4f2",
+                       Hextech: "#5fe0e8", Chemtech: "#7fd447" };
+// Objective timers (top left), from the designer's obj-timer PSD: counting
+// down, an objective is a dark box with its icon on a tinted tile and the
+// time; once it's up, just the icon on a brighter tile.
+const OBJECTIVES = [
+  { key: "grubs", field: "NEXT GRUBS", icon: "grubs" },
+  { key: "dragon", field: "NEXT DRAGON", icon: "dragon" },
+  { key: "herald", field: "NEXT HERALD", icon: "herald" },
+  { key: "elder", field: "NEXT ELDER", icon: "elder" },
+  { key: "baron", field: "NEXT BARON", icon: "baron" },
+];
+// Each icon's tile colour (drawn see-through over the box), from the PSD.
+const OBJ_TILE = { grubs: "#9646af", herald: "#9646af", baron: "#9646af", elder: "#837f83",
+                   "dragon-infernal": "#d86c2b", "dragon-ocean": "#50867d", "dragon-mountain": "#7a6f5e",
+                   "dragon-cloud": "#7d9196", "dragon-hextech": "#598894", "dragon-chemtech": "#638255",
+                   "dragon-unknown": "#9646af" };  // purple, like grubs, herald and baron
+const DRAGON_ICONS = ["Infernal", "Ocean", "Mountain", "Cloud", "Hextech", "Chemtech"];
+const TIMER_W = 102, ALIVE_W = 49, OBJ_GAP = 2;
+
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) n.setAttribute(k, v);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+// Mix a #rrggbb colour with white (amount 0..1).
+function lighten(hex, amount) {
+  const n = parseInt((hex || "#888888").slice(1), 16);
+  const ch = shift => Math.round(((n >> shift) & 255) + (255 - ((n >> shift) & 255)) * amount);
+  return "#" + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, "0")).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Building the HUD from a profile.
+
+let profile = null, profileKey = "", base = "";
+let texts = [], logos = {}, pips = {}, diffs = {}, drakes = {}, objectiveEls = [], tints = {}, timers = null;
+let videos = [], videoStandIns = [];
+
+function assetUrl(src) { return src.startsWith("/") || src.startsWith("data:") ? src : base + src; }
+
+function loadFonts(fonts) {
+  // Either {family: {src, weight}} or [{family, src, weight, style}, ...].
+  const faces = Array.isArray(fonts) ? fonts : Object.entries(fonts || {}).map(([family, f]) => ({ family, ...f }));
+  $("fonts").textContent = faces.map(f =>
+    `@font-face { font-family: "${f.family}"; src: url("${assetUrl(f.src)}"); ${f.weight ? `font-weight: ${f.weight};` : ""} ${f.style ? `font-style: ${f.style};` : ""} }`).join("\n");
+}
+
+function build(p, id) {
+  profile = p;
+  base = `/profiles/${id}/`;
+  texts = []; logos = {}; pips = {}; diffs = {}; drakes = {}; objectiveEls = []; tints = {}; timers = null;
+  videos = []; videoStandIns = [];
+  hasScoreboard = false;
+  fxSetup(p);
+  loadFonts(p.fonts);
+  const stage = $("stage");
+  stage.replaceChildren();
+  const defs = el("defs", {}, stage);
+  const [W, H] = p.canvas || [1920, 1080];
+  $("hud").setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+  p.elements.forEach((e, i) => {
+    let node = null;
+    switch (e.type) {
+      case "image":
+        node = el("image", { href: assetUrl(e.src), x: e.x, y: e.y, width: e.w, height: e.h, preserveAspectRatio: "none" }, stage);
+        break;
+      case "team-panel": {
+        // The panel's shape, filled with the team colour.
+        const f = el("filter", { id: `tint-${i}`, "color-interpolation-filters": "sRGB" }, defs);
+        const flood = el("feFlood", { "flood-color": "#888" }, f);
+        el("feComposite", { in2: "SourceGraphic", operator: "in" }, f);
+        (tints[e.side] ||= []).push({ type: "flood", node: flood });
+        node = el("image", { href: assetUrl(e.src), x: e.x, y: e.y, width: e.w, height: e.h, filter: `url(#tint-${i})`, preserveAspectRatio: "none" }, stage);
+        break;
+      }
+      case "lines": {
+        // Artwork lines blending from the left team's colour to the right's.
+        const m = el("mask", { id: `lines-mask-${i}`, maskUnits: "userSpaceOnUse", x: e.x, y: e.y, width: e.w, height: e.h }, defs);
+        el("image", { href: assetUrl(e.src), x: e.x, y: e.y, width: e.w, height: e.h, preserveAspectRatio: "none" }, m);
+        const g = el("linearGradient", { id: `lines-grad-${i}`, gradientUnits: "userSpaceOnUse", x1: e.x, y1: 0, x2: e.x + e.w, y2: 0 }, defs);
+        const stops = [0, .3, .7, 1].map(o => el("stop", { offset: o }, g));
+        (tints.left ||= []).push({ type: "stops", nodes: stops.slice(0, 2), amount: .35 });
+        (tints.right ||= []).push({ type: "stops", nodes: stops.slice(2), amount: .35 });
+        node = el("rect", { x: e.x, y: e.y, width: e.w, height: e.h, fill: `url(#lines-grad-${i})`, mask: `url(#lines-mask-${i})` }, stage);
+        break;
+      }
+      case "logo": {
+        const wrap = el("g", {}, stage);
+        const img = el("image", { x: e.x, y: e.y, width: e.w, height: e.h, preserveAspectRatio: "xMidYMid meet" }, wrap);
+        logos[e.side] = { wrap, img, cx: e.x + e.w / 2, cy: e.y + e.h / 2 };
+        node = wrap;
+        break;
+      }
+      case "pips":
+        pips[e.side] = { g: el("g", {}, stage), slots: e.slots };
+        node = pips[e.side].g;
+        break;
+      case "text": {
+        node = el("text", { x: e.x, y: e.y, "text-anchor": e.anchor || "start" }, stage);
+        node.style.fontFamily = `"${e.font}", "Inter", sans-serif`;
+        node.style.fontSize = e.size + "px";
+        if (e.weight) node.style.fontWeight = e.weight;
+        if (e.italic) node.style.fontStyle = "italic";
+        if (e.color) node.style.fill = e.color;
+        if (e.letterSpacing) node.style.letterSpacing = e.letterSpacing + "px";
+        texts.push({ node, e });
+        break;
+      }
+      case "icon":
+        node = el("use", { href: `#icon-${e.icon}`, x: e.x, y: e.y, transform: e.size && e.size !== 17 ? `translate(${e.x} ${e.y}) scale(${e.size / 17}) translate(${-e.x} ${-e.y})` : null }, stage);
+        break;
+      case "gold-diff": {
+        let parent = stage;
+        if (e.clip) {
+          const cp = el("clipPath", { id: `diff-clip-${i}` }, defs);
+          el("rect", { x: e.clip[0], y: e.clip[1], width: e.clip[2], height: e.clip[3] }, cp);
+          parent = el("g", { "clip-path": `url(#diff-clip-${i})` }, stage);
+        }
+        const grad = el("linearGradient", { id: `tab-grad-${i}`, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+        const top = el("stop", { offset: 0 }, grad), bottom = el("stop", { offset: 1 }, grad);
+        (tints[e.side] ||= []).push({ type: "tab", top, bottom });
+        // Without a bar edge to slide out from under, it fades in as it slides.
+        const tab = el("g", { class: e.clip ? "diff-tab" : "diff-tab fade" }, parent);
+        el("rect", { y: e.y, height: 22, rx: 4, fill: `url(#tab-grad-${i})` }, tab);
+        el("rect", { class: "shine", y: e.y + 5, height: 17, width: 24, fill: "url(#tab-shine)" }, tab);
+        el("text", { x: e.x, y: e.y + 18 }, tab);
+        diffs[e.side] = { tab, cx: e.x };
+        node = tab;
+        break;
+      }
+      case "video": {
+        // A looping background video, cut to the shape of its mask image.
+        // Optionally tinted like the static lines: the video in greyscale with
+        // a left-team-to-right-team gradient multiplied over it, so dark stays
+        // dark and the bright parts take the team colours.
+        const fo = el("foreignObject", { x: e.x, y: e.y, width: e.w, height: e.h }, stage);
+        const wrap = document.createElement("div");
+        Object.assign(wrap.style, { position: "relative", width: "100%", height: "100%", display: "none",
+                                    isolation: "isolate", opacity: e.opacity ?? 1 });
+        if (e.mask) {
+          const m = `url("${assetUrl(e.mask)}")`;
+          Object.assign(wrap.style, { maskImage: m, webkitMaskImage: m, maskSize: "100% 100%", webkitMaskSize: "100% 100%" });
+        }
+        const v = document.createElement("video");
+        v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true;
+        Object.assign(v.style, { display: "block", width: "100%", height: "100%", objectFit: e.fit || "cover" });
+        const tint = document.createElement("div");
+        Object.assign(tint.style, { position: "absolute", inset: "0", mixBlendMode: "multiply" });
+        v.addEventListener("error", () => { v.dataset.failed = "1"; showVideo(); });
+        v.addEventListener("playing", showVideo);
+        wrap.append(v, tint);
+        fo.appendChild(wrap);
+        v.tint = tint;
+        videos.push(v);
+        node = fo;
+        break;
+      }
+      case "drake-dots":
+        drakes[e.side] = { g: el("g", {}, stage), e };
+        node = drakes[e.side].g;
+        break;
+      case "timers":
+        timers = buildTimers(el("g", { class: "timers", transform: `translate(${e.x},${e.y})` }, stage));
+        node = timers.g;
+        break;
+      case "scoreboard":
+        hasScoreboard = true;   // drawn by overlay_scoreboard.js
+        break;
+    }
+    if (node && e.objective) objectiveEls.push({ node, key: e.objective });
+    if (node && e.hideWithVideo) videoStandIns.push(node);
+  });
+  colorKey = "";
+  document.fonts.ready.then(refit);
+}
+
+function buildTimers(g) {
+  const boxes = {};
+  for (const o of OBJECTIVES) {
+    const b = el("g", { class: "obj off" }, g);
+    // Counting down: a 102x46 box, 2px lower than the alive box so both centre.
+    const timer = el("g", { class: "timer", transform: "translate(0 2)" }, b);
+    el("rect", { class: "box", x: .5, y: .5, width: TIMER_W - 1, height: 45, rx: 3 }, timer);
+    const tile = el("rect", { class: "tile", x: 2.5, y: 2.5, width: 40, height: 40, rx: 3 }, timer);
+    const icon = el("image", { x: 6, y: 6, width: 34, height: 34 }, timer);
+    const value = el("text", { class: "time", x: 73, y: 35 }, timer);
+    // Up: a 49x50 box with the icon alone.
+    const alive = el("g", { class: "alive" }, b);
+    el("rect", { class: "box", x: .5, y: .5, width: ALIVE_W - 1, height: 49, rx: 4 }, alive);
+    const aliveTile = el("rect", { class: "tile", x: 4.5, y: 4.5, width: 40, height: 40, rx: 3 }, alive);
+    const aliveIcon = el("image", { x: 9, y: 9, width: 31, height: 31 }, alive);
+    boxes[o.key] = { g: b, timer, alive, value, tiles: [tile, aliveTile], icons: [icon, aliveIcon], src: "" };
+  }
+  return { g, boxes };
+}
+
+// The dragon's icon is the next dragon's element when it's known.
+function objectiveIcon(o, nextDragon) {
+  if (o.icon !== "dragon") return o.icon;
+  return DRAGON_ICONS.includes(nextDragon) ? `dragon-${nextDragon.toLowerCase()}` : "dragon-unknown";
+}
+
+// ---------------------------------------------------------------------------
+// Updating it from the live state.
+
+function setText(node, value, maxWidth) {
+  value = String(value ?? "");
+  if (node.textContent === value) return;
+  node.textContent = value;
+  if (maxWidth) {  // squeeze text that would overflow its space
+    node.removeAttribute("textLength");
+    if (node.getComputedTextLength() > maxWidth) {
+      node.setAttribute("lengthAdjust", "spacingAndGlyphs");
+      node.setAttribute("textLength", maxWidth);
+    }
+  }
+}
+// Text squeezed to fit is measured in whatever font has loaded; measure again
+// whenever a profile's fonts finish loading.
+function refit() {
+  texts.forEach(t => { const v = t.node.textContent; t.node.textContent = ""; setText(t.node, v, t.e.maxWidth); });
+}
+document.fonts.addEventListener("loadingdone", refit);
+
+let colorKey = "";
+function applyColors(left, right) {
+  if (colorKey === left + right) return;
+  colorKey = left + right;
+  for (const [side, c] of [["left", left], ["right", right]]) {
+    for (const t of tints[side] || []) {
+      if (t.type === "flood") t.node.setAttribute("flood-color", c);
+      if (t.type === "stops") t.nodes.forEach(n => n.setAttribute("stop-color", lighten(c, t.amount)));
+      if (t.type === "tab") { t.top.setAttribute("stop-color", lighten(c, .3)); t.bottom.setAttribute("stop-color", c); }
+    }
+  }
+  const l = lighten(left, .35), r = lighten(right, .35);
+  for (const v of videos) v.tint.style.background = `linear-gradient(to right, ${l} 0%, ${l} 30%, ${r} 70%, ${r} 100%)`;
+  for (const p of Object.values(pips)) p.g.dataset.key = "";  // redraw in the new colour
+}
+
+function drawPips(side, bestOf, wins, color) {
+  const p = pips[side];
+  if (!p) return;
+  const key = `${bestOf}:${wins}:${color}`;
+  if (p.g.dataset.key === key) return;
+  p.g.dataset.key = key;
+  p.g.replaceChildren();
+  if (bestOf <= 1) return;
+  const needed = Math.floor(bestOf / 2) + 1;
+  // Exactly as many slots as needed: use them. Otherwise share the space.
+  let slots = p.slots;
+  if (slots.length !== needed) {
+    const x = Math.min(...slots.map(s => s[0])), y = Math.min(...slots.map(s => s[1]));
+    const w = Math.max(...slots.map(s => s[0] + s[2])) - x, h = Math.max(...slots.map(s => s[1] + s[3])) - y;
+    const vertical = h >= w, gap = 3, n = needed;
+    slots = Array.from({ length: n }, (_, i) => vertical
+      ? [x, y + i * (h + gap) / n, w, (h - gap * (n - 1)) / n]
+      : [x + i * (w + gap) / n, y, (w - gap * (n - 1)) / n, h]);
+  }
+  slots.forEach(([x, y, w, h], i) => {
+    const won = i < wins;
+    const r = el("rect", { class: won ? "pip won" : "pip", x: x + .5, y: y + .5, width: w - 1, height: h - 1, rx: 1.5 }, p.g);
+    if (won) r.style.fill = lighten(color, .55);
+  });
+}
+
+// Slide the lead tab in when this side leads, out when it doesn't.
+function setDiff(side, value) {
+  const d = diffs[side];
+  if (!d) return;
+  const text = d.tab.querySelector("text");
+  if (value) {
+    if (text.textContent !== value) {
+      text.textContent = value;
+      const w = Math.ceil(text.getComputedTextLength()) + 16;
+      const bg = d.tab.querySelector("rect"), first = !bg.style.width;
+      if (first) bg.style.transition = "none";
+      bg.style.x = d.cx - w / 2 + "px";
+      bg.style.width = w + "px";
+      d.tab.querySelector(".shine").style.x = d.cx - 12 + "px";
+      if (first) { bg.getBBox(); bg.style.transition = ""; }
+    }
+    d.tab.classList.add("show");
+  } else {
+    d.tab.classList.remove("show");
+  }
+}
+
+function placeLogo(side, src, adj) {
+  const l = logos[side];
+  if (!l) return;
+  if (l.img.getAttribute("href") !== src) l.img.setAttribute("href", src);
+  const { scale = 1, x = 0, y = 0 } = adj || {};
+  const t = `translate(${l.cx + x} ${l.cy + y}) scale(${scale}) translate(${-l.cx} ${-l.cy})`;
+  if (l.wrap.getAttribute("transform") !== t) l.wrap.setAttribute("transform", t);
+}
+
+function drawDrakes(side, list) {
+  const d = drakes[side];
+  if (!d) return;
+  const key = SHOW.dragons ? list.join(",") : "";
+  if (d.g.dataset.key === key) return;
+  d.g.dataset.key = key;
+  d.g.replaceChildren();
+  if (!SHOW.dragons) return;
+  list.forEach((name, i) => el("circle", { class: "drake", cx: d.e.x + i * d.e.step, cy: d.e.y, r: 6, fill: DRAKE_COLORS[name] || "#ccc" }, d.g));
+}
+
+function drawTimers(f, enabled, nextDragon) {
+  if (!timers) return;
+  timers.g.style.display = SHOW.timers ? "" : "none";
+  let x = 0;
+  for (const o of OBJECTIVES) {
+    const b = timers.boxes[o.key], value = f[o.field] || "";
+    const visible = enabled[o.key] !== false && value !== "";
+    const up = value === "LIVE";
+    const name = objectiveIcon(o, nextDragon);
+    if (b.src !== name) {
+      b.src = name;
+      for (const i of b.icons) i.setAttribute("href", `/assets/objectives/${name}.png`);
+      for (const t of b.tiles) t.setAttribute("fill", OBJ_TILE[name]);
+    }
+    if (value && !up) setText(b.value, value);
+    b.timer.style.display = up ? "none" : "";
+    b.alive.style.display = up ? "" : "none";
+    b.g.classList.toggle("off", !visible);
+    if (visible) { b.g.style.transform = `translateX(${x}px)`; x += (up ? ALIVE_W : TIMER_W) + OBJ_GAP; }
+  }
+}
+
+// Background video: plays the file chosen in the control panel at the chosen
+// speed. Until there is one (or if it won't play), elements marked
+// hideWithVideo (the static lines) stand in for it.
+// The bottom third's loop areas (overlay_scoreboard.js) play the same loop,
+// but only with a profile that has one.
+function allVideos() {
+  if (!videos.length) {
+    for (const { video: v } of window.SCOREBOARD_LOOPS || []) {
+      if (v.dataset.src) { delete v.dataset.src; v.removeAttribute("src"); v.load(); }
+    }
+    return videos;
+  }
+  for (const l of window.SCOREBOARD_LOOPS || []) {
+    if (!l.video.tint) {
+      l.video.tint = l.tint;
+      l.video.addEventListener("error", () => { l.video.dataset.failed = "1"; showVideo(); });
+      l.video.addEventListener("playing", showVideo);
+    }
+  }
+  return videos.concat((window.SCOREBOARD_LOOPS || []).map(l => l.video));
+}
+
+function setVideo(src, speed, tinted, brightness) {
+  const b = Math.min(3, Math.max(0, Number(brightness ?? 1)));
+  for (const v of allVideos()) {
+    v.parentElement.style.filter = b === 1 ? "" : `brightness(${b})`;
+    v.tint.style.display = tinted ? "" : "none";
+    v.style.filter = tinted ? "grayscale(1) brightness(1.6)" : "";
+    const url = src ? "/" + src.split("/").map(encodeURIComponent).join("/") : "";
+    if (v.dataset.src !== url) {
+      v.dataset.src = url;
+      delete v.dataset.failed;
+      if (url) { v.src = url; v.play().catch(() => {}); } else { v.removeAttribute("src"); v.load(); }
+    }
+    const rate = Math.min(4, Math.max(0.0625, Number(speed) || 1));
+    if (v.playbackRate !== rate) v.playbackRate = rate;
+  }
+  showVideo();
+}
+
+function showVideo() {
+  const active = videos.some(v => v.dataset.src && !v.dataset.failed);
+  for (const v of videos) v.parentElement.style.display = v.dataset.src && !v.dataset.failed ? "block" : "none";
+  for (const n of videoStandIns) n.style.display = active ? "none" : "";
+  for (const l of window.SCOREBOARD_LOOPS || []) {
+    const on = videos.length > 0 && !!l.video.dataset.src && !l.video.dataset.failed;
+    l.video.parentElement.style.display = on ? "block" : "none";
+    l.still.style.display = on ? "none" : "";
+  }
+}
+
+// Smooth the clock between polls, but stop if the game is paused.
+let clock = { base: 0, at: 0, running: false };
+
+
+// --- Animations ---------------------------------------------------------
+// First blood: a stinger wipes across the side that drew it, their half of
+// the bar fills with the team colour and "FIRST BLOOD" punches in with
+// their logo, then it wipes back out. Under 3 seconds in total.
+const FX_MS = 2950;
+let fxArea = null, fxBusy = false, fxSeen = { first_blood: undefined, preview: undefined };
+
+function fxSetup(profile) {
+  const v = (profile.elements || []).find(e => e.type === "video");
+  const a = profile.animation_area || (v ? { x: v.x, y: v.y, w: v.w, h: v.h, mask: v.mask } : null)
+    || { x: 511, y: 1, w: 902, h: 70, mask: "/assets/hud_video_mask.png" };
+  fxArea = a;
+  const fx = $("fx");
+  Object.assign(fx.style, { left: a.x + "px", top: a.y + "px", width: a.w + "px", height: a.h + "px" });
+  if (a.mask) {
+    const m = `url("${assetUrl(a.mask)}")`;
+    Object.assign(fx.style, { maskImage: m, webkitMaskImage: m, maskSize: "100% 100%", webkitMaskSize: "100% 100%" });
+  }
+}
+
+function playFirstBlood(side, cfg) {
+  if (fxBusy || !fxArea) return;
+  fxBusy = true;
+  const color = cfg[side].color || "#888888", light = lighten(color, .45), L = side === "left";
+  const fx = $("fx"), A = fxArea, H = A.h;
+  const els = profile.elements || [];
+  const panelOf = s => els.find(e => e.type === "team-panel" && e.side === s);
+  const logoOf = els.find(e => e.type === "logo" && e.side === side);
+  // The panel runs from this team's end of the bar almost to where the
+  // other team's colour starts, with a slanted, softened inner edge.
+  const other = panelOf(L ? "right" : "left");
+  // The other team's panel artwork fades in from its inner edge; its colour
+  // really starts about a third of the way in, just before their name.
+  const REACH = .42, BLEND = 150, FADE = 22;
+  const inner = other ? (L ? other.x + other.w * REACH - A.x : other.x + other.w * (1 - REACH) - A.x) : A.w / 2;
+  // Leave the series pips at this team's end uncovered.
+  const pipSlots = (els.find(e => e.type === "pips" && e.side === side) || {}).slots || [];
+  const outer = pipSlots.length
+    ? (L ? Math.max(...pipSlots.map(([x, , w]) => x + w)) - A.x + 3 : Math.min(...pipSlots.map(([x]) => x)) - A.x - 3)
+    : (L ? 0 : A.w);
+  const start = L ? outer : inner, width = L ? inner - outer : outer - inner;
+  const el = (cls, css) => { const d = document.createElement("div"); d.className = cls; Object.assign(d.style, css || {}); return d; };
+  fx.innerHTML = "";
+  const box = el("half " + side, {
+    left: start + "px", width: width + "px",
+    // Only the last few pixels fade out, over the other team's colour.
+    maskImage: `linear-gradient(${L ? 90 : 270}deg, #000 calc(100% - ${FADE}px), transparent)`,
+    webkitMaskImage: `linear-gradient(${L ? 90 : 270}deg, #000 calc(100% - ${FADE}px), transparent)` });
+  // The team colour dissolves into the other team's colour towards the inner
+  // end, so it meets their side of the bar smoothly.
+  const otherColor = shade(cfg[L ? "right" : "left"].color || "#888888", -.3);
+  const panel = el("panel", { background: `linear-gradient(${L ? 90 : 270}deg, ${shade(color, -.2)}, ${color} 35%,
+    ${shade(color, -.3)} calc(100% - ${BLEND}px), ${otherColor} calc(100% - ${FADE}px))` });
+  // "FIRST BLOOD" in the space between the logo and the inner edge.
+  const logoEnd = logoOf ? (L ? logoOf.x + logoOf.w - A.x - start : start + width - (logoOf.x - A.x)) : H;
+  const words = el("words", { left: L ? logoEnd + 10 + "px" : "40px", right: L ? "40px" : logoEnd + 10 + "px" });
+  const text = document.createElement("span");
+  text.textContent = "FIRST BLOOD";
+  words.append(text);
+  const shine = el("shine");
+  box.append(panel, words, shine);
+  // The logo stays where the HUD shows it.
+  let crest = null;
+  if (logoOf) {
+    const adj = (cfg.logo_adjust || {})[cfg[side].logo] || {};
+    crest = document.createElement("img");
+    crest.src = cfg[side].logo;
+    Object.assign(crest.style, { position: "absolute", left: `${logoOf.x - A.x - start}px`, top: `${logoOf.y - A.y}px`,
+      width: `${logoOf.w}px`, height: `${logoOf.h}px`, objectFit: "contain",
+      transform: `translate(${adj.x || 0}px, ${adj.y || 0}px) scale(${adj.scale || 1})`,
+      filter: "drop-shadow(0 2px 4px rgba(0,0,0,.45))" });
+    box.append(crest);
+  }
+  // The transition, the same going in and coming out: a bright flash and
+  // a gradient band with a white edge sweeping from the team's end.
+  const band = el("stripe", { width: `${Math.min(420, width * .6)}px`,
+    background: `linear-gradient(${L ? 90 : 270}deg, transparent, ${color} 25%, ${light} 70%, #fff)` });
+  const edge = el("stripe", { width: "28px", background: "#fff" });
+  const flash = el("panel", { background: `linear-gradient(${L ? 90 : 270}deg, #fff, ${light})`, opacity: 0 });
+  box.append(band, edge, flash);
+  fx.append(box);
+  fx.style.display = "block";
+
+  const ease = "cubic-bezier(.65,0,.35,1)";
+  // Later animations only take effect once they start ("forwards"), so the
+  // way out doesn't cover up the way in.
+  const opts = (delay, duration, easing = ease, fill = delay ? "forwards" : "both") => ({ delay, duration, easing, fill });
+  const sk = `skewX(${L ? -24 : 24}deg)`;
+  const from = L ? -460 : width + 40, to = L ? width + 40 : -460;
+  const transition = (t0, reveal) => {
+    const f = reveal ? "both" : "forwards";
+    band.animate([{ transform: `translateX(${from}px) ${sk}` }, { transform: `translateX(${to}px) ${sk}` }], opts(t0, 560, ease, f));
+    edge.animate([{ transform: `translateX(${from}px) ${sk}` }, { transform: `translateX(${to}px) ${sk}` }], opts(t0 + 40, 520, ease, f));
+    const fill = reveal ? "both" : "forwards";
+    flash.animate([{ opacity: 0 }, { opacity: .8, offset: .45 }, { opacity: 0 }], opts(t0 + 60, 460, "ease-in-out", fill));
+    // The panel appears (or goes) just behind the band's white edge.
+    const hidden = L ? "inset(0 100% 0 0)" : "inset(0 0 0 100%)";
+    const keys = reveal ? [{ clipPath: hidden }, { clipPath: "inset(0 0 0 0)" }] : [{ clipPath: "inset(0 0 0 0)" }, { clipPath: hidden }];
+    for (const n of [panel, words, ...(crest ? [crest] : [])]) n.animate(keys, opts(t0 + 60, 470, ease, fill));
+  };
+  transition(0, true);          // in: 0 - 0.6s
+  transition(2330, false);      // out: 2.33 - 2.95s
+  // The words ease in from the logo side and settle; a light sweep crosses them.
+  text.animate([{ transform: `translateX(${L ? -36 : 36}px)`, opacity: 0, letterSpacing: ".18em" },
+                { transform: "translateX(0)", opacity: 1, letterSpacing: ".04em" }], opts(300, 620, "cubic-bezier(.2,.8,.2,1)", "both"));
+  shine.animate([{ transform: `translateX(${L ? -120 : width + 20}px) skewX(-24deg)` },
+                 { transform: `translateX(${L ? width + 20 : -120}px) skewX(-24deg)` }], opts(1050, 800, ease));
+  setTimeout(() => { fx.style.display = "none"; fx.innerHTML = ""; fxBusy = false; }, FX_MS);
+}
+
+function shade(hex, amount) {
+  const n = parseInt(hex.replace("#", ""), 16), k = 1 + amount;
+  const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * k))));
+  return "#" + c.map(v => v.toString(16).padStart(2, "0")).join("");
+}
+
+// Plays each first blood once (not again on reload), and the control
+// panel's previews.
+function checkAnimations(s) {
+  const cfg = s.config, fb = s.detail.first_blood, pv = s.preview;
+  const fbKey = fb ? `${fb.side}@${fb.time}` : null;
+  if (fxSeen.first_blood === undefined) {
+    // First update after loading: only play a first blood that just happened.
+    fxSeen.first_blood = fb && s.detail.game_time - fb.time < 5 ? null : fbKey;
+    fxSeen.preview = pv ? pv.id : null;
+  }
+  if (fbKey && fbKey !== fxSeen.first_blood) {
+    fxSeen.first_blood = fbKey;
+    if ((cfg.animations || {}).first_blood !== false) playFirstBlood(fb.side, cfg);
+  }
+  if (pv && pv.id !== fxSeen.preview) {
+    fxSeen.preview = pv.id;
+    if (pv.name === "first_blood") playFirstBlood(pv.side, cfg);
+  }
+}
+
+function render(s) {
+  const f = s.fields, cfg = s.config;
+  $("hud").classList.toggle("hidden", !SHOW.idle && !s.detail.connected);
+  applyColors(cfg.left.color, cfg.right.color);
+  for (const t of texts) {
+    if (t.e.field === "TIMER") continue;  // ticks on its own, below
+    let v = f[t.e.field];
+    if (t.e.case === "upper") v = String(v ?? "").toUpperCase();
+    setText(t.node, v, t.e.maxWidth);
+  }
+  const shown = cfg.strip_counters || {};
+  for (const o of objectiveEls) o.node.classList.toggle("objective-off", shown[o.key] === false);
+  for (const side of SIDES) {
+    const S = side.toUpperCase();
+    setDiff(side, SHOW.diff ? f[`GOLD DIFF ${S}`] : "");
+    placeLogo(side, cfg[side].logo, (cfg.logo_adjust || {})[cfg[side].logo]);
+    drawPips(side, cfg.best_of, cfg[side].wins, cfg[side].color);
+    drawDrakes(side, s.detail.dragons[side] || []);
+  }
+  drawTimers(f, cfg.objective_timers || {}, cfg.next_dragon || s.detail.next_dragon);
+  checkAnimations(s);
+  renderScoreboard(s, SHOW.scoreboard && hasScoreboard && (cfg.scoreboard || {}).show !== false
+                   && (s.detail.connected || !SHOW.idle));
+  renderCams(s, SHOW.cams);
+  if (SHOW.sponsors) renderSponsorBox(s);
+  setVideo(cfg.bg_video, cfg.bg_speed, cfg.bg_tint !== false, cfg.bg_brightness);
+  // The game reports its clock about once a second; only restart the
+  // extrapolation when it moves, so a paused game freezes the timer. It
+  // runs on from when the game reported it (game_time_age ago), not from
+  // when this page heard about it, which can be over a second later.
+  const t = s.detail.game_time;
+  if (t !== clock.base) clock = { base: t, at: performance.now() - 1000 * (s.game_time_age || 0),
+                                  running: s.detail.connected && t > clock.base };
+}
+
+function tick() {
+  let t = clock.base;
+  if (clock.running) t += Math.min(2.5, (performance.now() - clock.at) / 1000);
+  t = Math.floor(t);
+  const value = String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0");
+  for (const x of texts) if (x.e.field === "TIMER") setText(x.node, value);
+  requestAnimationFrame(tick);
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch("/api/state", { cache: "no-store" })).json();
+    const id = params.get("profile") || s.config.profile || "scc-2026";
+    const key = id + ":" + (s.profiles_version || 0);
+    if (key !== profileKey) {
+      const p = await (await fetch(`/api/profile?id=${encodeURIComponent(id)}`, { cache: "no-store" })).json();
+      if (!p.error) { build(p, id); profileKey = key; }
+    }
+    if (profile) render(s);
+  } catch (e) { /* app restarting; keep the last frame on screen */ }
+  setTimeout(poll, 500);
+}
+poll();
+tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CoD HUD overlay</title>
+<!--
+  The overlay: a 1920x1080 browser source for vMix / OBS, laid over the game.
+  It sits on the CoD caster HUD (the NEW COD OVERLAY vMix title, placed as in
+  CDL broadcasts):
+    - each team's name plate over the HUD's team bars: the team's name, with a
+      strip of its logo at the outer end;
+    - the team logos in the score box, in the empty spaces beside the scores;
+    - the series score in place of the game's pips and "BEST OF n" (Series
+      score off: the game's own series tracker shows instead);
+    - the spectated player's webcam, flush left of their player card;
+    - the sponsors, one after another, under the middle of the screen.
+  Everything shows only while the CoD caster HUD is on screen (the score box
+  parts also while only the score box is up). Teams, logos, scores and
+  sponsors are the HUD's match, which follows the GFX Engine's Global
+  information.
+-->
+<style>
+  @font-face { font-family: "SCC condensed"; src: url("fonts/BebasNeue.ttf") format("truetype"); }
+  @font-face { font-family: "SCC fallback"; src: url("fonts/Inter.ttf") format("truetype"); font-weight: 100 900; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+  .part { position: absolute; opacity: 0; transition: opacity .25s ease; pointer-events: none; }
+  .part.on { opacity: 1; }
+  .abs { position: absolute; }
+  .clip { position: absolute; overflow: hidden; }
+  .logo { position: absolute; object-fit: contain; }
+  /* The name plates: the title's box art, the name, the logo strip. */
+  .plate { width: 611px; height: 52px; background: center / 100% 100% no-repeat; }
+  .plate.left { left: 42px; top: 17px; background-image: url("assets/overlay/box-left.png"); }
+  .plate.right { left: 1266px; top: 16px; width: 612px; height: 53px; background-image: url("assets/overlay/box-right.png"); }
+  .name { position: absolute; top: 0; height: 100%; display: flex; align-items: center; color: #fff; white-space: nowrap;
+          font-family: var(--f-name); font-size: 46px; font-weight: 800; text-transform: uppercase; letter-spacing: -.005em; line-height: 1; }
+  .name span { display: block; flex: none; transform: translateY(.03em); }
+  .plate.left .name { left: 242px; width: 359px; justify-content: flex-end; }
+  .plate.right .name { left: 10px; width: 359px; }
+  /* The score box: a backing the colour of the box beside each score, the team's logo on it. */
+  .mini-bg { background: #14151B; }
+  /* The series score, over the game's pips. */
+  .pip-cover { background: #14151B; }
+  .pip { position: absolute; background: #4e4f53; }
+  .pip.won { background: var(--won, #fff); }
+  .best-of { position: absolute; background: #23252D; color: #fff;
+             display: flex; align-items: center; justify-content: center; font: 400 24px "SCC condensed", "SCC fallback", sans-serif; letter-spacing: .01em; }
+  .best-of span { transform: translateY(.06em); }
+  /* The webcam: CDL's place, left of the game's player card. */
+  #cam { left: 1205px; top: 896px; width: 208px; height: 130px; background: #0c0d10; overflow: hidden;
+         transform: translateX(12px); transition: opacity .25s ease, transform .35s cubic-bezier(.2, .8, .2, 1); }
+  #cam.on { transform: none; }
+  #cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+  #cam video.on { opacity: 1; }
+  #cam .dummy { position: absolute; inset: 0; display: none; background: radial-gradient(circle at 50% 38%, #4a4c58, #1b1c22 72%); }
+  #cam .dummy.on { display: block; }
+  #cam .dummy i { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: 600 11px "SCC fallback", sans-serif;
+                  letter-spacing: .12em; color: #fff9; font-style: normal; }
+  #cam .dummy b { position: absolute; left: 0; right: 0; top: calc(50% - 16px); text-align: center; font: 800 20px "SCC fallback", sans-serif; color: #fff; }
+  /* The sponsors: CDL's box under the middle of the screen. */
+  #sponsor { left: 857px; top: 939px; width: 206px; height: 97px; background: rgba(46, 44, 42, .94);
+             box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .85); }
+  #sponsor::before { content: ""; position: absolute; left: 4px; top: 0; width: 22px; height: 3px; background: #fff; }
+  #sponsor img { position: absolute; left: 18px; top: 12px; width: 170px; height: 73px; object-fit: contain; opacity: 0; transition: opacity .4s ease; }
+  #sponsor img.on { opacity: 1; }
+</style>
+<style id="fonts"></style>
+</head>
+<body>
+<div class="part" id="plates"></div>
+<div class="part" id="logos"></div>
+<div class="part" id="pips"></div>
+<div class="part" id="cam"><div class="videos"></div><div class="dummy"><b></b><i>DEMO CAM</i></div></div>
+<div class="part" id="sponsor"></div>
+<script src="cams.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { hud: "off" }, look = null, builtKey = null;
+
+  function esc(text) {
+    return String(text == null ? "" : text).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
+  }
+  function src(path) { return /^(https?:|data:)/.test(path || "") ? path : "/" + String(path || "").split("/").map(encodeURIComponent).join("/"); }
+  function img(path, x, y, w, h) {
+    return path ? '<img class="logo" src="' + esc(src(path)) + '" style="left:' + x + "px;top:" + y + "px;width:" + w + "px;height:" + h + 'px" alt="">' : "";
+  }
+  function box(cls, x, y, w, h, inner) {
+    return '<div class="' + cls + '" style="left:' + x + "px;top:" + y + "px;width:" + w + "px;height:" + h + 'px">' + (inner || "") + "</div>";
+  }
+  // A long team name shrinks to fit its box. Checked again every half second
+  // as well, since the name's font can finish loading (or change) later.
+  function fit() {
+    Array.prototype.forEach.call(document.querySelectorAll(".name"), function (el) {
+      var span = el.firstChild, lo = 14, hi = 46;
+      if (!span) return;
+      span.style.fontSize = "";
+      if (span.scrollWidth <= el.clientWidth) return;
+      while (hi - lo > 0.5) {
+        var mid = (lo + hi) / 2;
+        span.style.fontSize = mid + "px";
+        if (span.scrollWidth <= el.clientWidth) lo = mid; else hi = mid;
+      }
+      span.style.fontSize = lo + "px";
+    });
+  }
+  var fittedAt = 0;
+  if (document.fonts) document.fonts.addEventListener("loadingdone", fit);
+
+  function build() {
+    var m = look.match, key = JSON.stringify([m, look.fonts, (look.overlay || {}).layout]);
+    if (key === builtKey) return;
+    builtKey = key;
+    var fam = String((look.fonts || {}).name || "").replace(/["\\]/g, "");
+    $("fonts").textContent = (fam ? '@font-face { font-family: "SCC name"; src: local("' + fam + '"), url("/fonts/local/' + encodeURIComponent(fam) + '"); font-weight: 100 900; }' : "") +
+      ":root { --f-name: " + (fam ? '"' + fam + '", "SCC name", ' : "") + '"SCC fallback", sans-serif; }';
+    var L = m.left || {}, R = m.right || {};
+    // The name plates: the logo strip (the title's crop of a 193px logo) at the outer end.
+    $("plates").innerHTML =
+      '<div class="clip plate left">' + img(L.logo, 9 + 28.5, -58.5, 193, 193) + '<div class="name"><span>' + esc(L.name) + "</span></div></div>" +
+      '<div class="clip plate right">' + img(R.logo, 364 + 28.5, -53.5, 193, 193) + '<div class="name"><span>' + esc(R.name) + "</span></div></div>";
+    // The score box's logos, on covers over the game's (the right side mirrors the left about the middle).
+    var lay = Object.assign({ cover_x: 727, cover_top: 59, cover_w: 88, cover_h: 88, logo_size: 80, logo_y: 63,
+                              best_of_w: 124, best_of_h: 28, best_of_y: 19, best_of_text: 20, pip_y: 28, pip_size: 12,
+                              cam_x: 1205, cam_y: 896, cam_w: 208, cam_h: 130 },
+                            (look.overlay || {}).layout);
+    var cam = $("cam").style;
+    cam.left = lay.cam_x + "px"; cam.top = lay.cam_y + "px"; cam.width = lay.cam_w + "px"; cam.height = lay.cam_h + "px";
+    var cx = +lay.cover_x, cw = +lay.cover_w, rx = 1920 - cx - cw, ls = +lay.logo_size, lx = cx + (cw - ls) / 2;
+    $("logos").innerHTML = box("abs mini-bg", cx, lay.cover_top, cw, lay.cover_h) + box("abs mini-bg", rx, lay.cover_top, cw, lay.cover_h) +
+      img(L.logo, lx, lay.logo_y, ls, ls) + img(R.logo, 1920 - lx - ls, lay.logo_y, ls, ls);
+    // The series score: a pip per map needed to win, inner ones first, in the
+    // game's places (inner ones end at 877 and start at 1042, 17 apart).
+    var need = Math.min(5, Math.max(1, Math.ceil((Number(m.best_of) || 1) / 2)));
+    var ps = +lay.pip_size, py = +lay.pip_y, inL = 878 - ps;
+    // (the game's own, up to 5 a side, covered)
+    var pips = box("abs pip-cover", 790, py - 4, 100, ps + 8) + box("abs pip-cover", 1030, py - 4, 100, ps + 8);
+    for (var k = 0; k < need; k++) {
+      var sz = "top:" + py + "px;width:" + ps + "px;height:" + ps + "px;";
+      pips += '<div class="pip' + ((L.wins || 0) > k ? " won" : "") + '" style="' + sz + "left:" + (inL - 17 * k) + "px;--won:" + esc(L.color || "#fff") + '"></div>';
+      pips += '<div class="pip' + ((R.wins || 0) > k ? " won" : "") + '" style="' + sz + "left:" + (1042 + 17 * k) + "px;--won:" + esc(R.color || "#fff") + '"></div>';
+    }
+    // ("BEST OF n" too, so it says the same as the pips)
+    var bw = +lay.best_of_w;
+    $("pips").innerHTML = pips + '<div class="best-of" style="left:' + (960 - bw / 2) + "px;top:" + lay.best_of_y + "px;width:" + bw +
+      "px;height:" + lay.best_of_h + "px;font-size:" + lay.best_of_text + 'px"><span>BEST OF ' + esc(m.best_of) + "</span></div>";
+    fit();
+    if (document.fonts) document.fonts.ready.then(fit);
+  }
+
+  // The sponsors: one after another, each for its seconds.
+  var sponsorKey = null, sponsorAt = 0, sponsorIndex = 0;
+  function sponsors(now) {
+    var list = look.sponsors || [], key = JSON.stringify(list), el = $("sponsor");
+    if (key !== sponsorKey) {
+      sponsorKey = key;
+      el.innerHTML = list.map(function (s) { return '<img src="' + esc(src(s.src)) + '" alt="">'; }).join("");
+      sponsorIndex = 0; sponsorAt = now;
+    }
+    if (list.length > 1 && now - sponsorAt >= (Number(list[sponsorIndex].secs) || 10) * 1000) {
+      sponsorIndex = (sponsorIndex + 1) % list.length; sponsorAt = now;
+    }
+    Array.prototype.forEach.call(el.children, function (im, i) { im.classList.toggle("on", i === sponsorIndex); });
+    return list.length > 0;
+  }
+
+  function frame(now) {
+    if (look) {
+      build();
+      if (now - fittedAt > 500) { fittedAt = now; fit(); }
+      var o = look.overlay || {}, on = state.hud === "on", up = state.hud !== "off";
+      $("plates").classList.toggle("on", on && o.plates !== false);
+      $("logos").classList.toggle("on", up && o.logos !== false);
+      $("pips").classList.toggle("on", up && o.pips !== false);
+      $("sponsor").classList.toggle("on", sponsors(now) && on && o.sponsor !== false);
+      window.renderCam(state, look, on && o.cam !== false && look.cams !== false);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function connect() {
+    var es = new EventSource("/api/stream");
+    es.onmessage = function (ev) {
+      var msg = JSON.parse(ev.data);
+      if (msg.look) look = msg.look;
+      state = msg;
+      window.codHud = { state: state, look: look };   // (for checking the overlay)
+    };
+    // The app has closed or restarted: show nothing until it's back.
+    es.onerror = function () { state = { hud: "off" }; };
+  }
+
+  // ?fit=1 (Show HUD on screen): the 1920x1080 overlay scaled to the window,
+  // centred, for any screen size.
+  if (new URLSearchParams(location.search).get("fit") === "1") {
+    var fitPage = function () {
+      var k = Math.min(innerHeight / 1080, innerWidth / 1920), root = document.documentElement.style;
+      root.transformOrigin = "0 0";
+      root.transform = "translate(" + (innerWidth - 1920 * k) / 2 + "px," + (innerHeight - 1080 * k) / 2 + "px) scale(" + k + ")";
+    };
+    addEventListener("resize", fitPage);
+    fitPage();
+  }
+
+  connect();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCC Broadcast Engine</title>
+<link rel="icon" href="assets/icon.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="bg" class="bg solid"><video id="bg-video" muted loop playsinline preload="none"></video></div>
+
+<header class="bar glass" id="bar">
+  <a class="brand" href="#home"><img src="assets/logo.png" alt=""><span>SCC Broadcast Engine</span></a>
+  <nav id="nav">
+    <a class="t" data-go="home" href="#home"><i data-i="home"></i>Home</a>
+    <a class="t" data-go="engine/control" href="#engine/control"><i data-i="live"></i>Control</a>
+    <a class="t" data-go="engine/cameras" href="#engine/cameras"><i data-i="cams"></i>Cameras</a>
+    <a class="t" data-go="stream" href="#stream"><i data-i="stream"></i>Stream<span class="d" id="d-stream"></span></a>
+    <button class="t" data-menu="games"><i data-i="games"></i>Games<span class="d" id="d-games"></span><span class="dd">▾</span></button>
+    <button class="t" data-menu="build"><i data-i="composer"></i>Build<span class="dd">▾</span></button>
+    <button class="t" data-menu="event"><i data-i="global"></i>Event<span class="dd">▾</span></button>
+  </nav>
+  <div class="right">
+    <span class="chip" id="chip-engine" title="The GFX Engine this PC uses"><span class="dot"></span><span>Engine</span><b>…</b></span>
+    <span class="chip" id="chip-match" hidden><i data-i="global" class="sm"></i><b></b></span>
+    <a class="chip update" id="chip-update" href="#settings/updates" hidden></a>
+    <a class="chip icon" id="chip-settings" data-go="settings" href="#settings" title="Settings"><i data-i="settings"></i></a>
+  </div>
+</header>
+
+<div class="menu glass" id="menu-games" hidden></div>
+<div class="menu glass" id="menu-build" hidden>
+  <div class="hd">Build</div>
+  <a class="mi" href="#engine/composer"><i data-i="composer"></i>Composer<span class="st">graphics</span></a>
+  <a class="mi" href="#builder"><i data-i="builder"></i>HUD Builder<span class="st" id="st-builder"></span></a>
+  <a class="mi" href="#engine/assets"><i data-i="assets"></i>Assets</a>
+  <a class="mi" href="#engine/transitions"><i data-i="transitions"></i>Transitions</a>
+</div>
+<div class="menu glass" id="menu-event" hidden>
+  <div class="hd">Event</div>
+  <a class="mi" href="#engine/global"><i data-i="global"></i>Global<span class="st">teams, scores, casters</span></a>
+  <a class="mi" href="#engine/teams"><i data-i="teams"></i>Teams</a>
+  <a class="mi" href="#engine/tournament"><i data-i="bracket"></i>Tournament</a>
+  <a class="mi" href="#engine/schedule"><i data-i="schedule"></i>Schedule</a>
+  <div class="hd">System</div>
+  <a class="mi" href="#engine/outputs"><i data-i="outputs"></i>Outputs &amp; Network</a>
+  <a class="mi" href="#engine/data"><i data-i="data"></i>Data sources</a>
+</div>
+
+<main id="main">
+  <!-- Home -->
+  <section class="view" id="v-home" hidden>
+    <div class="home">
+      <div class="home-main">
+        <h1 id="greeting">Good evening.</h1>
+        <p class="lead">Pick tonight's game. Its HUD, readers and cams run next to the engine, all in this one app.</p>
+        <div class="games" id="home-games"></div>
+        <a class="gfxonly glass2" href="#engine/control">
+          <img src="assets/games/gfx.png" alt="">
+          <div><b>Graphics only</b><span>No game HUD: Control, Composer, Tournament, Standings, Schedule, Sponsors, Camera Control Room</span></div>
+          <span class="pills"><span>Bitfocus Companion</span><span>Outputs</span><span>.sccgfx import</span></span>
+        </a>
+        <h3 class="also-h">Also in this app</h3>
+        <div class="also">
+          <a class="glass2" href="#builder"><i data-i="builder"></i><b>HUD Builder</b><span>Design a HUD for any game</span></a>
+          <a class="glass2" href="#engine/tournament"><i data-i="bracket"></i><b>Tournament</b><span>Brackets, standings, schedule</span></a>
+          <a class="glass2" href="#engine/cameras"><i data-i="cams"></i><b>Camera Control Room</b><span>Every player cam in one place</span></a>
+          <a class="glass2" href="#stream"><i data-i="stream"></i><b>Multistream</b><span>OBS to 5 platforms</span></a>
+          <a class="glass2" href="#engine/outputs"><i data-i="outputs"></i><b>Outputs</b><span>Browser sources for OBS</span></a>
+        </div>
+      </div>
+      <aside class="home-side">
+        <div class="card glass2" id="card-match">
+          <h3><i data-i="global"></i>Tonight's match<a class="r" href="#engine/global">Edit in Event</a></h3>
+          <div class="match">
+            <div class="team" id="m-left"><div class="logo"></div><b></b></div>
+            <div class="score" id="m-score">– </div>
+            <div class="team" id="m-right"><div class="logo"></div><b></b></div>
+          </div>
+          <div class="li"><span>Event</span><span class="v" id="m-event">–</span></div>
+          <div class="li"><span>Format</span><span class="v" id="m-format">–</span></div>
+          <div class="li"><span>Workspace</span><span class="v" id="m-ws">–</span></div>
+        </div>
+        <div class="card glass2" id="card-air">
+          <h3><i data-i="outputs"></i>On air now<a class="r" href="#engine/control">Open Control</a></h3>
+          <div class="mons">
+            <div><div class="mon" id="mon-pvw"></div><small id="t-pvw">Preview</small></div>
+            <div><div class="mon" id="mon-pgm"></div><small id="t-pgm">Program</small></div>
+          </div>
+        </div>
+        <div class="card glass2">
+          <h3><i data-i="link"></i>On this PC<a class="r" href="#settings">Settings</a></h3>
+          <div id="home-parts"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- A part that isn't running -->
+  <section class="view" id="v-off" hidden>
+    <div class="off glass">
+      <img id="off-icon" alt="">
+      <h2 id="off-title"></h2>
+      <p id="off-text"></p>
+      <div class="row" id="off-actions"></div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section class="view" id="v-settings" hidden>
+    <div class="settings">
+      <h1>Settings</h1>
+      <div class="cols">
+        <div>
+          <div class="card glass2">
+            <h3>This PC's role</h3>
+            <p class="mut">What this PC does. It only changes which parts are switched on; you can change those one by one below.</p>
+            <div class="roles" id="roles"></div>
+          </div>
+          <div class="card glass2">
+            <h3>Parts on this PC</h3>
+            <p class="mut">Switched-on parts start with the app. Each keeps its usual port, so OBS links, Companion and cam links don't change.</p>
+            <div id="parts-list"></div>
+          </div>
+        </div>
+        <div>
+          <div class="card glass2" id="card-controlpc">
+            <h3>Control PC</h3>
+            <p class="mut">With no GFX Engine on this PC, Control, Composer and Event open the Control PC's. Its engine needs "Let other PCs connect" on (Outputs &amp; Network).</p>
+            <div class="row"><input id="control-pc" placeholder="e.g. 192.168.2.40" spellcheck="false"><button id="save-control-pc">Save</button></div>
+            <div class="mut small" id="control-pc-status"></div>
+          </div>
+          <div class="card glass2">
+            <h3>Appearance</h3>
+            <div class="li"><span>Background</span>
+              <span class="seg" id="bg-seg"><button data-bg="solid">Solid colour</button><button data-bg="loop">BG loop</button></span></div>
+            <div class="li"><span>Solid colour</span><input type="color" id="solid-colour"></div>
+            <div class="li"><span>Name on Home</span><input id="home-name" placeholder="SCC" maxlength="40"></div>
+            <p class="mut small">Each part's own look (Studio Black, Graphite, Daylight, Liquid Glass) is still in its Appearance page.</p>
+          </div>
+          <div class="card glass2" id="updates">
+            <h3>Updates</h3>
+            <div class="li"><span>Version</span><span class="v" id="u-version"></span></div>
+            <div class="li"><span>Latest</span><span class="v" id="u-latest"></span></div>
+            <div class="row"><button id="u-check">Check now</button><button class="k" id="u-install" hidden>Install update</button></div>
+            <p class="mut small">One update for everything: the engine, every game HUD, HUD Builder and Multistream. Your graphics and settings stay.</p>
+          </div>
+          <div class="card glass2">
+            <h3>Folders</h3>
+            <div class="li"><span>Installed in</span><span class="v mono" id="f-app"></span></div>
+            <div class="li"><span>Your data</span><span class="v mono" id="f-data"></span></div>
+            <div class="row"><button id="open-data">Open data folder</button><button id="open-app">Open install folder</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- First start -->
+  <section class="view" id="v-setup" hidden>
+    <div class="setup glass">
+      <img src="assets/logo.png" class="setup-logo" alt="">
+      <h1>Welcome to SCC Broadcast Engine</h1>
+      <p class="lead">What does this PC do? You can change it any time in Settings.</p>
+      <div class="roles big" id="setup-roles"></div>
+      <h3>Which games does it run?</h3>
+      <div class="gamepick" id="setup-games"></div>
+      <div class="row" id="setup-controlpc" hidden>
+        <input id="setup-control-pc" placeholder="Control PC's address, e.g. 192.168.2.40 (you can add it later)" spellcheck="false">
+      </div>
+      <div class="row end"><button class="k big" id="setup-go">Start</button></div>
+    </div>
+  </section>
+
+  <div id="frames"></div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

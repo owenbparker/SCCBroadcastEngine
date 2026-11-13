@@ -1,0 +1,376 @@
+// Drives the HUD and scoreboard templates (web/hud, web/scoreboard) from the
+// app's /api/state, by calling the templates' own Set* functions. Each call is
+// only made when its arguments change, so animations aren't restarted.
+//
+// URL options: ?fit=1 scales the 1920x1080 page to the window (the desktop
+// app's HUD-on-the-game window); ?scoreboard=0 leaves out the buy-phase
+// scoreboard, which the HUD otherwise carries (for when it's a separate
+// browser source).
+(function () {
+  var SCOREBOARD = location.pathname.indexOf("/scoreboard") === 0;
+  var params = new URLSearchParams(location.search);
+  var sent = {};
+
+  // Call fn(args...) unless it was last called with the same arguments.
+  function call(key, fn, args) {
+    var sig = JSON.stringify(args);
+    if (sent[key] === sig || typeof fn !== "function") return;
+    sent[key] = sig;
+    try { fn.apply(null, args); } catch (e) { console.warn(key, e); }
+  }
+
+  function setLogos(side, src) {
+    var n = side === "left" ? "1" : "2";
+    if (sent["logo" + n] === src) return;
+    sent["logo" + n] = src;
+    var url = "/" + String(src || "").split("/").map(encodeURIComponent).join("/");
+    document.querySelectorAll(".logo" + n + ", .logo" + n + "b, .logo" + n + "c").forEach(function (img) {
+      img.src = url;
+    });
+  }
+
+  function shieldCode(p) {
+    if (p.regen_shield) return "R";
+    return p.shield >= 50 ? "50" : p.shield > 0 ? "25" : "X";
+  }
+
+  // Buy phase: the scoreboard shows and the HUD's player panels slide away.
+  // Decided from the game's phase (read off the BUY PHASE banner, or the
+  // demo's), not the templates' own timers: those flip on every score
+  // change, so a page opened mid-round or a misread score left them the
+  // wrong way round, and each copy of the page out of step with the others.
+  var templateToggle = window.DisplayTeams;
+  window.DisplayTeams = function () {};
+  var board = { total: null, from: 0, until: 0 };
+  function wantBoard(m, cfg) {
+    if ((cfg.show || {}).scoreboard) return true;
+    if (m.phase === "buy") return true;
+    if (m.phase === "combat" || m.phase === "end") return false;
+    // Phase unknown (a feed that doesn't say): the templates' timing after a won round.
+    var total = (m.score.left || 0) + (m.score.right || 0), now = Date.now();
+    if (board.total !== null && total > board.total) { board.from = now + 6600; board.until = now + 34500; }
+    board.total = total;
+    return now >= board.from && now < board.until;
+  }
+  // In: the HUD's player panels slide away, then the scoreboard slides up
+  // from the bottom. Out: the scoreboard slides down, then the panels come
+  // back. (The HUD page and the scoreboard page each do their half, from
+  // the same state.)
+  function lowHealthStyle() {
+    if (document.getElementById("low-hp")) return;
+    var st = document.createElement("style");
+    st.id = "low-hp";
+    // (!important: the template restyles the panels every 50 ms.)
+    st.textContent =
+      ".low-hp > .rectangle-Team1 { background: linear-gradient(to right, rgb(112, 22, 32) 3%, rgb(38, 8, 12) 35%, rgb(0, 0, 0) 60%) !important; }" +
+      ".low-hp > .rectangle-Team2 { background: linear-gradient(to left, rgb(112, 22, 32) 3%, rgb(38, 8, 12) 35%, rgb(0, 0, 0) 60%) !important; }";
+    document.head.appendChild(st);
+  }
+  function boardArt() {
+    if (document.getElementById("board-art")) return;
+    var st = document.createElement("style");
+    st.id = "board-art";
+    st.textContent = "body { background-size: 0 0 !important; }" +
+      "body::before { content: ''; position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;" +
+      " z-index: -1; pointer-events: none; background-image: inherit; background-repeat: no-repeat;" +
+      " background-size: 1920px 1080px; }";
+    document.head.appendChild(st);
+  }
+  var PANELS_MS = 650, SLIDE_MS = 550, boardOn = null, boardTimer = null;
+  function showBoard(on) {
+    on = !!on;
+    if (on === boardOn) return;
+    var first = boardOn === null;
+    boardOn = on;
+    clearTimeout(boardTimer);
+    if (SCOREBOARD) {
+      // The slide moves the whole page. At rest nothing is moved at all:
+      // moving the scoreboard's own container shifts every piece positioned
+      // inside it. The panel art is the page background, which a browser
+      // paints on the canvas (it wouldn't move), so it's drawn on a layer of
+      // the page instead (see boardArt).
+      boardArt();
+      var root = document.documentElement.style, OFF = "translateY(480px)";
+      var slide = "transform " + SLIDE_MS + "ms cubic-bezier(.2,.8,.2,1)";
+      if (on) {
+        root.transition = "none";
+        root.transform = first ? "" : OFF;
+        root.opacity = "1";
+        if (!first) boardTimer = setTimeout(function () {
+          root.transition = slide;
+          root.transform = "translateY(0)";
+          boardTimer = setTimeout(function () { root.transition = "none"; root.transform = ""; }, SLIDE_MS + 50);
+        }, PANELS_MS);
+      } else if (first) {
+        root.opacity = "0";
+      } else {
+        root.transition = slide;
+        root.transform = OFF;
+        boardTimer = setTimeout(function () { root.opacity = "0"; root.transition = "none"; root.transform = ""; }, SLIDE_MS);
+      }
+    } else {
+      var toggle = function () {
+        var left = document.getElementById("teamIzquierda");
+        var hidden = left && left.style.left === "-385px";
+        if (left && boardOn !== !!hidden && typeof templateToggle === "function") templateToggle();
+      };
+      if (on || first) toggle();
+      else boardTimer = setTimeout(toggle, SLIDE_MS);   // after the scoreboard has slid away
+    }
+  }
+
+  // Sponsors (top right): the logos saved in the control panel, in turn
+  // (the template's own two until some are saved).
+  if (!SCOREBOARD && typeof SponsorTimer !== "undefined") clearInterval(SponsorTimer);
+  var sponsor = { key: "", i: 0, timer: null, swap: null };
+  var SPONSOR_FADE = 400;   // ms each way
+  function setSponsors(list, seconds) {
+    var logo = document.querySelector(".SponsorsLogo"), box = document.querySelector(".Sponsors");
+    if (SCOREBOARD || !logo) return;
+    var paths = (list && list.length ? list : ["hud/Resources/Sponsors/Sponsor1.png", "hud/Resources/Sponsors/Sponsor2.png"])
+      .map(function (p) { return "/" + String(p).split("/").map(encodeURIComponent).join("/"); });
+    var key = JSON.stringify([paths, seconds]);
+    if (key === sponsor.key) return;
+    sponsor.key = key;
+    sponsor.i = 0;
+    clearInterval(sponsor.timer);
+    if (box) box.style.display = "block";
+    // Each logo fades out, then the next fades in (the template's CSS
+    // transition on every property cross-blended one logo into the next).
+    Object.assign(logo.style, { backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center",
+                                transition: "opacity " + SPONSOR_FADE + "ms ease", opacity: "1" });
+    paths.forEach(function (p) { new Image().src = p; });   // loaded before their turn
+    function show() {
+      logo.style.backgroundImage = 'url("' + paths[sponsor.i % paths.length] + '")';
+      sponsor.i++;
+    }
+    function next() {
+      logo.style.opacity = "0";
+      clearTimeout(sponsor.swap);
+      sponsor.swap = setTimeout(function () { show(); logo.style.opacity = "1"; }, SPONSOR_FADE);
+    }
+    clearTimeout(sponsor.swap);
+    show();
+    if (paths.length > 1) sponsor.timer = setInterval(next, Math.max(1, Number(seconds) || 4) * 1000);
+  }
+
+  // 2v2 skirmish (config team_size 2): players 3-5 leave both pages. On the
+  // HUD the two tabs a side move up to leave room for each player's cam
+  // under their tab (web/cams.js); the scoreboard keeps its two top rows and
+  // drops down by the three rows it lost.
+  var DUO_TABS = [500, 790];   // the tabs' tops (each tab, then its cam, down to 1062)
+  function setDuo(on) {
+    document.documentElement.classList.toggle("scc-2v2", on);
+    if (document.getElementById("scc-2v2")) return;
+    var st = document.createElement("style");
+    st.id = "scc-2v2";
+    var hide = [3, 4, 5].map(function (i) { return "html.scc-2v2 .TIP" + i + ", html.scc-2v2 .TDP" + i; }).join(", ");
+    st.textContent = hide + " { display: none !important; }" + (SCOREBOARD
+      ? "html.scc-2v2 body > *, html.scc-2v2 body::before { translate: 0 167px; }" +
+        // (the panel art: cut above the third row, and its last strip filled in)
+        "html.scc-2v2 body::before { clip-path: inset(0 0 181px 0); }" +
+        "html.scc-2v2 body::after { content: ''; position: absolute; left: 0; top: 1066px; width: 1920px; height: 14px;" +
+        " background: #30323b; z-index: -1; pointer-events: none; }"
+      : DUO_TABS.map(function (top, n) {
+          return "html.scc-2v2 body > div.ScoreBoard > div.TeamIzquierda > div.TIP" + (n + 1) +
+            ", html.scc-2v2 body > div.ScoreBoard > div.TeamDerecha > div.TDP" + (n + 1) + " { top: " + top + "px; }";
+        }).join(""));
+    document.head.appendChild(st);
+  }
+
+  // The spike by its carrier's tab (the template only knows the 5v5 tabs).
+  function spikePlayer(slot, duo) {
+    SpikePlayer(slot);
+    var spike = document.getElementById("portador");
+    if (spike && duo && slot <= 2) spike.style.top = DUO_TABS[slot - 1] - 7 + "px";
+  }
+
+  // Player names on one line, made smaller to fit before the K / D / A (on
+  // the scoreboard) or the credits (on the HUD's tabs).
+  var NAME_ROOM = SCOREBOARD ? 143 : 180;
+  function setName(t, i, name) {
+    SetNamePlayer(t, i, name);
+    var el = document.querySelector(t === 0 ? ".TIP" + i + " > div.Name" : ".TDP" + i + " > div.Name2");
+    if (!el) return;
+    el.style.whiteSpace = "nowrap";
+    el.style.fontSize = "";
+    var size = parseFloat(getComputedStyle(el).fontSize) || 20;
+    // (a range measures the text itself, whatever the box's width)
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var scale = el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1;   // (?fit=1 scales the page)
+    var width = range.getBoundingClientRect().width / scale;
+    if (width > NAME_ROOM) el.style.fontSize = Math.max(11, Math.floor(size * NAME_ROOM / width)) + "px";
+  }
+  // (again once the HUD's fonts have loaded: they change the widths)
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () {
+    Object.keys(sent).forEach(function (k) { if (/:name$/.test(k)) delete sent[k]; });
+  });
+
+  var WIN_CODE = { Deactivation: "1", Elimination: "2", Time: "3", Detonation: "4" };
+
+  function applyState(s) {
+    var g = s.game, m = g.match, cfg = s.config;
+    SCC.state = s;  // SideRound() reads it
+    // New side colours: the app serves the template recoloured (see
+    // valhud/recolor.py), so the page loads again to pick them up.
+    var colours = [cfg.defense_color, cfg.attack_color].join();
+    if (sent.colours !== undefined && sent.colours !== colours) { location.reload(); return; }
+    sent.colours = colours;
+
+    // Teams, logos, score, series.
+    call("names", SetNameTeams, [cfg.left.name, cfg.left.tricode, cfg.right.name, cfg.right.tricode]);
+    setLogos("left", cfg.left.logo);
+    setLogos("right", cfg.right.logo);
+    call("round", SetRound, [m.score.left, m.score.right]);
+    var need = Math.min(3, Math.ceil((cfg.best_of || 1) / 2));
+    var series = JSON.stringify([need, cfg.left.wins, cfg.right.wins]);
+    if (sent.series !== series && typeof ModPL === "function") {
+      sent.series = series;
+      ModMatch = need;
+      SetP1 = Math.min(need, cfg.left.wins || 0);
+      SetP2 = Math.min(need, cfg.right.wins || 0);
+      ModPL(); SetModoP1(); SetModoP2();
+    }
+    // The series' maps across the top left: a won map with its score
+    // between the two logos, "CURRENT: ...", "NEXT: ..." (with the logo of
+    // the team that picked it) and, in a best of 3, "DECIDER: ...".
+    var shown = (cfg.best_of || 3) == 1 ? 1 : 3;
+    var logo = function (side) {
+      var src = side && cfg[side] && cfg[side].logo;
+      return src ? '<img src="/' + String(src).split("/").map(encodeURIComponent).join("/") +
+        '" style="height:13px;width:auto;margin:0 5px;vertical-align:-2px">' : "";
+    };
+    var esc = function (t) { return String(t || "").toUpperCase().replace(/[&<>"]/g, function (c) { return "&#" + c.charCodeAt(0) + ";"; }); };
+    [0, 1, 2].forEach(function (i) {
+      var map = i < shown ? (cfg.maps || [])[i] : null, label = "";
+      if (map && map.name) {
+        var name = esc(map.name);
+        if (map.winner && map.score) label = name + logo("left") + map.score.left + " - " + map.score.right + logo("right");
+        else if (map.winner) label = name + " <span>" + esc(cfg[map.winner].tricode) + "</span>";
+        else if (i === (cfg.current_map || 0)) label = "CURRENT: " + name + logo(map.picked_by);
+        else if (shown === 3 && i === 2) label = "DECIDER: " + name;
+        else label = "NEXT: " + name + logo(map.picked_by);
+      }
+      call("map" + i, SetMapResult, [i, label]);
+    });
+
+    // Players: team 0 is the left panel, team 1 the right; slots 1-5.
+    var duo = Number(cfg.team_size) === 2;
+    setDuo(duo);
+    g.players.forEach(function (p) {
+      var t = p.team === "left" ? 0 : 1, i = p.slot, k = "p" + t + i + ":";
+      // (2v2: the hidden players sort below the two on the scoreboard)
+      if (duo && i > 2) return call(k + "kda", SetPlayerKDA, [t, i, -1, 0, 0]);
+      call(k + "name", setName, [t, i, p.name]);
+      call(k + "agent", SetPlayerAgent, [t, i, p.agent || ""]);
+      if (p.weapon) call(k + "weapon", SetPlayerWeapon, [t, i, p.weapon, "contain"]);
+      else if (sent[k + "weapon"] !== "[]") {
+        // No gun (an empty loadout on the scoreboard): clear the old one.
+        sent[k + "weapon"] = "[]";
+        var gun = document.querySelector(t === 0 ? ".TIP" + i + " > div.Weapon1" : ".TDP" + i + " > div.Weapon2");
+        if (gun) gun.style.backgroundImage = "none";
+      }
+      call(k + "shield", SetPlayerShield, [t, i, shieldCode(p)]);
+      call(k + "hp", SetPlayerHP, [t, i, p.alive ? Math.max(1, p.health) : 0]);
+      call(k + "kda", SetPlayerKDA, [t, i, p.kills, p.deaths, p.assists]);
+      call(k + "creds", SetPlayerCreds, [t, i, p.credits]);
+      var max = Math.max(6, Math.min(9, p.ult_max || 7));
+      call(k + "ult", SetUltiPoints, [t, i, Math.min(p.ult_points, max), max]);
+      call(k + "ultready", SetUltiActive, [t, i, p.ult_points >= max ? 1 : 0]);
+      ["C", "Q", "E"].forEach(function (key, n) {
+        var a = (p.abilities || {})[key] || [0, 1];
+        call(k + "skill" + n, SetSkillsPoints, [t, n, i, Math.min(3, a[0]), Math.min(3, Math.max(1, a[1]))]);
+      });
+    });
+
+    if (SCOREBOARD) {
+      // Round history: per team, a code per round (0 = lost).
+      var codes = { left: [], right: [] };
+      (m.rounds || []).forEach(function (r) {
+        codes.left.push(r.winner === "left" ? WIN_CODE[r.win_type] || "2" : "0");
+        codes.right.push(r.winner === "right" ? WIN_CODE[r.win_type] || "2" : "0");
+      });
+      // Every round not played yet is "0" (the template reads a missing
+      // entry as a win and drops the round number into one row).
+      while (codes.left.length < 40) { codes.left.push("0"); codes.right.push("0"); }
+      // (The scores ride along so a new round redraws the round marker.)
+      call("rounds", RoundTeams, [codes.left.join("|"), codes.right.join("|"), m.score.left, m.score.right]);
+      showBoard(wantBoard(m, cfg));
+      return;
+    }
+
+    // The player the observer is spectating: the template's own highlight
+    // (it draws the panel named by CameraIndex in gold). And anyone alive
+    // under 20 health: their panel is tinted red.
+    var o = m.observed;
+    CameraIndex = o ? (o.team === "left" ? "TIP" : "TDP") + o.slot : "";
+    lowHealthStyle();
+    g.players.forEach(function (p) {
+      var el = document.querySelector((p.team === "left" ? ".TIP" : ".TDP") + p.slot);
+      if (el) el.classList.toggle("low-hp", !!p.alive && p.health > 0 && p.health < 20);
+    });
+
+    // The spike: planted animation, and who's carrying it.
+    var planted = m.spike.state === "planted";
+    call("planted", SlideSpike, [planted]);
+    var carrier = m.spike.carrier;
+    if (m.spike.state === "carried" && carrier && m.phase !== "end") {
+      call("spiketeam", SpikeTeam, [carrier[0] === "left" ? 0 : 1]);
+      call("spikeplayer", spikePlayer, [carrier[1], duo]);
+    } else {
+      call("spikeplayer", SpikePlayer, [0]);
+    }
+
+    // Timeouts left (2 diamonds a side), timeout cards and technical pause.
+    var to = cfg.timeouts || {};
+    var dots = function (n) { return n >= 2 ? "11" : n === 1 ? "10" : "00"; };
+    call("timeouts", ShowTimeOutPoints, [(cfg.show || {}).timeouts !== false, dots(to.left) + dots(to.right)]);
+    call("deftimeout", DefTimeOut, [cfg.timeout_call === "left"]);
+    call("atttimeout", AttTimeOut, [cfg.timeout_call === "right"]);
+    call("techpause", TechnicalPause, [!!cfg.tech_pause]);
+    showBoard(wantBoard(m, cfg));
+    setSponsors(cfg.sponsors, cfg.sponsor_seconds);
+    // The spectated player's webcam (web/cams.js), not over the scoreboard.
+    if (typeof window.renderCams === "function") window.renderCams(s, boardOn);
+  }
+
+  function poll() {
+    fetch("/api/state", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(applyState)
+      .catch(function () {})
+      .then(function () { setTimeout(poll, 250); });
+  }
+
+  // The buy-phase scoreboard is its own page (web/scoreboard): it shows
+  // itself after each round and hides for the next one. The HUD carries it,
+  // so the HUD window (and a single browser source) has it too.
+  if (!SCOREBOARD && params.get("scoreboard") !== "0") {
+    var board = document.createElement("iframe");
+    board.src = "/scoreboard";
+    board.title = "Scoreboard";
+    board.setAttribute("scrolling", "no");
+    Object.assign(board.style, { position: "absolute", left: "0", top: "0", width: "1920px", height: "1080px",
+                                 border: "0", background: "transparent", pointerEvents: "none", zIndex: "50" });
+    (document.body || document.documentElement).appendChild(board);
+  }
+
+  if (params.get("fit") === "1") {
+    // Scale with the screen's height, centred, like the game's own HUD.
+    // The template paints its top bar as the page background, which a
+    // transform doesn't scale; keep that background on a 1920x1080 body
+    // (an almost-invisible page background stops it moving to the page).
+    document.documentElement.style.background = "rgba(0,0,0,0.004)";
+    Object.assign(document.body.style, { width: "1920px", height: "1080px", margin: "0", position: "relative" });
+    var fit = function () {
+      var k = Math.min(innerHeight / 1080, innerWidth / 1920);
+      var root = document.documentElement.style;
+      root.transformOrigin = "0 0";
+      root.transform = "translateX(" + (innerWidth - 1920 * k) / 2 + "px) scale(" + k + ")";
+    };
+    addEventListener("resize", fit);
+    fit();
+  }
+  poll();
+})();

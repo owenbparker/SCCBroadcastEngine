@@ -1,0 +1,1424 @@
+import io
+import json
+import os
+import shutil
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import unittest
+import urllib.request
+import zipfile
+
+from PIL import Image
+
+from gfxengine import data, fonts, media
+from gfxengine.config import ROOT, Settings
+from gfxengine.live import Live
+from gfxengine.project import Workspace, blank_comp, blank_layer
+
+
+class DataTests(unittest.TestCase):
+    def test_google_links(self):
+        base = "https://docs.google.com/spreadsheets/d/ABC123/edit#gid=42"
+        self.assertEqual(data.gsheet_csv_url(base), "https://docs.google.com/spreadsheets/d/ABC123/export?format=csv&gid=42")
+        self.assertIn("gviz/tq?tqx=out:csv&sheet=Scores%201", data.gsheet_csv_url(base, "Scores 1"))
+        pub = "https://docs.google.com/spreadsheets/d/e/2PACX-xyz/pubhtml?gid=7"
+        self.assertEqual(data.gsheet_csv_url(pub), "https://docs.google.com/spreadsheets/d/e/2PACX-xyz/pub?output=csv&gid=7")
+        with self.assertRaises(ValueError):
+            data.gsheet_csv_url("https://example.com/nope")
+
+    def test_parsing_and_references(self):
+        rows, _ = data.parse("x.csv", b"Team,Score\nSCC,3\nGMU,1\n")
+        self.assertEqual(data.lookup(rows, "B2"), "3")
+        self.assertEqual(data.lookup(rows, "Score#2"), "1")
+        self.assertEqual(data.lookup(rows, "SCC"), "3")       # label | value
+        self.assertEqual(data.lookup(rows, "Z9"), "")
+        rows, _ = data.parse("x.json", json.dumps([{"a": 1, "b": "x"}, {"a": 2}]).encode())
+        self.assertEqual(rows, [["a", "b"], ["1", "x"], ["2", ""]])
+        rows, _ = data.parse("x.json", b'{"Score": 4, "Team": "SCC"}')
+        self.assertEqual(data.lookup(rows, "Team"), "SCC")
+        rows, _ = data.parse("x.txt", b"one\ntwo\n")
+        self.assertEqual(data.lookup(rows, "A2"), "two")
+        self.assertEqual(data.col_letters(27), "AB")
+        self.assertEqual(data.col_index("AB"), 27)
+
+    def test_excel(self):
+        from openpyxl import Workbook
+        wb = Workbook()
+        wb.active.title = "First"
+        wb.active.append(["Team", "Score"])
+        wb.active.append(["SCC", 3.0])
+        wb.create_sheet("Second").append(["x"])
+        buf = io.BytesIO()
+        wb.save(buf)
+        rows, sheets = data.parse("t.xlsx", buf.getvalue())
+        self.assertEqual(rows, [["Team", "Score"], ["SCC", "3"]])
+        self.assertEqual(sheets, ["First", "Second"])
+        rows, _ = data.parse("t.xlsx", buf.getvalue(), "Second")
+        self.assertEqual(rows, [["x"]])
+
+
+class FontTests(unittest.TestCase):
+    def test_names(self):
+        n = fonts.names(os.path.join(ROOT, "web", "fonts", "Inter.ttf"))
+        self.assertTrue(n["postscript"].startswith("Inter"), n)
+        self.assertEqual(n["family"], "Inter")
+        self.assertEqual(fonts.names(os.path.join(ROOT, "web", "fonts", "Montserrat-700.woff2"))["postscript"], "Montserrat-700")
+
+
+class LiveTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.ws = Workspace(self.dir, starter="")
+        self.a = self.ws.add_comp(blank_comp("A"))
+        self.b = self.ws.add_comp(blank_comp("B"))
+        self.live = Live(self.ws)
+
+    def tearDown(self):
+        self.ws.close()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_preview_take_program(self):
+        live = self.live
+        live.cue(self.b["id"])
+        live.cue(self.a["id"])
+        self.assertEqual(live.get()["preview"]["on"], [self.a["id"], self.b["id"]])   # project order
+        live.set_values(self.a["id"], {"Name": "Owen"})
+        t = live.take("fade")
+        state = live.get()
+        self.assertEqual(t["type"], "fade")
+        self.assertEqual(state["program"]["on"], [self.a["id"], self.b["id"]])
+        self.assertEqual(state["program"]["values"][self.a["id"]], {"Name": "Owen"})
+        self.assertEqual(state["take"]["seq"], 1)
+        self.assertEqual(state["preview"]["on"], [])          # taken: off Preview
+        # New values on Preview stay off air until sent.
+        live.set_values(self.a["id"], {"Name": "Sam"})
+        self.assertEqual(live.get()["program"]["values"][self.a["id"]]["Name"], "Owen")
+        live.send_values(self.a["id"])
+        self.assertEqual(live.get()["program"]["values"][self.a["id"]]["Name"], "Sam")
+        self.assertEqual(live.get()["take"]["seq"], 1)      # no transition for that
+        live.program(self.b["id"], False)
+        state = live.get()
+        self.assertEqual(state["program"]["on"], [self.a["id"]])
+        self.assertEqual(state["take"]["comps"], [self.b["id"]])
+        live.take("cut")                                      # always there (nothing on Preview: nothing changes)
+        self.assertEqual(live.get()["program"]["on"], [self.a["id"]])
+        live.clear()
+        self.assertEqual(live.get()["program"]["on"], [])
+        with self.assertRaises(KeyError):
+            live.take("nope")
+        with self.assertRaises(KeyError):
+            live.cue("nope")
+        # Saved, and read back.
+        live.cue(self.b["id"])
+        self.assertEqual(Live(self.ws).get()["preview"]["on"], [self.b["id"]])
+
+    def test_one_board_and_one_lower_third(self):
+        live, ws = self.live, self.ws
+        board2 = ws.add_comp(dict(blank_comp("Board 2"), kind="board"))
+        lt1 = ws.add_comp(dict(blank_comp("LT 1"), kind="lower third"))
+        lt2 = ws.add_comp(dict(blank_comp("LT 2"), kind="lower third"))
+        for c in (self.a,):
+            ws.put_comp(dict(ws.comp(c["id"]), kind="board"))
+        # (b is an overlay)
+        live.cue(self.a["id"]); live.cue(board2["id"])
+        self.assertEqual(live.get()["preview"]["on"], [board2["id"]])        # the other board went
+        live.cue(lt1["id"]); live.cue(self.b["id"])
+        live.take("cut")
+        self.assertEqual(set(live.get()["program"]["on"]), {board2["id"], lt1["id"], self.b["id"]})
+        live.cue(lt2["id"])
+        live.take("cut")                                      # replaces the lower third only
+        self.assertEqual(set(live.get()["program"]["on"]), {board2["id"], lt2["id"], self.b["id"]})
+        live.cue(self.a["id"])
+        live.program(self.a["id"], True)                      # IN: the board swaps, and it's off Preview
+        state = live.get()
+        self.assertEqual(set(state["program"]["on"]), {self.a["id"], lt2["id"], self.b["id"]})
+        self.assertEqual(state["preview"]["on"], [])
+
+    def test_delete_takes_it_off(self):
+        self.live.cue(self.a["id"])
+        self.live.take("cut")
+        self.ws.delete_comp(self.a["id"])
+        self.live.forget(self.a["id"])
+        self.assertEqual(self.live.get()["program"]["on"], [])
+
+
+class PsdTests(unittest.TestCase):
+    def test_import(self):
+        from psd_tools import PSDImage
+        from gfxengine.psdimport import import_psd
+        tmp = tempfile.mkdtemp()
+        try:
+            img = Image.new("RGBA", (1920, 1080), (0, 0, 0, 0))
+            img.paste((10, 120, 60, 255), (100, 800, 900, 980))
+            psd = PSDImage.frompil(img)
+            path = os.path.join(tmp, "Lower third.psd")
+            psd.save(path)
+            ws = Workspace(os.path.join(tmp, "ws"), starter="")
+            comp, used_fonts = import_psd(path, ws)
+            ws.close()
+            self.assertEqual(comp["name"], "Lower third")
+            self.assertGreaterEqual(len(comp["layers"]), 1)
+            layer = comp["layers"][0]
+            self.assertEqual(layer["type"], "image")
+            self.assertTrue(os.path.isfile(ws.asset_path(layer["src"])))
+            self.assertIn("in", layer["anim"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_import_button(self):
+        # Composer's Import: PSB, OpenRaster, a picture; Affinity says how to export.
+        import zipfile
+        from psd_tools import PSDImage
+        from gfxengine.assets import Assets
+        tmp = tempfile.mkdtemp()
+        try:
+            ws = Workspace(os.path.join(tmp, "ws"), starter="")
+            assets = Assets(ws, None)
+
+            def add(name, write):
+                src = os.path.join(tmp, "up-" + name)
+                write(src)
+                return assets.add(name, src, graphic=True)
+            img = Image.new("RGBA", (1920, 1080), (0, 0, 0, 0))
+            img.paste((10, 120, 60, 255), (100, 800, 900, 980))
+
+            def psb(p):
+                psd = PSDImage.frompil(img)
+                psd._record.header.version = 2
+                psd.save(p)
+            comp = add("Big.psb", psb)["comps"][0]
+            self.assertEqual(comp["name"], "Big")
+            self.assertTrue(comp["layers"])
+
+            def ora(p):
+                with zipfile.ZipFile(p, "w") as z:
+                    z.writestr("mimetype", "image/openraster")
+                    z.writestr("stack.xml", '<image w="1920" h="1080"><stack>'
+                               '<layer name="Bar" src="data/bar.png" x="50" y="700" opacity="0.5"/>'
+                               '<stack name="G" x="10" y="0"><layer name="Back" src="data/back.png" x="0" y="0"/></stack>'
+                               '</stack></image>')
+                    for n, im in (("bar", Image.new("RGBA", (400, 80), (255, 0, 0, 255))),
+                                  ("back", Image.new("RGBA", (1920, 1080), (0, 0, 40, 255)))):
+                        import io
+                        b = io.BytesIO()
+                        im.save(b, "PNG")
+                        z.writestr(f"data/{n}.png", b.getvalue())
+            r = add("Lower.ora", ora)
+            layers = r["comps"][0]["layers"]
+            self.assertEqual([l["name"] for l in layers], ["Back", "Bar"])
+            self.assertEqual((layers[0]["x"], layers[1]["x"], layers[1]["y"], layers[1]["opacity"]), (10, 50, 700, 0.5))
+            self.assertTrue(os.path.isfile(ws.asset_path(layers[1]["src"])))
+
+            r = add("Logo.png", lambda p: Image.new("RGBA", (400, 200), (1, 2, 3, 255)).save(p))
+            layer = r["comps"][0]["layers"][0]
+            self.assertEqual((layer["x"], layer["y"], layer["w"], layer["h"]), (760, 440, 400, 200))
+            self.assertTrue(os.path.isfile(ws.asset_path(layer["src"])))
+
+            src = os.path.join(tmp, "x.afdesign")
+            with open(src, "wb") as f:
+                f.write(b"\x00\xffKA")
+            with self.assertRaisesRegex(ValueError, "Preserve Editability"):
+                assets.add("Scorebug.afdesign", src, graphic=True)
+            self.assertFalse(os.path.exists(src))
+            self.assertEqual(len(ws.data["compositions"]), 3)
+            ws.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+@unittest.skipUnless(media.ffmpeg_path(), "needs FFmpeg")
+class MediaTests(unittest.TestCase):
+    def test_png_sequence_to_see_through_video_and_stinger_cut(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            # 12 frames: see-through, then covering everything from frame 6.
+            for i in range(12):
+                im = Image.new("RGBA", (64, 36), (0, 0, 0, 0))
+                if i >= 6:
+                    im.paste((0, 100, 50, 255), (0, 0, 64, 36))
+                else:
+                    im.paste((250, 200, 20, 255), (0, 0, 10 * i + 1, 36))
+                im.save(os.path.join(tmp, f"f{i:06d}.png"))
+            out = media.convert(os.path.join(tmp, "f%06d.png"), os.path.join(tmp, "out"), alpha=True, fps=12, sequence=True)
+            self.assertTrue(out.endswith(".webm"))
+            info = media.probe(out)
+            self.assertTrue(info["alpha"], info)
+            self.assertTrue(media.playable(out, info))
+            cut = media.stinger_cut(out, info)
+            self.assertIsNotNone(cut)
+            self.assertGreater(cut, 300)
+            self.assertLess(cut, 700)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class StatsTests(unittest.TestCase):
+    def test_games_to_one_table(self):
+        from gfxengine import stats
+        f = {"LEFT P1 NAME": "Owen", "LEFT P1 AGENT": "Jett", "LEFT P1 K": "12", "LEFT P1 D": "4", "LEFT P1 A": "3", "LEFT P1 FK": "2",
+             "RIGHT P1 NAME": "Sam", "RIGHT P1 K": "5", "RIGHT P1 D": "9", "SCORE LEFT": "7"}
+        t = dict(stats.rows(stats.read("valorant", f), True, {"left": "SCC"})[1:])
+        self.assertEqual((t["Status"], t["Left score"], t["Left player 1"], t["Left player 1 stat 2"]), ("LIVE", "7", "Owen", "4"))
+        self.assertEqual((t["MVP"], t["MVP team"], t["MVP K/D"], t["Stat 1 title"]), ("Owen", "SCC", "3.00", "KILLS"))
+        # VALORANT: kills, deaths, assists (+ first kills on Player stats); the big number is rounds won; agent icons.
+        self.assertEqual((t["Left player 1 stat 1"], t["Left stat 3"], t["Row 4 title"], t["MVP row 4"], t["Left kills"],
+                          t["Left total kills"]), ("12", "3", "FIRST KILLS", "2", "7", "12"))
+        pics = dict(stats.rows(stats.read("valorant", f), True, {}, "auto", None, {"team": {"left": "champion"}, "player": {"left": "headshot"}})[1:])
+        self.assertEqual((pics["Left player 1 champion"], pics["MVP champion"]), ("agents/Jett.png", ""))
+        lol = stats.read("lol", {"P1 NAME": "A", "P1 KDA": "3/1/7", "KILLS LEFT": 3})
+        self.assertEqual((lol["left"]["players"][0]["stats"], lol["left"]["score"]), ([3, 1, 7], 3))
+        rl = dict(stats.rows(stats.read("rl", {"left_p1_name": "B", "left_p1_goals": 2}), False)[1:])
+        self.assertEqual((rl["Status"], rl["Stat 1 title"], rl["Left player 1 stat 1"]), ("FINAL", "GOALS", "2"))
+        self.assertIsNone(stats.read("valorant", {"SCORE LEFT": 3}))      # no players: no game going
+        self.assertIsNone(stats.read("cod", f))
+        # League: K/D/A, CS, DMG (damage once the game is over), GOLD; each team's kills.
+        lf = {"P1 NAME": "A", "P1 KDA": "3/1/7", "P1 CS": "210", "P1 GOLD RAW": "9800", "P6 NAME": "B", "P6 KDA": "1/3/0"}
+        t = dict(stats.rows(stats.read("lol", lf), True)[1:])
+        self.assertEqual((t["Stat 1 title"], t["Row 4 title"], t["Left player 1 stat 1"], t["Left player 1 stat 3"],
+                          t["MVP row 4"], t["Left kills"], t["Right kills"]), ("K/D/A", "GOLD", "3/1/7", "–", "9.8K", "3", "1"))
+        # (stats kept by the version before: no "values")
+        old = stats.read("lol", lf)
+        for side in ("left", "right"):
+            for p in old[side]["players"]:
+                p.pop("values")
+        self.assertEqual(dict(stats.rows(old, False)[1:])["MVP row 3"], "–")
+        lf["P1 DMG"] = "23456"
+        self.assertEqual(dict(stats.rows(stats.read("lol", lf), False)[1:])["MVP row 3"], "23,456")
+        # Overwatch: DMG, kills, deaths (+ healing on Player stats); the MVP has the most damage; hero pictures.
+        of = {"left_p1_name": "Ana", "left_p1_hero": "Ana", "left_p1_hero_icon": "http://localhost:8785/heroes/ana",
+              "left_p1_kills": 4, "left_p1_deaths": 2, "left_p1_damage": 3000, "left_p1_healing": 12345,
+              "left_p2_name": "Rein", "left_p2_kills": 20, "left_p2_damage": 15000, "left_score": 1}
+        t = dict(stats.rows(stats.read("overwatch", of), False, {}, "auto", None, {"left": "champion"})[1:])
+        self.assertEqual((t["Stat 1 title"], t["Stat 2 title"], t["Stat 3 title"], t["Row 4 title"]), ("DMG", "KILLS", "DEATHS", "HEALING"))
+        self.assertEqual((t["Left stat 1"], t["Left player 1 stat 1"], t["Left player 1 character"], t["Left player 1 champion"]),
+                         ("18,000", "3,000", "Ana", "http://localhost:8785/heroes/ana"))
+        self.assertEqual((t["MVP"], t["MVP row 1"], t["Game"]), ("Rein", "15,000", "Overwatch"))
+        t = dict(stats.rows(stats.read("overwatch", of), False, {}, "left 1")[1:])
+        self.assertEqual(t["MVP row 4"], "12,345")
+        # Call of Duty: nothing until the HUD reads the end-of-game scoreboard
+        # (its names come all game); then K/D/A, DMG, K/D and kills, deaths, assists, damage.
+        cf = {"left_p1_ign": "JayK", "left_p1_name": "Jay K", "right_p1_ign": "IceDagger"}
+        self.assertIsNone(stats.read("cod", cf))
+        cf.update({"postgame": 1, "stats_final": 1, "left_p1_kills": 17, "left_p1_deaths": 10, "left_p1_assists": 6,
+                   "left_p1_damage": 1866, "left_p2_ign": "A47", "left_p2_kills": 23, "left_p2_deaths": 4,
+                   "left_p2_assists": 4, "left_p2_damage": 2188, "right_p1_kills": 10, "right_p1_deaths": 18,
+                   "right_p1_assists": 1, "right_p1_damage": 1038})
+        t = dict(stats.rows(stats.read("cod", cf), False)[1:])
+        self.assertEqual((t["Stat 1 title"], t["Stat 2 title"], t["Stat 3 title"]), ("K/D/A", "DMG", "K/D"))
+        self.assertEqual([t[f"Row {i} title"] for i in range(1, 5)], ["KILLS", "DEATHS", "ASSISTS", "DMG"])
+        self.assertEqual((t["Left player 1"], t["Left player 1 stat 1"], t["Left player 1 stat 2"], t["Left stat 1"], t["Left stat 2"]),
+                         ("JayK", "17/10/6", "1,866", "40/14/10", "4,054"))
+        self.assertEqual((t["MVP"], t["MVP row 1"], t["MVP row 4"], t["Game"]), ("A47", "23", "2,188", "Call of Duty"))
+        s = stats.Stats(tempfile.mkdtemp())
+        self.assertTrue(s.update("CoD HUD", "cod", cf))
+        self.assertFalse(s.live())     # (read after the game: FINAL)
+
+    def test_player_stats_pick_and_roster(self):
+        from gfxengine import stats
+        from gfxengine.teams import player_named
+        team = {"players": [{"name": "Owen Parker", "ign": "Owen", "country": "ca", "photo": "library/teams/players/o.png"},
+                            {"name": "Sam Lee", "ign": "Sammy", "country": "", "photo": ""}]}
+        f = {"LEFT P1 NAME": "owen#NA1", "LEFT P1 K": "12", "LEFT P2 NAME": "Sammy", "LEFT P2 K": "20",
+             "RIGHT P1 NAME": "Zed", "RIGHT P1 K": "15"}
+        look = lambda side, name: player_named(team, name) if side == "left" else None
+        auto = dict(stats.rows(stats.read("valorant", f), True, {}, "auto", look)[1:])
+        self.assertEqual((auto["MVP"], auto["MVP name"], auto["MVP picked"], auto["MVP headshot shown"]), ("Sammy", "Sam Lee", "auto", ""))
+        mine = dict(stats.rows(stats.read("valorant", f), True, {}, "left 1", look)[1:])
+        self.assertEqual((mine["MVP name"], mine["MVP flag"], mine["MVP headshot"], mine["MVP stat 1"]),
+                         ("Owen Parker", "flags/ca.svg", "library/teams/players/o.png", "12"))
+        other = dict(stats.rows(stats.read("valorant", f), True, {}, "right 1", look)[1:])
+        self.assertEqual((other["MVP name"], other["MVP flag shown"]), ("Zed", ""))
+        self.assertEqual((mine["Left player 1"], mine["Left player 1 ID"], mine["Left player 2"]), ("Owen Parker", "owen#NA1", "Sam Lee"))
+        self.assertIsNone(player_named(team, "Sam Lee"))              # (only the in-game ID links a player)
+        gone = dict(stats.rows(stats.read("valorant", f), True, {}, "right 4", look)[1:])
+        self.assertEqual(gone["MVP"], "Sammy")                        # (picked one not in the game: the top one)
+        self.assertEqual(dict(stats.rows(None, False)[1:])["MVP headshot shown"], "1")
+
+    def test_champion_or_headshot(self):
+        from gfxengine import stats
+        from gfxengine.teams import player_named
+        team = {"players": [{"name": "Owen Parker", "ign": "Owen", "country": "ca", "photo": "library/teams/players/o.png"}]}
+        icon = "https://ddragon.leagueoflegends.com/cdn/15.20.1/img/champion/Ahri.png"
+        f = {"P1 NAME": "Owen", "P1 KDA": "5/1/2", "P1 CHAMPION ICON": icon, "P6 NAME": "Zed", "P6 KDA": "1/5/0"}
+        look = lambda side, name: player_named(team, name) if side == "left" else None
+        heads = dict(stats.rows(stats.read("lol", f), True, {}, "auto", look, {"left": "headshot"})[1:])
+        self.assertEqual((heads["Left player 1 headshot"], heads["Left player 1 champion"], heads["MVP headshot shown"]),
+                         ("library/teams/players/o.png", "", "1"))
+        champs = dict(stats.rows(stats.read("lol", f), True, {}, "auto", look, {"left": "champion"})[1:])
+        self.assertEqual((champs["Left player 1 headshot"], champs["Left player 1 champion"], champs["MVP headshot"]), ("", icon, ""))
+        self.assertEqual(champs["MVP champion"], "https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/Ahri_0.jpg")
+
+    def test_kept_after_the_game(self):
+        from gfxengine.stats import Stats
+        tmp = tempfile.mkdtemp()
+        try:
+            s = Stats(tmp)
+            self.assertTrue(s.update("VAL HUD", "valorant", {"LEFT P1 NAME": "Owen", "LEFT P1 K": 3}))
+            self.assertFalse(s.update("VAL HUD", "valorant", {"LEFT P1 NAME": "Owen", "LEFT P1 K": 3}))
+            self.assertFalse(s.update("VAL HUD", "valorant", {}))           # nothing: the stats stay
+            again = Stats(tmp)                                               # (an engine restart)
+            self.assertFalse(again.live())
+            t = dict(again.rows()[1:])
+            self.assertEqual((t["Status"], t["Left player 1"]), ("FINAL", "Owen"))
+            again.clear()
+            self.assertEqual(dict(Stats(tmp).rows()[1:])["Status"], "")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class RosterLinkTests(unittest.TestCase):
+    def test_save_ign_to_player(self):
+        from gfxengine.teams import Teams
+        d = tempfile.mkdtemp()
+        try:
+            t = Teams(d)
+            t.save([{"name": "Saints", "game": "League of Legends", "players": [
+                {"name": "Topablo", "ign": "Old"}, {"name": "Matty", "ign": "Pablo"}]}])
+            team = t.link("saints", "League of Legends", 0, "Pablo")
+            self.assertEqual([p["ign"] for p in team["players"]], ["Pablo", ""])   # (one player per in-game ID)
+            with self.assertRaises(ValueError):
+                t.link("Saints", "", 5, "x")
+        finally:
+            shutil.rmtree(d)
+
+
+class HeadshotTests(unittest.TestCase):
+    def test_trimmed_to_the_player(self):
+        from gfxengine.teams import trim_photo
+        d = tempfile.mkdtemp()
+        try:
+            path = os.path.join(d, "p.png")
+            im = Image.new("RGBA", (400, 600), (0, 0, 0, 0))
+            im.paste((200, 50, 50, 255), (100, 200, 300, 600))
+            im.save(path)
+            self.assertTrue(trim_photo(path))
+            self.assertEqual(Image.open(path).size, (204, 402))     # (the player, and 2px around)
+            self.assertFalse(trim_photo(path))                       # (once is enough)
+        finally:
+            shutil.rmtree(d)
+
+
+class PicturesTests(unittest.TestCase):
+    def test_team_and_player_stats_each_have_their_own(self):
+        from gfxengine import globalcfg
+        old = globalcfg.clean({"pictures": {"left": "champion", "right": "headshot"}})["pictures"]   # (v1.0.20-23)
+        self.assertEqual(old["team"], old["player"])
+        self.assertEqual(old["player"], {"left": "champion", "right": "headshot"})
+
+
+class UpdaterTests(unittest.TestCase):
+    def test_update_leaves_the_users_files(self):
+        from gfxengine.updater import Updater
+        u = Updater()
+        u.work_dir = tempfile.mkdtemp()
+        try:
+            with open(u._write_script(os.path.join(u.work_dir, "new")), encoding="utf-8") as f:
+                text = f.read()
+        finally:
+            shutil.rmtree(u.work_dir)
+        copy = [l for l in text.splitlines() if "/XD _internal" in l][0]
+        for kept in ("workspaces", "workspace", "library", "settings.json"):
+            self.assertIn(" " + kept, copy)
+
+
+class GlobalTests(unittest.TestCase):
+    def test_sponsors_rotate(self):
+        from gfxengine import globalcfg
+        g = globalcfg.clean({"sponsors": [{"logo": "a.png", "secs": 5}, {"logo": "b.png", "secs": 0}, {"secs": 3}],
+                             "sponsor_epoch": 100})
+        self.assertEqual([s["secs"] for s in g["sponsors"]], [5, 1])       # at least a second; no logo, no sponsor
+        self.assertEqual(globalcfg.sponsor_now(g, 102), (0, 3))
+        self.assertEqual(globalcfg.sponsor_now(g, 105.5)[0], 1)
+        self.assertEqual(globalcfg.sponsor_now(g, 106)[0], 0)              # and round again
+        new = globalcfg.sponsors_changed(g, globalcfg.clean(dict(g, sponsors=[{"logo": "b.png", "secs": 4}])))
+        self.assertGreater(new["sponsor_epoch"], 100)
+        rows = dict(globalcfg.rows(new)[1:])
+        self.assertEqual((rows["Sponsor logo"], rows["Sponsors"]), ("b.png", "1"))
+        self.assertEqual(rows["BG loop"], globalcfg.DEFAULT_LOOP)
+        self.assertEqual(dict(globalcfg.rows(dict(new, bgloop={"on": False}))[1:])["BG loop"], "")
+
+
+class TimerTests(unittest.TestCase):
+    def test_start_pause_reset_and_count_down(self):
+        from gfxengine import globalcfg as gc
+        t = gc.clean({})["timer"]
+        t = gc.timer_action(t, "start", now=100)
+        self.assertEqual(gc.timer_now(t, 165), 65)
+        t = gc.timer_action(t, "toggle", now=165)                          # pause
+        self.assertEqual((t["started"], gc.timer_now(t, 999)), (0, 65))
+        t = gc.timer_action(t, "reset", now=170)
+        self.assertEqual(t["secs"], 0)
+        t = gc.timer_action(t, "set", secs=gc.parse_secs("5:00"), down=True, now=200)
+        t = gc.timer_action(t, "start", now=200)
+        self.assertEqual(gc.timer_now(t, 230), 270)
+        self.assertEqual(gc.timer_now(t, 900), 0)                          # stops at 0
+        self.assertFalse(gc.timer_running(t, 900))
+        t = gc.timer_action(t, "toggle", now=900)                           # ran out: starts again from 5:00
+        self.assertEqual(gc.timer_now(t, 910), 290)
+        self.assertEqual(gc.parse_secs("1:02:03"), 3723)
+        rows = dict(gc.rows({"timer": t})[1:])
+        self.assertEqual((rows["Timer down"], float(rows["Timer secs"])), ("1", 300))
+
+
+class PackTests(unittest.TestCase):
+    def test_untouched_graphics_are_brought_up_to_date(self):
+        from gfxengine import pack
+        tmp = tempfile.mkdtemp()
+        try:
+            starter = os.path.join(tmp, "starter")
+            os.makedirs(os.path.join(starter, "assets"))
+            Image.new("RGB", (4, 4)).save(os.path.join(starter, "assets", "new.png"))
+            old = blank_comp("Board")
+            old["layers"].append(blank_layer("text", text="v1"))
+            kept = blank_comp("Mine")
+            new = json.loads(json.dumps(old))
+            new["layers"][0]["text"] = "v2"
+            new["layers"].append(dict(blank_layer("image"), src="assets/new.png"))
+            mine_new = dict(kept, w=10)
+            with open(os.path.join(starter, "project.json"), "w") as f:
+                json.dump({"compositions": [new, mine_new], "global": {"sponsors": [{"logo": "assets/new.png", "secs": 5}]},
+                           "pack_history": {"Board": [pack.signature(old)], "Mine": [pack.signature(kept)]}}, f)
+            ws = Workspace(os.path.join(tmp, "ws"))
+            changed = json.loads(json.dumps(kept))
+            changed["layers"].append(blank_layer("text"))                  # changed in Composer: left alone
+            ws.data["compositions"] = [json.loads(json.dumps(old)), changed]
+            self.assertEqual(pack.upgrade(ws, starter), ["Board"])
+            board = ws.data["compositions"][0]
+            self.assertEqual((board["id"], board["layers"][0]["text"]), (old["id"], "v2"))
+            self.assertTrue(os.path.isfile(os.path.join(ws.folder, "assets", "new.png")))
+            self.assertEqual(ws.data["compositions"][1], changed)
+            self.assertEqual(ws.data["global"]["sponsors"][0]["logo"], "assets/new.png")
+            self.assertEqual(pack.upgrade(ws, starter), [])
+            ws.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_starter_is_linked(self):
+        with open(os.path.join(ROOT, "starter", "project.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        comps = {c["name"]: c for c in data["compositions"]}
+        for name in ("Schedule", "Team stats", "Player stats"):
+            self.assertTrue(any(l["name"] == "Background loop" for l in comps[name]["layers"]), name)
+        srcs = {l.get("src") for l in comps["Scorebug & footer"]["layers"]}
+        self.assertTrue({"{{Global!Left logo}}", "{{Global!Right logo}}", "{{Sponsors}}"} <= srcs)
+        self.assertTrue(data["global"]["sponsors"])
+        for sp in data["global"]["sponsors"]:
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, "starter", sp["logo"])), sp)
+        self.assertTrue(data["pack_history"])
+        kinds = {c["name"]: c.get("kind") for c in data["compositions"]}
+        self.assertEqual((kinds["Schedule"], kinds["Caster lower third"], kinds["Scorebug & footer"]), ("board", "lower third", "overlay"))
+        self.assertTrue(any(l["type"] == "bracket" for l in comps["Top 8 bracket"]["layers"]))
+        self.assertTrue(any("{{Tournament!Group A 1st}}" == l.get("text") for l in comps["Group bracket"]["layers"]))
+        self.assertTrue(data["global"]["ticker"])
+        self.assertFalse({"Title screen", "Starting soon", "Team graphic", "Sponsor footer"} & set(comps))
+        self.assertEqual(len(data["global"]["sponsors"]), 8)
+        self.assertTrue(any(l.get("src") == "{{Sponsors all}}" for l in comps["Team stats"]["layers"]))
+        sch = comps["Schedule"]["layers"]
+        self.assertEqual(len([l for l in sch if l.get("show") == "{{Schedule!Match 3 show}}"]), 6)
+        self.assertTrue(any(l.get("src") == "{{Global!Left logo}}" for l in sch))
+        self.assertTrue(all(l.get("divider") for l in sch if l.get("scroll")))
+        self.assertEqual(len(data["global"]["schedule"]["matches"]), 3)
+        self.assertEqual([l["text"] for l in sch if l["name"].startswith("Clock")], ["{{clock}}", "{{Global!Clock label}}"])
+        bug = comps["Timer bug"]
+        self.assertEqual([l.get("text") for l in bug["layers"]], [None, "HIGHLIGHTS", "{{timer}}"])
+        self.assertTrue(os.path.isfile(os.path.join(ROOT, "starter", bug["layers"][0]["src"])))
+        self.assertIn("Timer bug", data["pack_new"])
+
+
+class PackUpgradeTests(unittest.TestCase):
+    def test_removed_graphics_and_new_sponsors(self):
+        from gfxengine import pack
+        tmp = tempfile.mkdtemp()
+        try:
+            old = dict(blank_comp("Title screen"), id="c1")
+            edited = dict(blank_comp("Starting soon"), id="c2", width=1280)
+            kept = dict(blank_comp("Schedule"), id="c3")
+            starter = os.path.join(tmp, "starter")
+            os.makedirs(os.path.join(starter, "assets", "sponsors"))
+            with open(os.path.join(starter, "assets", "sponsors", "Intel logo.png"), "wb") as f:
+                f.write(b"png")
+            with open(os.path.join(starter, "project.json"), "w") as f:
+                json.dump({"compositions": [kept], "pack_removed": ["Title screen", "Starting soon"],
+                           "pack_history": {"Title screen": [pack.signature(old)], "Starting soon": [pack.signature(blank_comp("Starting soon"))]},
+                           "global": {"sponsor_set": 2, "sponsors": [{"logo": "assets/sponsors/Intel logo.png", "secs": 10}]}}, f)
+            ws = Workspace(os.path.join(tmp, "ws"), starter="")
+            ws.data["compositions"] = [old, edited, kept]
+            ws.data["global"] = {"sponsors": [{"logo": "assets/sponsors/Subway.png", "secs": 10}]}
+            pack.upgrade(ws, starter)
+            # The untouched graphic goes, the edited one stays; the old sponsors are replaced.
+            self.assertEqual([c["name"] for c in ws.data["compositions"]], ["Starting soon", "Schedule"])
+            self.assertEqual([sp["logo"] for sp in ws.data["global"]["sponsors"]], ["assets/sponsors/Intel logo.png"])
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "ws", "assets", "sponsors", "Intel logo.png")))
+            # Sponsors someone chose themselves stay.
+            ws.data["global"]["sponsors"] = [{"logo": "assets/sponsors/Mine.png", "secs": 5}]
+            pack.upgrade(ws, starter)
+            self.assertEqual(ws.data["global"]["sponsors"][0]["logo"], "assets/sponsors/Mine.png")
+            # A graphic new to the pack: added once, and stays deleted if deleted.
+            with open(os.path.join(starter, "project.json")) as f:
+                project = json.load(f)
+            project["compositions"].append(dict(blank_comp("Timer bug"), id="c9"))
+            project["pack_new"] = ["Timer bug"]
+            with open(os.path.join(starter, "project.json"), "w") as f:
+                json.dump(project, f)
+            self.assertEqual(pack.upgrade(ws, starter), ["Timer bug"])
+            ws.data["compositions"] = [c for c in ws.data["compositions"] if c["name"] != "Timer bug"]
+            self.assertEqual(pack.upgrade(ws, starter), [])
+            self.assertNotIn("Timer bug", [c["name"] for c in ws.data["compositions"]])
+            ws.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class ScheduleTests(unittest.TestCase):
+    def test_rows(self):
+        from gfxengine import schedule
+        s = {"count": 2, "matches": [{"tournament": "NACE", "game": "ROCKET LEAGUE", "type": "PLAYOFFS", "team1": "A", "team2": "B",
+                                      "date": "2026-11-11", "time": "09:05"}, {"game": "VALORANT", "date": "bad"},
+                                     {"tournament": "Third"}]}
+        r = dict(schedule.rows(s)[1:])
+        self.assertEqual((r["Count"], r["Match 1 game"], r["Match 1 teams"], r["Match 1 when"]), ("2", "ROCKET LEAGUE | PLAYOFFS", "A vs. B", "WED 11/11  |  9:05 AM"))
+        self.assertEqual((r["Match 2 show"], r["Match 2 when"], r["Match 3 show"]), ("1", "", ""))
+        self.assertEqual(schedule.clean({"count": 7})["count"], 3)
+        self.assertEqual(dict(schedule.rows({})[1:])["Match 1 show"], "")
+
+
+class StandingsTests(unittest.TestCase):
+    def test_rows(self):
+        from gfxengine import standings
+        s = standings.clean({"count": 8, "stat": "record", "stat2": "winpct", "subtitle": "STANDINGS",
+                             "teams": [{"name": "A", "w": "6", "l": "1"}, {"name": "B", "w": 2, "l": "5", "diff": "3"}, {"name": "", "w": "x"}]})
+        rows = dict(standings.rows(s, lambda n: {"logo": f"library/teams/{n}.png"} if n == "A" else None, "NACE")[1:])
+        self.assertEqual((rows["Title"], rows["Subtitle"]), ("NACE", "STANDINGS"))
+        self.assertEqual((rows["Team 1"], rows["Team 1 logo"], rows["Team 1 stat 1"], rows["Team 1 stat 2"]),
+                         ("A", "library/teams/A.png", "6-1", "86%"))
+        self.assertEqual((rows["Team 2 diff"], rows["Team 3 shown"], rows["Team 3 wins"]), ("+3", "", ""))
+        self.assertEqual((rows["Stat 2 shown"], rows["One stat"], rows["Team 2 stat 2 shown"]), ("1", "", "1"))
+        self.assertNotIn("Team 9", rows)
+        self.assertIn("Team 16", dict(standings.rows(dict(s, count=16))[1:]))
+        self.assertEqual(standings.clean({"count": 12, "stat": "x", "stat2": "wins"})["count"], 8)
+        self.assertEqual(standings.clean({"stat": "wins", "stat2": "wins"})["stat2"], "")
+        # (the Global configuration keeps them)
+        from gfxengine import globalcfg
+        self.assertEqual(globalcfg.clean({"standings": {"count": 16}})["standings"]["count"], 16)
+
+
+class TournamentTests(unittest.TestCase):
+    def test_knockout_winners_go_through(self):
+        from gfxengine import tournament
+        t = tournament.clean({"top": {"size": 8, "teams": ["A", "B", "C", "D", "E", "", "G", "H"],
+                                      "scores": {"R1 M1": [2, 0], "R1 M2": ["1", "2"], "R1 M4": ["3", "3"], "R2 M1": ["2", "1"]}}})
+        rows = dict(tournament.rows(t, lambda n: {"short": n.lower(), "logo": f"library/teams/{n}.png"} if n == "A" else None)[1:])
+        self.assertEqual(rows["Top teams"], "8")
+        self.assertEqual((rows["Top R2 M1 team 1"], rows["Top R2 M1 team 2"]), ("A", "D"))
+        self.assertEqual(rows["Top R2 M2 team 1"], "E")                  # nobody against it: through
+        self.assertEqual(rows["Top R2 M2 team 2"], "")                   # a draw: not decided
+        self.assertEqual((rows["Top R3 M1 team 1"], rows["Top R3 M1 team 1 logo"], rows["Top R3 M1 team 1 short"]),
+                         ("A", "library/teams/A.png", "a"))
+        self.assertEqual((rows["Top semi 1"], rows["Top semi 1 score"], rows["Top final 1"]), ("A", "2", "A"))
+        self.assertEqual(rows["Top champion"], "")
+        t["top"]["size"] = 16
+        rows16 = dict(tournament.rows(t)[1:])
+        self.assertIn("Top R4 M1 team 1", rows16)
+        self.assertEqual(rows16["Top R2 M3 team 1"], "")                 # (16: the 9th team on is empty)
+        self.assertEqual(tournament.clean({"top": {"size": 12}})["top"]["size"], 8)
+
+    def test_double_elimination(self):
+        from gfxengine import tournament
+        sc = {"R1 M1": [2, 0], "R1 M2": [2, 0], "R1 M3": [2, 0], "R1 M4": [2, 0], "R2 M1": [2, 0], "R2 M2": [0, 2], "R3 M1": [2, 1],
+              "L1 M1": [2, 0], "L1 M2": [0, 2], "L2 M1": [2, 0], "L2 M2": [2, 0], "L3 M1": [2, 0], "L4 M1": [0, 2], "GF": [1, 2]}
+        t = tournament.clean({"top": {"size": 8, "format": "double", "teams": list("ABCDEFGH"), "scores": sc}})
+        rows = dict(tournament.rows(t)[1:])
+        self.assertEqual(rows["Top format"], "double")
+        self.assertEqual((rows["Top L1 M1 team 1"], rows["Top L1 M1 team 2"]), ("B", "D"))       # first round losers
+        self.assertEqual((rows["Top L2 M1 team 1"], rows["Top L2 M1 team 2"]), ("B", "E"))       # upper losers drop in, crossed
+        self.assertEqual((rows["Top L2 M2 team 1"], rows["Top L2 M2 team 2"]), ("H", "C"))
+        self.assertEqual((rows["Top L4 M1 team 1"], rows["Top L4 M1 team 2"]), ("B", "G"))       # the upper final's loser
+        self.assertEqual((rows["Top GF team 1"], rows["Top GF team 2"], rows["Top GF winner"]), ("A", "G", "G"))
+        self.assertEqual((rows["Top GF2 team 1"], rows["Top GF2 team 2"]), ("A", "G"))           # the lower team won: reset
+        self.assertEqual(rows["Top champion"], "")
+        t["top"]["scores"]["GF2"] = ["3", "1"]
+        self.assertEqual(dict(tournament.rows(t)[1:])["Top champion"], "A")
+        t["top"]["reset"] = False
+        self.assertEqual(dict(tournament.rows(t)[1:])["Top champion"], "G")
+        # 16 teams, with byes: nobody waits on an empty slot.
+        t16 = tournament.clean({"top": {"size": 16, "format": "double", "teams": list("ABCDEFGHIJKLM"), "scores": {}}})
+        r16 = dict(tournament.rows(t16)[1:])
+        self.assertIn("Top L6 M1 team 1", r16)
+        self.assertEqual(r16["Top R2 M4 team 1"], "M")
+        self.assertEqual(r16["Top R3 M2 team 2"], "M")     # (nobody against it twice: through)
+        self.assertEqual(r16["Top R2 M1 team 1"], "")      # (not played yet)
+        self.assertEqual(tournament.clean({"top": {"format": "triple"}})["top"]["format"], "single")
+        self.assertEqual(r16["Top short names"], "off")
+        self.assertEqual(dict(tournament.rows({"top": {"short": True}})[1:])["Top short names"], "on")
+
+    def test_groups(self):
+        from gfxengine import tournament
+        g = {"name": "GROUP A", "teams": ["A", "B", "C", "D"],
+             "scores": {"Opening 1": ["2", "1"], "Opening 2": ["0", "2"], "Winners": ["1", "2"], "Elimination": ["2", "0"], "Decider": ["0", "2"]}}
+        rows = dict(tournament.rows({"groups": [g]})[1:])
+        self.assertEqual((rows["Group A Winners team 1"], rows["Group A Winners team 2"]), ("A", "D"))
+        self.assertEqual((rows["Group A Elimination team 1"], rows["Group A Elimination team 2"]), ("B", "C"))
+        self.assertEqual((rows["Group A Decider team 1"], rows["Group A Decider team 2"]), ("A", "B"))
+        self.assertEqual((rows["Group A 1st"], rows["Group A 2nd"]), ("D", "B"))
+        self.assertEqual(rows["Group B name"], "GROUP B")
+
+
+class TeamsTests(unittest.TestCase):
+    def test_csv(self):
+        from gfxengine.teams import Teams, roster_rows
+        tmp = tempfile.mkdtemp()
+        try:
+            teams = Teams(tmp)
+            n = teams.import_csv("Team,Abbreviation,Logo,Color\nSt. Clair Saints,SCC,saints.png,0b6b3a\nGeorge Mason,GMU,https://x/gmu.png,#123456\n,,,\n")
+            self.assertEqual(n, 2)
+            self.assertEqual(teams.find("scc"), {"name": "St. Clair Saints", "short": "SCC", "logo": "library/teams/saints.png", "color": "#0b6b3a",
+                                                  "game": "", "players": []})
+            self.assertEqual(teams.find("george mason")["logo"], "https://x/gmu.png")
+            teams.import_csv("Name,Short name\nSt. Clair Saints,SAINTS\n")      # updates, keeps the rest
+            again = Teams(tmp)                                                   # (read back from the CSV)
+            self.assertEqual((len(again.list()), again.find("St. Clair Saints")["short"], again.find("St. Clair Saints")["color"]),
+                             (2, "SAINTS", "#0b6b3a"))
+            logo = again.save_logo("Humber Hawks", "hawks.png", b"png")
+            self.assertEqual(logo, "library/teams/Humber Hawks.png")
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "teams", "Humber Hawks.png")))
+            self.assertEqual(again.find("Humber Hawks")["logo"], logo)
+            with self.assertRaises(ValueError):
+                again.import_csv("Name,Short name\n")
+            # The same school in two games, with rosters.
+            again.import_csv("Name,Game,Player 1,Player 1 ID,Player 1 country,Player 1 headshot,Player 2 ID,Player 2 country\n"
+                             "St. Clair Saints,Rocket League,Jason,Jazii,Germany,jazii.png,Pzy,at\n"
+                             "St. Clair Saints,Valorant,,Ace,ca,,,\n")
+            rl = again.find("St. Clair Saints", "rocket league")
+            self.assertEqual(rl["players"][0], {"name": "Jason", "ign": "Jazii", "country": "de", "photo": "library/teams/jazii.png"})
+            self.assertEqual(rl["players"][1]["country"], "at")
+            self.assertEqual(again.find("St. Clair Saints", "Valorant")["players"][0]["ign"], "Ace")
+            self.assertEqual(len(again.list()), 5)
+            back = Teams(tmp).find("St. Clair Saints", "Rocket League")
+            self.assertEqual((back["short"], back["players"][1]["ign"]), ("", "Pzy"))
+            self.assertIn("Player 5 headshot", again.csv_text().splitlines()[0])
+            r = dict(roster_rows(rl, "left", ["", "", "Stats3"])[1:])
+            self.assertEqual((r["Player 1"], r["Player 1 flag"], r["Player 2"], r["Player 3"], r["No headshots"]),
+                             ("Jason", "flags/de.svg", "Pzy", "Stats3", ""))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _riff(cid, body):
+    import struct
+    return cid + struct.pack(">I", len(body)) + body + (b"\0" if len(body) & 1 else b"")
+
+
+def _fake_aep(path, comps):
+    """An .aep shaped like After Effects writes them: RIFX "Egg!", items in a
+    folder, each an "Item" list with idta (type 4 = composition) and Utf8."""
+    import struct
+    items = b"".join(_riff(b"LIST", b"Item" + _riff(b"idta", struct.pack(">H", kind) + b"\0" * 14)
+                           + _riff(b"Utf8", name.encode()) + _riff(b"LIST", b"Layr" + _riff(b"Utf8", b"a layer")))
+                     for kind, name in [(1, "Solids")] + [(4, c) for c in comps] + [(7, "footage.png")])
+    body = b"Egg!" + _riff(b"head", b"\0" * 20) + _riff(b"LIST", b"Fold" + _riff(b"LIST", b"Item" + _riff(b"idta", b"\0\1" + b"\0" * 14) + _riff(b"Utf8", b"Root") + items))
+    with open(path, "wb") as f:
+        f.write(b"RIFX" + struct.pack(">I", len(body)) + body)
+
+
+@unittest.skipUnless(media.ffmpeg_path(), "needs FFmpeg")
+class AfterEffectsTests(unittest.TestCase):
+    """.mov from After Effects, Lottie and .aep projects: added as files, and
+    as graphics of their own (Composer's Import)."""
+
+    def setUp(self):
+        from gfxengine.assets import Assets
+        self.tmp = tempfile.mkdtemp()
+        self.ws = Workspace(os.path.join(self.tmp, "ws"), starter="")
+        self.jobs = media.Jobs()
+        self.assets = Assets(self.ws, self.jobs)
+
+    def tearDown(self):
+        self.ws.close()
+        os.environ.pop("GFX_AERENDER", None)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def wait(self, jid):
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            j = next(j for j in self.jobs.list() if j["id"] == jid)
+            if j["status"] != "running":
+                self.assertEqual(j["status"], "done", j["error"])
+                return j["result"]
+            time.sleep(0.1)
+        self.fail("job didn't finish")
+
+    def prores(self, path, alpha=True, secs=1):
+        import subprocess
+        src = "color=c=red@0.5:s=600x150:d=%s,format=yuva444p" % secs if alpha else "testsrc=s=1920x1080:d=%s" % secs
+        args = [media.ffmpeg_path(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", src]
+        args += ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le"] if alpha else ["-c:v", "prores_ks", "-profile:v", "3"]
+        subprocess.run(args + [path], check=True)
+
+    def test_mov_with_alpha_imports_as_a_graphic(self):
+        src = os.path.join(self.tmp, "up.mov")
+        self.prores(src)
+        r = self.assets.add("Lower Third.mov", src, graphic=True)
+        self.assertIsNotNone(r["job"])
+        done = self.wait(r["job"])
+        self.assertEqual(done["assets"], ["assets/Lower Third.webm"])
+        info = media.probe(self.ws.asset_path(done["assets"][0]))
+        self.assertTrue(info["alpha"] and media.playable(self.ws.asset_path(done["assets"][0]), info), info)
+        layer = done["comps"][0]["layers"][0]
+        self.assertEqual((layer["type"], layer["src"], layer["loop"]), ("video", "assets/Lower Third.webm", False))
+        self.assertEqual((layer["x"], layer["y"], layer["w"], layer["h"]), (660, 465, 600, 150))
+        self.assertEqual(done["comps"][0]["kind"], "overlay")
+        self.assertIn(done["comps"][0]["id"], [c["id"] for c in self.ws.data["compositions"]])
+
+    def test_mov_without_alpha_and_plain_add(self):
+        src = os.path.join(self.tmp, "up.mov")
+        self.prores(src, alpha=False)
+        r = self.assets.add("Background.mov", src)
+        done = self.wait(r["job"])
+        self.assertEqual((done["assets"], done["comps"]), (["assets/Background.mp4"], []))
+        self.assertEqual(self.ws.data["compositions"], [])
+
+    def test_lottie_json_and_dotlottie(self):
+        anim = {"v": "5.7.4", "fr": 30, "ip": 0, "op": 60, "w": 800, "h": 200, "layers": [],
+                "assets": [{"id": "image_0", "w": 10, "h": 10, "u": "/images/", "p": "img_0.png", "e": 0}]}
+        src = os.path.join(self.tmp, "up.json")
+        with open(src, "w") as f:
+            json.dump(anim, f)
+        r = self.assets.add("Bug.json", src, graphic=True)
+        layer = r["comps"][0]["layers"][0]
+        self.assertEqual((layer["type"], layer["src"], layer["w"], layer["h"], layer["y"]), ("lottie", "assets/Bug.json", 800, 200, 440))
+        src = os.path.join(self.tmp, "up.lottie")
+        with zipfile.ZipFile(src, "w") as z:
+            z.writestr("manifest.json", json.dumps({"animations": [{"id": "intro"}]}))
+            z.writestr("animations/intro.json", json.dumps(anim))
+            z.writestr("images/img_0.png", b"png")
+        r = self.assets.add("Intro.lottie", src)
+        self.assertEqual(r["assets"], ["assets/Intro/intro.json"])
+        with open(self.ws.asset_path("assets/Intro/intro.json")) as f:
+            self.assertEqual(json.load(f)["assets"][0]["u"], "images/")
+        self.assertTrue(os.path.isfile(self.ws.asset_path("assets/Intro/images/img_0.png")))
+        self.assertFalse(os.path.exists(self.ws.asset_path("assets/Intro/manifest.json")))
+
+    def test_after_effects_project(self):
+        import stat
+        import sys
+        from gfxengine import aerender
+        aep = os.path.join(self.tmp, "up.aep")
+        _fake_aep(aep, ["Main Comp", "Lower Third"])
+        self.assertEqual(aerender.comps(aep), ["Main Comp", "Lower Third"])
+        # Without After Effects: says how to export instead.
+        os.environ["GFX_AERENDER"] = os.path.join(self.tmp, "none")
+        if not aerender.aerender_path():
+            with self.assertRaisesRegex(ValueError, "Lottie"):
+                self.assets.add("Intro.aep", aep)
+            _fake_aep(aep, ["Main Comp", "Lower Third"])
+        # A stand-in aerender: writes ProRes 4444 where -output says, and logs progress.
+        fake = os.path.join(self.tmp, "aerender.py")
+        log = os.path.join(self.tmp, "aerender.log")
+        with open(fake, "w") as f:
+            f.write(f"""#!{sys.executable}
+import subprocess, sys
+a = sys.argv[1:]
+open({log!r}, "a").write(repr(a) + "\\n")
+out = a[a.index("-output") + 1]
+print("PROGRESS:  Duration: 0:00:01:00")
+print("PROGRESS:  Frame Rate: 30.00 (comp)")
+print("PROGRESS:  0:00:00:15 (16): 0 Seconds")
+subprocess.run([{media.ffmpeg_path()!r}, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue@0.5:s=1920x1080:d=1,format=yuva444p",
+                "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", out], check=True)
+""")
+        os.chmod(fake, os.stat(fake).st_mode | stat.S_IEXEC)
+        if sys.platform == "win32":
+            # (Windows runs a script through a .cmd, as aerender.exe would be run)
+            cmd = os.path.join(self.tmp, "aerender.cmd")
+            with open(cmd, "w") as f:
+                f.write(f'@"{sys.executable}" "{fake}" %*\n')
+            fake = cmd
+        os.environ["GFX_AERENDER"] = fake
+        r = self.assets.add("Intro.aep", aep, graphic=True)
+        self.assertEqual((r["job"], r["aep"]["comps"]), (None, ["Main Comp", "Lower Third"]))
+        r = self.assets.render_aep(r["aep"]["file"], "Lower Third", graphic=True)
+        done = self.wait(r["job"])
+        self.assertEqual(done["assets"], ["assets/Lower Third.webm"])
+        self.assertTrue(media.probe(self.ws.asset_path(done["assets"][0]))["alpha"])
+        layer = done["comps"][0]["layers"][0]
+        self.assertEqual((layer["type"], layer["w"], layer["h"], layer["loop"]), ("video", 1920, 1080, False))
+        with open(log) as f:
+            args = f.read()
+        self.assertIn("'-comp', 'Lower Third'", args)
+        self.assertIn("High Quality with Alpha", args)
+        # One composition: rendered straight away.
+        _fake_aep(aep, ["Only"])
+        r = self.assets.add("One.aep", aep)
+        self.assertEqual(self.wait(r["job"])["assets"], ["assets/Only.webm"])
+
+
+class ServerTests(unittest.TestCase):
+    def test_engine(self):
+        from gfxengine.app import Engine, start
+        tmp = tempfile.mkdtemp()
+        settings = Settings(os.path.join(tmp, "settings.json"))
+        settings.update({"http_port": 8796})
+        engine = Engine(settings, os.path.join(tmp, "workspaces"), starter=os.path.join(ROOT, "starter"),
+                        library_dir=os.path.join(tmp, "library"), legacy_dir=os.path.join(tmp, "none"))
+        engine.updater.check_in_background = lambda: None
+        start(engine)
+        base = "http://127.0.0.1:8796"
+
+        def get(path):
+            with urllib.request.urlopen(base + path, timeout=10) as r:
+                return r.read()
+
+        def post(path, body, headers=None):
+            req = urllib.request.Request(base + path, json.dumps(body).encode() if not isinstance(body, bytes) else body,
+                                         headers or {"Content-Type": "application/json"})
+            return json.loads(urllib.request.urlopen(req, timeout=30).read())
+        try:
+            for path in ("/control", "/output", "/runtime.js", "/control.js", "/composer.js", "/pages.js",
+                         "/control.css", "/vendor/lottie.min.js", "/fonts/Inter.ttf", "/assets-ui/icon.png", "/home.js",
+                         "/assets-ui/logo.png", "/assets-ui/badge.png"):
+                self.assertTrue(get(path), path)
+            state = json.loads(get("/api/state"))
+            self.assertGreaterEqual(len(state["project"]["compositions"]), 4)   # the starter graphics
+            self.assertEqual(json.loads(get("/api/hello"))["app"], "scc-gfx-engine")
+            # A new graphic with a text field, cued and taken.
+            comp = blank_comp("Test")
+            layer = blank_layer("text", field="Name", text="{{Match!Left}}")
+            comp["layers"].append(layer)
+            cid = post("/api/comp/new", {"comp": comp})["comp"]["id"]
+            post("/api/cue", {"id": cid})
+            post("/api/values", {"id": cid, "values": {"Name": "Owen"}})
+            post("/api/take", {"transition": "cut"})
+            live = json.loads(get("/api/state"))["live"]
+            self.assertIn(cid, live["program"]["on"])
+            self.assertIn("now", json.loads(get("/api/state"))["data"])
+            # Animations after a stinger TAKE: delayed by the take bar's setting (saved in the project).
+            post("/api/project", {"stinger_anim_delay": "1200"})
+            project = json.loads(get("/api/state"))["project"]
+            self.assertEqual((project["stinger_anim_delay"], project["name"]), (1200, state["project"]["name"]))
+            with self.assertRaises(urllib.error.HTTPError):
+                post("/api/project", {"stinger_anim_delay": "soon"})
+            # The stream: everything first, then only what changed (a cue: not the project).
+            with urllib.request.urlopen(base + "/api/stream", timeout=10) as r:
+                def message():
+                    while True:
+                        line = r.readline().decode()
+                        if line.startswith("data: "):
+                            return json.loads(line[6:])
+                first = message()
+                self.assertTrue({"project", "live", "data"} <= set(first))
+                post("/api/cue", {"id": cid, "on": False})
+                after = message()
+                self.assertIn("live", after)
+                self.assertNotIn("project", after)
+            self.assertEqual(live["program"]["values"][cid]["Name"], "Owen")
+            # Bitfocus Companion: Preview, Program, Take and the quick functions.
+            comp_state = json.loads(get("/api/companion"))
+            mine = next(g for g in comp_state["graphics"] if g["id"] == cid)
+            self.assertEqual((mine["name"], mine["program"]), ("Test", True))
+            r = post("/api/companion", {"action": "program", "id": "test", "mode": "toggle"})   # (by name)
+            self.assertFalse(next(g for g in r["graphics"] if g["id"] == cid)["program"])
+            r = post("/api/companion", {"action": "preview", "id": cid, "mode": "on"})
+            self.assertEqual((r["variables"]["preview"], r["states"]["preview_any"]), ("Test", True))
+            r = post("/api/companion", {"action": "take", "transition": "cut"})
+            self.assertIn("Test", r["variables"]["program"])
+            for quick in ("score_left_up", "score_left_up", "score_right_up", "score_left_down", "clock_brb", "caster_3"):
+                r = post("/api/companion", {"action": "run", "id": quick})
+            self.assertEqual((r["variables"]["left_score"], r["variables"]["right_score"]), ("1", "1"))
+            self.assertTrue(r["states"]["clock_brb"] and r["states"]["caster_3"])
+            r = post("/api/companion", {"action": "clear", "bus": "both"})
+            self.assertFalse(r["states"]["program_any"] or r["states"]["preview_any"])
+            post("/api/companion", {"action": "run", "id": "score_reset"})
+            with self.assertRaises(urllib.error.HTTPError):
+                post("/api/companion", {"action": "preview", "id": "no such graphic"})
+            post("/api/cue", {"id": cid})
+            post("/api/take", {"transition": "cut"})
+            # Files: a picture, and a CSV (which becomes a data source).
+            buf = io.BytesIO()
+            Image.new("RGB", (40, 20), "red").save(buf, "PNG")
+            r = post("/api/upload", buf.getvalue(), {"X-Filename": "logo%20one.png"})
+            self.assertEqual(r["assets"], ["assets/logo one.png"])
+            self.assertEqual(get("/assets/logo%20one.png"), buf.getvalue())
+            r = post("/api/upload", b"Team,Score\nSCC,5\n", {"X-Filename": "scores.csv"})
+            self.assertEqual(r["sources"][0]["path"], "assets/scores.csv")
+            deadline = time.time() + 10
+            while time.time() < deadline and json.loads(get("/api/state"))["data"]["tables"].get("scores") != [["Team", "Score"], ["SCC", "5"]]:
+                time.sleep(0.2)
+            self.assertEqual(json.loads(get("/api/state"))["data"]["tables"]["scores"], [["Team", "Score"], ["SCC", "5"]])
+            # Refused files say what to do instead.
+            with self.assertRaises(urllib.error.HTTPError) as err:
+                post("/api/upload", b"x", {"X-Filename": "intro.aep"})
+            self.assertIn("Lottie", json.loads(err.exception.read())["error"])
+            # Video in parts (the outputs seek in it).
+            stinger = next(t for t in state["project"]["transitions"] if t["type"] == "stinger")
+            req = urllib.request.Request(base + "/" + stinger["src"], headers={"Range": "bytes=0-99"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                self.assertEqual(r.status, 206)
+                self.assertEqual(len(r.read()), 100)
+            # HTML export: the page, the player and the graphic's files.
+            first = state["project"]["compositions"][0]
+            z = zipfile.ZipFile(io.BytesIO(get("/api/export?comps=" + first["id"])))
+            names = set(z.namelist())
+            self.assertTrue({"index.html", "gfx-data.js", "runtime.js", "vendor/lottie.min.js"} <= names)
+            srcs = {l["src"] for l in first["layers"] if l.get("src") and "{{" not in l["src"]}
+            self.assertTrue(srcs and srcs <= names, srcs - names)
+            if any(l.get("src") == "{{Global!BG loop}}" for l in first["layers"]):
+                self.assertIn("loops/scc-bg-loop.webm", names)     # (from the data)
+            self.assertIn('src="gfx-data.js"', z.read("index.html").decode())
+            # Transitions are checked.
+            with self.assertRaises(urllib.error.HTTPError):
+                post("/api/transitions", {"transitions": [{"type": "spin"}]})
+            # Fonts go in the library every workspace shares, and are known by their other names.
+            with open(os.path.join(ROOT, "web", "fonts", "Inter.ttf"), "rb") as f:
+                font = f.read()
+            r = post("/api/upload", font, {"X-Filename": "MyFont.ttf"})
+            self.assertEqual(r["assets"], ["library/fonts/MyFont.ttf"])
+            self.assertEqual(get("/library/fonts/MyFont.ttf"), font)
+            fonts = json.loads(get("/api/state"))["fonts"]
+            mine = next(f for f in fonts if f["path"] == "library/fonts/MyFont.ttf")
+            self.assertIn("MyFont", mine["aliases"])
+            # Global configuration: set, a logo, and what HUDs read.
+            g = post("/api/global", {"global": {"left": {"name": "St. Clair Saints", "short": "SCC"}, "best_of": 5}})["global"]
+            self.assertEqual((g["left"]["short"], g["best_of"]), ("SCC", 5))
+            g = post("/api/global/logo?side=right&name=gmu.png", buf.getvalue(), {"X-Filename": "gmu.png"})["global"]
+            self.assertTrue(g["right"]["logo"].startswith("assets/logos/"))
+            hud_view = json.loads(get("/api/global"))["global"]
+            self.assertEqual(hud_view["right"]["logo_url"], base + "/" + g["right"]["logo"])
+            tables = json.loads(get("/api/state"))["data"]["tables"]
+            self.assertIn(["Left short", "SCC"], tables["Global"])
+            # The tournament logo, sponsors and background loop.
+            g = post("/api/global/logo?side=tournament&name=t.png", buf.getvalue(), {"X-Filename": "t.png"})["global"]
+            self.assertTrue(g["tournament_logo"].startswith("assets/logos/"))
+            g = post("/api/global/logo?side=sponsor&name=s.png", buf.getvalue(), {"X-Filename": "s.png"})["global"]
+            self.assertEqual(g["sponsors"][-1]["logo"].split("/")[-1][-4:], ".png")
+            with self.assertRaises(urllib.error.HTTPError):
+                post("/api/global/logo?side=bgloop&name=x.png", buf.getvalue(), {"X-Filename": "x.png"})
+            g = post("/api/global", {"global": {"bgloop": {"color": "#ff0000"}}})["global"]
+            self.assertEqual((g["bgloop"]["color"], g["bgloop"]["on"]), ("#ff0000", True))
+            tables = json.loads(get("/api/state"))["data"]["tables"]
+            self.assertIn(["BG loop colour", "#ff0000"], tables["Global"])
+            self.assertEqual(tables["Sponsors"][-1][0], g["sponsors"][-1]["logo"])
+            # The ticker, the team list and the tournament.
+            post("/api/global", {"global": {"ticker": ["Welcome", " ", "Follow us"]}})
+            self.assertIn(["Ticker", "Welcome  |  Follow us  |  "], json.loads(get("/api/state"))["data"]["tables"]["Global"])
+            r = post("/api/teams/import", b"Name,Short name\nHumber Hawks,HUM\nDurham Lords,DUR\n", {"X-Filename": "teams.csv"})
+            self.assertEqual(r["added"], 2)
+            r = post("/api/teams/logo?team=Humber%20Hawks&name=h.png", buf.getvalue(), {"X-Filename": "h.png"})
+            self.assertEqual(get("/" + urllib.parse.quote(r["logo"])), buf.getvalue())
+            self.assertIn("Humber Hawks,HUM", get("/library/teams.csv").decode())
+            post("/api/global", {"global": {"tournament": {"top": {"size": 8, "teams": ["Humber Hawks", "Durham Lords"],
+                                                                   "scores": {"R1 M1": ["3", "1"]}}}}})
+            s2 = json.loads(get("/api/state"))
+            tn = dict(s2["data"]["tables"]["Tournament"][1:])
+            self.assertEqual((tn["Top R2 M1 team 1"], tn["Top R2 M1 team 1 short"], tn["Top R2 M1 team 1 logo"]), ("Humber Hawks", "HUM", r["logo"]))
+            self.assertEqual(len(s2["teams"]), 2)
+            post("/api/teams", {"teams": s2["teams"][:1]})
+            self.assertEqual([t["name"] for t in json.loads(get("/api/state"))["teams"]], ["Humber Hawks"])
+            # The clock: a countdown for Starting Soon.
+            post("/api/global", {"global": {"clock": {"mode": "soon", "until": "19:30"}}})
+            gl = dict(json.loads(get("/api/state"))["data"]["tables"]["Global"][1:])
+            self.assertEqual((gl["Clock mode"], gl["Clock until"], gl["Clock label"], gl["Clock zone"]), ("soon", "19:30", "STARTING SOON", "EST"))
+            post("/api/global", {"global": {"clock": {"mode": "nope", "until": "later"}}})
+            self.assertEqual(json.loads(get("/api/state"))["global"]["clock"]["mode"], "time")
+            # The upcoming schedule.
+            post("/api/global", {"global": {"schedule": {"count": 1, "matches": [
+                {"tournament": "NACE", "game": "VALORANT", "team1": "Humber Hawks", "team2": "SCC", "date": "2026-10-20", "time": "19:30"},
+                {"tournament": "CRL"}]}}})
+            sc = dict(json.loads(get("/api/state"))["data"]["tables"]["Schedule"][1:])
+            self.assertEqual((sc["Count"], sc["Match 1 when"], sc["Match 1 team 1 logo"], sc["Match 1 show"], sc["Match 2 show"]),
+                             ("1", "TUE 10/20  |  7:30 PM", r["logo"], "1", ""))
+            # A game HUD's data: its own table, and the series score into Global
+            # (a score it changes: the one it connects with stays out).
+            post("/api/ingest", {"source": "League HUD", "game": "lol", "fields": {"Blue kills": 7, "Game time": "12:34"},
+                                 "series": {"left": {"score": 3}, "right": {"score": 3}, "best_of": 5}})
+            self.assertEqual(json.loads(get("/api/state"))["global"]["left"]["score"], 0)
+            post("/api/ingest", {"source": "League HUD", "game": "lol", "fields": {"Blue kills": 7, "Game time": "12:34"},
+                                 "series": {"left": {"score": 2}, "right": {"score": 1}, "best_of": 5}})
+            state2 = json.loads(get("/api/state"))
+            self.assertIn(["Blue kills", "7"], state2["data"]["tables"]["League HUD"])
+            self.assertEqual((state2["global"]["left"]["score"], state2["global"]["right"]["score"]), (2, 1))
+            self.assertIn(["Game", "4"], state2["data"]["tables"]["Global"])
+            self.assertIn("League HUD", state2["data"]["feeds"])
+            # Never its teams: Global's stay (a HUD's old match's teams kept replacing them).
+            before = {s: dict(state2["global"][s]) for s in ("left", "right")}
+            for _ in range(2):
+                post("/api/ingest", {"source": "League HUD", "game": "lol", "fields": {"Blue kills": 7},
+                                     "series": {"left": {"name": "Bearrett + 2019 Kawhi", "short": "BK", "score": 2, "color": "#00ff00"},
+                                                "right": {"name": "Vixed + DnD", "short": "VD", "score": 1}}})
+            after = json.loads(get("/api/state"))["global"]
+            for s in ("left", "right"):
+                self.assertEqual({k: after[s][k] for k in ("name", "short", "color")}, {k: before[s][k] for k in ("name", "short", "color")})
+            post("/api/ingest", {"source": "League HUD", "game": "lol", "fields": {"P1 NAME": "Faker", "P1 KDA": "5/0/2"}})
+            stats = dict(json.loads(get("/api/state"))["data"]["tables"]["Stats"][1:])
+            self.assertEqual((stats["Status"], stats["MVP"], stats["MVP team"]), ("LIVE", "Faker", "St. Clair Saints"))
+            post("/api/stats/clear", {})
+            self.assertEqual(dict(json.loads(get("/api/state"))["data"]["tables"]["Stats"][1:])["Status"], "")
+            # Workspaces: a new empty one with a picture, opened; the SCC pack added to it; back again.
+            first_id = state2["workspace"]["id"]
+            wid = post("/api/workspaces/create", {"name": "NACE Spring", "template": "empty", "open": False})["id"]
+            post(f"/api/workspaces/picture?id={wid}&name=cover.png", buf.getvalue(), {"X-Filename": "cover.png"})
+            listed = {w["id"]: w for w in json.loads(get("/api/workspaces"))["workspaces"]}
+            self.assertTrue(listed[wid]["picture"])
+            self.assertEqual(get(f"/api/workspace-picture/{wid}"), buf.getvalue())
+            post("/api/workspaces/open", {"id": wid})
+            s3 = json.loads(get("/api/state"))
+            self.assertEqual((s3["workspace"]["id"], len(s3["project"]["compositions"])), (wid, 0))
+            self.assertEqual(s3["global"]["left"]["name"], "")          # its own global configuration
+            self.assertTrue(any(f["path"] == "library/fonts/MyFont.ttf" for f in s3["fonts"]))   # the same fonts
+            pack = json.loads(get("/api/pack"))["graphics"]
+            added = post("/api/pack/import", {})["added"]
+            self.assertEqual(len(added), len(pack))
+            s3 = json.loads(get("/api/state"))
+            comp0 = s3["project"]["compositions"][0]
+            src = next(l["src"] for l in comp0["layers"] if l.get("src"))
+            self.assertTrue(get("/" + urllib.parse.quote(src)))
+            with self.assertRaises(urllib.error.HTTPError):
+                post("/api/workspaces/delete", {"id": wid})                # (it's open)
+            post("/api/workspaces/open", {"id": first_id})
+            post("/api/workspaces/delete", {"id": wid})
+            self.assertNotIn(wid, [w["id"] for w in json.loads(get("/api/workspaces"))["workspaces"]])
+            self.assertEqual(settings.get()["workspace"], first_id)
+            # The stream sends the whole state.
+            stream = urllib.request.urlopen(base + "/api/stream", timeout=5)
+            line = b""
+            while not line.startswith(b"data:"):
+                line = stream.readline()
+            self.assertIn("live", json.loads(line[5:]))
+            stream.close()
+        finally:
+            engine.stop()
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class HudBoardTests(unittest.TestCase):
+    def test_hud_board_gets_the_backdrop_and_loop(self):
+        from gfxengine.app import Engine
+        tmp = tempfile.mkdtemp()
+        try:
+            engine = Engine(Settings(os.path.join(tmp, "settings.json")), os.path.join(tmp, "workspaces"),
+                            starter=os.path.join(ROOT, "starter"), library_dir=os.path.join(tmp, "library"),
+                            legacy_dir=os.path.join(tmp, "none"))
+            if not engine.ws:
+                engine.create_workspace("Test")
+            hud = lambda bd: {"port": 8778, "graphics": [
+                {"id": "agent-select", "name": "Agent select", "path": "/agent-select", "kind": "board"},
+                {"id": "map-bans-bo3", "name": "Map bans Bo3", "path": "/map-bans?bo=3", "kind": "board", "backdrop": bd}]}
+            engine.ingest({"source": "VALORANT HUD", "game": "valorant", "hud": hud(False)}, "127.0.0.1")
+            comps = {c.get("hud"): c for c in engine.ws.data["compositions"] if c.get("hud")}
+            self.assertEqual([l["type"] for l in comps["VALORANT HUD/map-bans-bo3"]["layers"]], ["web"])
+            # A HUD that asks for the backdrop later: added to the graphic it made before.
+            engine.ingest({"source": "VALORANT HUD", "game": "valorant", "hud": hud(True)}, "127.0.0.1")
+            comps = {c.get("hud"): c for c in engine.ws.data["compositions"] if c.get("hud")}
+            names = [l["name"] for l in comps["VALORANT HUD/map-bans-bo3"]["layers"]]
+            self.assertEqual(names, ["Layer 1", "Background loop", "Map bans Bo3"])
+            self.assertEqual(comps["VALORANT HUD/map-bans-bo3"]["layers"][1]["src"], "{{Global!BG loop}}")
+            self.assertEqual([l["type"] for l in comps["VALORANT HUD/agent-select"]["layers"]], ["web"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class HudLookTests(unittest.TestCase):
+    def test_add_a_graphic_to_the_rocket_league_hud(self):
+        import io
+        import zipfile
+        from gfxengine.app import Engine
+        tmp = tempfile.mkdtemp()
+        try:
+            engine = Engine(Settings(os.path.join(tmp, "settings.json")), os.path.join(tmp, "workspaces"),
+                            starter=os.path.join(ROOT, "starter"), library_dir=os.path.join(tmp, "library"),
+                            legacy_dir=os.path.join(tmp, "none"))
+            if not engine.ws:
+                engine.create_workspace("Test")
+            comp = engine.ws.add_comp({"id": "crl", "name": "RL HUD", "layers": [
+                {"id": "l1", "type": "text", "text": "{{Rocket League HUD!target}}", "x": 0, "y": 0, "w": 10, "h": 10},
+                {"id": "l2", "type": "rect", "fill": "#fff", "meter": {"value": "{{Rocket League HUD!target_boost}}"},
+                 "when": [{"value": "{{Rocket League HUD!target}}", "op": "has"}], "x": 0, "y": 0, "w": 10, "h": 10}]})
+            self.assertIsNone(engine.hud_look("rl"))
+            with self.assertRaises(ValueError):
+                engine.add_to_hud(comp["id"], "lol")
+            engine.ingest({"source": "Rocket League HUD", "game": "rl", "fields": {"target": "ATOMIC", "look_rev": ""}}, "127.0.0.1")
+            meta = engine.add_to_hud(comp["id"], "rl")
+            self.assertEqual((meta["name"], meta["rev"]), ("RL HUD", 1))
+            self.assertEqual(engine.add_to_hud(comp["id"], "rl")["rev"], 2)
+            z = zipfile.ZipFile(io.BytesIO(engine.hud_look_file("rl")))
+            self.assertTrue({"index.html", "gfx-data.js", "runtime.js"} <= set(z.namelist()))
+            data = z.read("gfx-data.js").decode()
+            self.assertIn("Rocket League HUD", data)     # (the HUD's table, as it was)
+            self.assertNotIn('"Teams"', data)            # (not the data the graphic doesn't read)
+            huds = engine.hud_looks()
+            self.assertEqual((huds[0]["game"], huds[0]["connected"], huds[0]["look"]["rev"]), ("rl", True, 2))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class ShareTests(unittest.TestCase):
+    """A graphic exported as a .sccgfx file and imported into another engine."""
+
+    def _engine(self, tmp):
+        from gfxengine.app import Engine
+        engine = Engine(Settings(os.path.join(tmp, "settings.json")), os.path.join(tmp, "workspaces"),
+                        starter=None, library_dir=os.path.join(tmp, "library"), legacy_dir=os.path.join(tmp, "none"))
+        if not engine.ws:
+            engine.create_workspace("Test")
+        return engine
+
+    def _add(self, engine, name, blob):
+        return engine.upload(name, io.BytesIO(blob), len(blob))
+
+    def test_export_and_import_a_graphic_with_its_files(self):
+        from gfxengine import share
+        a_dir, b_dir = tempfile.mkdtemp(), tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, a_dir, True)
+        self.addCleanup(shutil.rmtree, b_dir, True)
+        a, b = self._engine(a_dir), self._engine(b_dir)
+        png = io.BytesIO()
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)).save(png, "PNG")
+        logo = self._add(a, "logo.png", png.getvalue())["assets"][0]
+        with open(os.path.join(ROOT, "web", "fonts", "Anton-Regular.ttf"), "rb") as f:
+            font = self._add(a, "Anton-Regular.ttf", f.read())["assets"][0]
+        self._add(a, "Match.csv", b"Field,Value\nCaster,Owen\n")
+        lottie = os.path.join(a.ws.assets_dir, "spin", "spin.json")
+        os.makedirs(os.path.join(a.ws.assets_dir, "spin", "images"))
+        with open(lottie, "w") as f:
+            json.dump({"v": "5.7", "fr": 30, "ip": 0, "op": 30, "w": 10, "h": 10, "layers": [],
+                       "assets": [{"id": "i", "u": "images/", "p": "dot.png"}]}, f)
+        with open(os.path.join(a.ws.assets_dir, "spin", "images", "dot.png"), "wb") as f:
+            f.write(png.getvalue())
+        ps = next(x for x in a.assets.fonts() if x["path"] == font)["postscript"]
+        comp = a.ws.add_comp({"name": "Caster card", "layers": [
+            {"id": "l1", "type": "image", "src": logo, "x": 0, "y": 0, "w": 4, "h": 4},
+            {"id": "l2", "type": "text", "text": "{{Match!Caster}}", "font": ps, "x": 0, "y": 0, "w": 9, "h": 9},
+            {"id": "l3", "type": "lottie", "src": "assets/spin/spin.json", "x": 0, "y": 0, "w": 9, "h": 9}]})
+        a.ws.add_comp({"name": "Other", "layers": []})
+        blob = share.build(a.ws, a.assets, [comp["id"]])
+        names = set(zipfile.ZipFile(io.BytesIO(blob)).namelist())
+        self.assertTrue({"scc-gfx.json", "files/" + logo, "files/" + font, "files/assets/Match.csv",
+                         "files/assets/spin/spin.json", "files/assets/spin/images/dot.png"} <= names, names)
+
+        # The other engine already has a different logo.png.
+        other = io.BytesIO()
+        Image.new("RGBA", (4, 4), (0, 0, 255, 255)).save(other, "PNG")
+        self._add(b, "logo.png", other.getvalue())
+        r = self._add(b, "Caster card.sccgfx", blob)
+        self.assertEqual([c["name"] for c in r["comps"]], ["Caster card"])
+        made = b.ws.comp(r["comps"][0]["id"])
+        src = made["layers"][0]["src"]
+        self.assertEqual(src, "assets/logo-2.png")       # (the one there kept, this one beside it)
+        with open(b.assets.path_of(src), "rb") as f:
+            self.assertEqual(f.read(), png.getvalue())
+        self.assertEqual(made["layers"][2]["src"], "assets/spin/spin.json")
+        self.assertTrue(os.path.isfile(os.path.join(b.ws.assets_dir, "spin", "images", "dot.png")))
+        self.assertIn(ps, {x["postscript"] for x in b.assets.fonts()})
+        self.assertEqual([s["name"] for s in b.ws.get()["sources"]], ["Match"])
+        self.assertTrue(os.path.isfile(b.assets.path_of(b.ws.get()["sources"][0]["path"])))
+
+        # Again: a second copy of the graphic, no new files, no second source.
+        r = self._add(b, "Caster card.sccgfx", blob)
+        self.assertEqual(r["comps"][0]["name"], "Caster card 2")
+        self.assertEqual(r["assets"], [])
+        self.assertEqual(len(b.ws.get()["sources"]), 1)
+
+        # Everything at once, and an Export HTML zip.
+        r = self._add(b, "all.sccgfx", share.build(a.ws, a.assets, []))
+        self.assertEqual(len(r["comps"]), len(a.ws.get()["compositions"]))
+        self.assertEqual([c["name"] for c in r["comps"]][-2:], ["Caster card 3", "Other"])
+        from gfxengine import export
+        r = self._add(b, "page.zip", export.build(a.ws, a.assets, [comp["id"]]))
+        self.assertEqual(b.ws.comp(r["comps"][0]["id"])["layers"][0]["src"], "assets/logo-2.png")
+        with self.assertRaises(ValueError):
+            self._add(b, "broken.sccgfx", b"not a zip")
+
+    def test_layers_pasted_from_another_workspace_bring_their_files(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        e = self._engine(tmp)
+        a_id = e.workspace_id
+        png = io.BytesIO()
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)).save(png, "PNG")
+        logo = self._add(e, "logo.png", png.getvalue())["assets"][0]
+        os.makedirs(os.path.join(e.ws.assets_dir, "spin"))
+        with open(os.path.join(e.ws.assets_dir, "spin", "spin.json"), "w") as f:
+            json.dump({"v": "5.7", "layers": []}, f)
+        layers = [{"id": "l1", "type": "image", "src": logo, "x": 5, "y": 6, "w": 4, "h": 4},
+                  {"id": "l2", "type": "lottie", "src": "assets/spin/spin.json", "x": 0, "y": 0, "w": 9, "h": 9},
+                  {"id": "l3", "type": "text", "text": "{{Global!Left name}}", "x": 0, "y": 0, "w": 9, "h": 9}]
+        # (the same workspace: nothing to do)
+        self.assertEqual(e.paste_layers(a_id, layers), {"layers": layers, "assets": []})
+        e.create_workspace("Other")
+        self.assertNotEqual(e.workspace_id, a_id)
+        other = io.BytesIO()
+        Image.new("RGBA", (4, 4), (0, 0, 255, 255)).save(other, "PNG")
+        self._add(e, "logo.png", other.getvalue())
+        r = e.paste_layers(a_id, layers)
+        self.assertEqual(r["layers"][0]["src"], "assets/logo-2.png")
+        with open(e.assets.path_of("assets/logo-2.png"), "rb") as f:
+            self.assertEqual(f.read(), png.getvalue())
+        self.assertEqual(r["layers"][1]["src"], "assets/spin/spin.json")
+        self.assertTrue(os.path.isfile(os.path.join(e.ws.assets_dir, "spin", "spin.json")))
+        self.assertEqual(r["layers"][2], layers[2])
+        self.assertEqual(r["layers"][0]["x"], 5)
+        # Again: the files are here now.
+        self.assertEqual(e.paste_layers(a_id, layers)["assets"], [])
+
+
+class EnginePairingTests(unittest.TestCase):
+    """Two GFX Engines on one network: a HUD only talks to the engine it
+    connected to, and an engine keeps one copy of each HUD."""
+
+    def _engine(self, port):
+        from gfxengine.app import Engine, start
+        tmp = tempfile.mkdtemp()
+        settings = Settings(os.path.join(tmp, "settings.json"))
+        settings.update({"http_port": port})
+        engine = Engine(settings, os.path.join(tmp, "workspaces"), starter=os.path.join(ROOT, "starter"),
+                        library_dir=os.path.join(tmp, "library"), legacy_dir=os.path.join(tmp, "none"))
+        engine.updater.check_in_background = lambda: None
+        start(engine)
+        self.addCleanup(engine.server.stop)
+        return engine, f"http://127.0.0.1:{port}"
+
+    def _hud(self, store, link):
+        hud = link.EngineLink("League HUD", "lol", lambda: {"fields": {"Blue kills": store["kills"]}},
+                              lambda g, fetch: g["left"]["name"], load=lambda: store.get("saved"),
+                              save=lambda d: store.update(saved=d))
+        self.addCleanup(hud.stop)
+        return hud
+
+    def _wait(self, test, secs=8):
+        end = time.time() + secs
+        while time.time() < end:
+            if test():
+                return True
+            time.sleep(0.1)
+        return False
+
+    def _link(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("enginelink", os.path.join(ROOT, "hud-link", "enginelink.py"))
+        link = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(link)
+        return link
+
+    def test_huds_follow_global_teams(self):
+        """A connected HUD takes the engine's Global teams in by itself, never
+        sends its own back, and swaps with the engine."""
+        link = self._link()
+        link.EngineLink.RECHECK = 0.5
+        e, url = self._engine(8799)
+        e.set_global({"left": {"name": "St. Clair Saints", "short": "SCC", "score": 0},
+                      "right": {"name": "Winthrop University", "short": "WU", "score": 0}})
+        cfg = {"left": {"name": "Bearrett + 2019 Kawhi", "short": "BK", "wins": 1},
+               "right": {"name": "Vixed + DnD", "short": "VD", "wins": 0}}
+        swaps = []
+
+        def snapshot():
+            return {"fields": {"Left": cfg["left"]["name"]},
+                    "series": {s: {"name": cfg[s]["name"], "short": cfg[s]["short"], "score": cfg[s]["wins"], "color": "#00ff00"}
+                               for s in ("left", "right")}}
+
+        def apply_global(g, fetch):
+            for s in ("left", "right"):
+                cfg[s].update(name=g[s]["name"], short=g[s]["short"], wins=g[s]["score"])
+            return "teams"
+
+        def swap():
+            swaps.append(1)
+            cfg["left"], cfg["right"] = cfg["right"], cfg["left"]
+
+        store = {}
+        hud = link.EngineLink("VALORANT HUD", "valorant", snapshot, apply_global, load=lambda: store.get("saved"),
+                              save=lambda d: store.update(saved=d), swap=swap)
+        self.addCleanup(hud.stop)
+        hud.connect(url)
+        names = lambda: (cfg["left"]["name"], cfg["right"]["name"])
+        self.assertTrue(self._wait(lambda: names() == ("St. Clair Saints", "Winthrop University")), names())
+        g = e.global_config()
+        self.assertEqual((g["left"]["name"], g["left"]["short"], g["right"]["name"]), ("St. Clair Saints", "SCC", "Winthrop University"))
+        self.assertEqual((g["left"]["score"], cfg["left"]["wins"]), (0, 0))   # (its old score didn't go to Global: Global's came here)
+        # A map won in the HUD: its score goes to Global.
+        cfg["left"]["wins"] = 1
+        self.assertTrue(self._wait(lambda: e.global_config()["left"]["score"] == 1))
+        # The score changed in Global: followed.
+        e.set_global({"right": {"score": 1}})
+        self.assertTrue(self._wait(lambda: cfg["right"]["wins"] == 1))
+        e.set_global({"right": {"score": 0}})
+        self.assertTrue(self._wait(lambda: cfg["right"]["wins"] == 0))
+        # The HUD's old teams come back: Global's are taken in again.
+        cfg["left"].update(name="Bearrett + 2019 Kawhi", short="BK")
+        self.assertTrue(self._wait(lambda: cfg["left"]["name"] == "St. Clair Saints"))
+        self.assertEqual(e.global_config()["left"]["name"], "St. Clair Saints")
+        # Changed in Global: followed.
+        e.set_global({"right": {"name": "Humber Hawks", "short": "HUM"}})
+        self.assertTrue(self._wait(lambda: cfg["right"]["name"] == "Humber Hawks"))
+        # Swapped in Global: the HUD swaps its sides (wins too) once.
+        g = e.global_config()
+        e.set_global({"left": g["right"], "right": g["left"]})
+        self.assertTrue(self._wait(lambda: names() == ("Humber Hawks", "St. Clair Saints")), names())
+        time.sleep(1.5)
+        self.assertEqual((len(swaps), cfg["right"]["wins"], cfg["left"]["wins"]), (1, 1, 0))
+        self.assertEqual(e.global_config()["right"]["score"], 1)
+        # The HUD's own Swap sides: swaps Global too, and isn't swapped back.
+        swap()
+        self.assertTrue(hud.swap_global())
+        time.sleep(1.5)
+        g = e.global_config()
+        self.assertEqual((g["left"]["name"], g["right"]["name"], g["left"]["score"]), ("St. Clair Saints", "Humber Hawks", 1))
+        self.assertEqual((names(), len(swaps)), (("St. Clair Saints", "Humber Hawks"), 2))
+
+    def test_huds_stay_with_their_engine(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("enginelink", os.path.join(ROOT, "hud-link", "enginelink.py"))
+        link = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(link)
+        e1, url1 = self._engine(8797)
+        e2, url2 = self._engine(8798)
+        self.assertNotEqual(e1.id, e2.id)
+        self.assertEqual(Settings(e1.settings.path).get()["engine_id"], e1.id)   # (kept for next time)
+        e1.set_global({"left": {"name": "Show One"}})
+        e2.set_global({"left": {"name": "Show Two"}})
+
+        a = self._hud({"kills": 3}, link)
+        a.connect(url1)
+        self.assertEqual(a.engine_id, e1.id)
+        self.assertTrue(self._wait(lambda: a.ok and "League HUD" in e1.feeds))
+        self.assertEqual(e1.feeds["League HUD"]["rows"][1], ["Blue kills", "3"])
+
+        # A second League HUD sending to the same engine is turned away (no flip-flopping data).
+        b = self._hud({"kills": 9}, link)
+        b.connect(url1)
+        self.assertTrue(self._wait(lambda: b.error and "already has a League HUD" in b.error), b.error)
+        self.assertEqual(e1.feeds["League HUD"]["rows"][1], ["Blue kills", "3"])
+        b.disconnect()
+
+        # Its address now reaches the other engine: turned away there, and the HUD finds its own again.
+        link.scan = lambda port=8782: [{"url": url1, "id": e1.id, "name": "One"}, {"url": url2, "id": e2.id, "name": "Two"}]
+        a.url, a._looked_at = url2, time.time()   # (it looked just now: stays on the wrong address a moment)
+        self.assertTrue(self._wait(lambda: not a.ok and "isn't" in a.error), a.error)
+        self.assertNotIn("League HUD", e2.feeds)
+        a._looked_at = 0
+        self.assertTrue(self._wait(lambda: a.ok and a.url == url1))
+        self.assertNotIn("League HUD", e2.feeds)
+
+        # Use Global Information: from its own engine, even when its address now reaches another.
+        a.url = url2
+        self.assertEqual(a.use_global()["summary"], "Show One")
+        self.assertEqual(a.url, url1)
+        with self.assertRaises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(f"{url2}/api/global?engine={e1.id}", timeout=5)
+        self.assertEqual(err.exception.code, 409)
+        a.stop()
+
+        # A HUD connected before engines had IDs pairs with the engine at its address.
+        store = {"kills": 1, "saved": {"url": url2, "name": "Two", "connected": True}}
+        old = self._hud(store, link)
+        self.assertTrue(self._wait(lambda: old.ok and store["saved"].get("engine_id") == e2.id))
+        self.assertTrue(store["saved"]["hud_id"])
+        # Engines and HUDs from before (no IDs sent) still work.
+        req = urllib.request.Request(url1 + "/api/ingest", json.dumps({"source": "RL HUD", "fields": {"x": 1}}).encode(),
+                                     {"Content-Type": "application/json"})
+        self.assertTrue(json.loads(urllib.request.urlopen(req, timeout=5).read())["ok"])

@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="assets/app_icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VALORANT HUD Control</title>
+<style>
+  @font-face { font-family: "Inter"; src: url("fonts/Inter.ttf") format("truetype"); font-weight: 100 900; }
+  :root { --bg: #0e1012; --panel: #171a1d; --line: #2a2f34; --text: #e8eaed; --muted: #8b939b;
+          --left: #2fc7a6; --right: #e3475a; --accent: #31c392; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Inter", system-ui, sans-serif; }
+  html, body { height: 100%; }
+  header { display: flex; align-items: center; gap: 14px; height: 54px; padding: 0 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .clock { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 3px 8px; border-radius: 4px; background: #ffcf66; color: #1a1a1a; }
+  .badge:empty { display: none; }
+  .version { font-size: 12px; color: var(--muted); }
+  .update.check { background: #252a2f; color: var(--text); border: 1px solid var(--line); font-weight: 600; }
+  .update.check:hover { filter: none; border-color: var(--muted); }
+  .update { background: var(--accent); color: #06231a; border: 0; font-weight: 700; padding: 6px 12px; }
+  .update:hover { filter: brightness(1.1); }
+  .update[disabled] { background: #2c3a35; color: var(--text); cursor: default; }
+  .update.error { background: #6b2a2a; color: #fff; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: 6px 12px; color: var(--muted); }
+  .seg button.on { background: var(--accent); color: #06231a; font-weight: 600; }
+  /* Desktop layout: settings scroll on the left, preview / outputs / log on the right. */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 440px; height: calc(100% - 54px); }
+  .layout > main, .layout > aside { overflow-y: auto; }
+  aside { border-left: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .out { margin-bottom: 10px; }
+  .out > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .out .row { align-items: stretch; }
+  .out code { display: flex; align-items: center; padding: 6px 8px; min-width: 0; }
+  .out button { flex: 0 0 auto; }
+  .toggle { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; margin: 6px 0 10px; cursor: pointer; }
+  .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .log { height: 190px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+         font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+  .log .t { color: var(--muted); margin-right: 6px; }
+  .log .warn { color: #ffcf66; }
+  .log .error { color: #ff7b7b; }
+  @media (max-width: 900px) { .layout { display: block; height: auto; } aside { border-left: 0; } }
+  header h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #c0392b; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 16px; align-content: start; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  section.wide { grid-column: 1 / -1; }
+  .h2row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .h2row h2 { margin: 0; }
+  .h2row button { flex: 0 0 auto; padding: 6px 14px; }
+  h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 12px; }
+  input, select { width: 100%; padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  input[type=checkbox] { width: auto; }
+  input.swatch { flex: 0 0 64px; height: 38px; padding: 3px; cursor: pointer; }
+  input[type=range] { padding: 0; border: 0; background: none; accent-color: var(--accent); }
+  .logo-adjust label span { color: var(--text); float: right; }
+  button { padding: 8px 12px; background: #252a2f; color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .team { border-top: 4px solid var(--left); padding-top: 8px; }
+  .team.right { border-top-color: var(--right); }
+  .team img { width: 48px; height: 48px; object-fit: contain; background: #000; border-radius: 6px; flex: 0 0 48px; }
+  .wins { display: flex; align-items: center; gap: 8px; }
+  .wins b { font-size: 22px; min-width: 28px; text-align: center; }
+  .wins button { flex: 0 0 40px; font-size: 18px; padding: 4px; }
+  .preview { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #2f3d2c url("hud/Resources/Maps/Ascent.png") center/cover; border-radius: 6px; overflow: hidden; }
+  .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; }
+  code { background: var(--bg); padding: 2px 6px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 12px; font-size: 12px; max-height: 320px; overflow: auto; }
+  .fields div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 3px 0; cursor: copy; }
+  .fields span:last-child { color: var(--muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%; }
+  .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .select-players .pick { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 13px; }
+  .select-players .pick span { flex: 0 0 90px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .select-players .pick select { flex: 1; min-width: 0; }
+  .select-players .pick label { display: flex; align-items: center; gap: 4px; margin: 0; flex: 0 0 auto; color: var(--muted); }
+  .cam-fonts { margin-bottom: 10px; }
+  .cam-fonts label span { float: right; color: var(--text); }
+  .cam-list { display: grid; gap: 6px; }
+  .cam-list .cam { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+  .cam-list .cam .who { margin-left: auto; color: var(--muted); }
+  .cam-list .cam .who.ok { color: var(--accent); }
+  .cam-list .none { color: var(--muted); font-size: 13px; }
+  .cam-links { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-bottom: 10px; }
+  @media (max-width: 900px) { .cam-links { grid-template-columns: 1fr; } }
+  .cam-links .hd { display: flex; gap: 8px; font-size: 12px; color: var(--muted); }
+  .cam-links .hd span:first-child, .cam-links .riot { flex: 0 0 150px; }
+  .cam-link-row { display: flex; gap: 8px; align-items: center; }
+  .cam-link-row input { min-width: 0; padding: 6px 8px; }
+  .cam-link-row .link { flex: 1; }
+  .cam-link-row .hide, .cam-list .hide { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; }
+  .cam-link-row .hide.on, .cam-list .hide.on { background: #b3393955; border-color: #d55; }
+  .cam-link-row.hidden input { opacity: .45; }
+  .cam-link-row .who { flex: 0 0 120px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cam-link-row .who.ok { color: var(--accent); }
+  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; color: var(--muted); cursor: pointer; }
+  .drop.over { border-color: var(--accent); color: var(--text); background: rgba(49,195,146,.06); }
+  .sponsor-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .sponsor { position: relative; width: 160px; height: 62px; background: #111 center/contain no-repeat; border: 1px solid var(--line); border-radius: 6px; }
+  .sponsor .n { position: absolute; left: 4px; top: 2px; font-size: 11px; color: var(--muted); }
+  .sponsor .tools { position: absolute; right: 2px; bottom: 2px; display: flex; gap: 2px; }
+  .sponsor .tools button { padding: 0 6px; font-size: 12px; line-height: 18px; }
+  button.primary { background: var(--accent); color: #06231a; border-color: var(--accent); font-weight: 600; }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 0; color: var(--text); font-size: 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .checks input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .checks .dot { width: 18px; height: 18px; box-shadow: none; display: inline-grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; }
+  .warn { color: #ffcf66; }
+  .screen-result { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .screen-result figure { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .screen-result img { width: 100%; image-rendering: pixelated; background: #fff; border-radius: 3px; }
+  .screen-result figcaption { font-size: 12px; margin-top: 4px; }
+  .ok { color: var(--accent); }
+  /* The screen reader's switch: big, and red while it's reading. */
+  .read-btn { width: 100%; padding: 16px; font-size: 17px; font-weight: 700; border-radius: 8px; letter-spacing: .01em; }
+  .read-btn.reading { background: #e3475a; border-color: #e3475a; color: #fff; }
+  .read-btn.reading::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 10px; border-radius: 50%;
+                              background: #fff; vertical-align: 1px; animation: read-blink 1.2s ease-in-out infinite; }
+  .read-btn[disabled] { opacity: .5; cursor: default; }
+  @keyframes read-blink { 50% { opacity: .25; } }
+  .report { margin-top: 10px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+  .report .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .report .chips span { background: #252a2f; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+  details ul { margin: 6px 0 0; padding-left: 18px; }
+  .bg-video { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .bg-video label span { color: var(--text); float: right; }
+  details li { margin-bottom: 4px; }
+  @media (max-width: 600px) { .teams { grid-template-columns: 1fr; } }
+  .players { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .players .p { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .players .p img { width: 28px; height: 28px; border-radius: 4px; background: #000; object-fit: cover; }
+  .players .p small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .maps .row { margin-bottom: 6px; }
+  .maps .row > span { flex: 0 0 52px; color: var(--muted); font-size: 12px; }
+  .maps input[type=radio] { flex: 0 0 auto; width: auto; accent-color: var(--accent); }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btns button.on { background: var(--accent); color: #06231a; border-color: var(--accent); font-weight: 600; }
+  .feed { font-size: 13px; }
+  .mb-team-a { display: flex; gap: 24px; }
+  .mb-team-a label { border-bottom: 0; }
+  .mb-steps { margin-top: 10px; }
+  .mb-step { display: grid; grid-template-columns: 26px 150px minmax(0, 220px) 130px minmax(0, 160px); gap: 10px; align-items: center;
+             padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .mb-step .n { color: var(--muted); }
+  .mb-step .ban { color: #ff7b7b; }
+  .mb-step .pick { color: var(--accent); }
+  .mb-step .decider { color: #ffcf66; }
+  .mb-step select { padding: 5px 8px; }
+  .mb-step .who { color: var(--muted); text-align: right; }
+  .mb-pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px 16px; }
+  .mb-pool label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 6px 0; color: var(--text); font-size: 14px; cursor: pointer; }
+  .mb-pool input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .feed code { display: inline; }
+</style>
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="appearance.css">
+<script src="appearance.js"></script>
+</head>
+<body>
+<header>
+  <h1>VALORANT HUD</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
+  <div class="seg" id="mode" role="group" aria-label="Game source">
+    <button data-mode="live">Live feed</button><button data-mode="demo">Demo match</button>
+  </div>
+  <select id="demo-speed" title="Demo speed" style="width:auto">
+    <option value="1">1x</option><option value="4">4x</option><option value="8">8x</option><option value="20">20x</option>
+  </select>
+  <div class="seg" id="ow" hidden title="Draws the HUD in a see-through window over the whole screen, on top of VALORANT. Clicks go through it to the game. Set VALORANT to Windowed Fullscreen or Windowed (not Fullscreen).">
+    <button id="ow-btn">Show HUD on game</button>
+    <select id="ow-screen" title="Which screen the HUD covers" style="width:auto;border:0;border-left:1px solid var(--line);border-radius:0"></select>
+  </div>
+  <div class="status" style="margin-left:auto">
+    <button id="custom-design" title="Design your own HUD on this HUD's live data, or bring in a Photoshop, Figma or GFX Engine design (HUD Builder, built in)">Custom design</button>
+    <button id="update" class="update" hidden></button>
+    <span class="version" id="version"></span>
+    <span class="badge" id="mode-badge"></span><span id="clock" class="clock">R0 0:00</span>
+    <a href="/start" class="version" style="text-decoration:none" title="Back to the GFX Controller / Observer Client choice">Change client</a>
+  </div>
+</header>
+<div class="layout">
+<main>
+  <section class="wide" data-page="teams">
+    <div class="h2row"><h2>Teams</h2><button id="swap-sides" title="The teams change sides: names, logos, colours, series wins, maps won, timeouts, player names and who attacks first">⇄ Swap sides</button></div>
+    <div class="teams"><div class="team left" data-side="left"></div><div class="team right" data-side="right"></div></div>
+  </section>
+
+  <section data-page="tournament">
+    <h2>Series &amp; maps</h2>
+    <div class="row">
+      <div><label>Best of</label><select id="best-of"><option value="1">1</option><option value="3">3</option><option value="5">5</option></select></div>
+      <div><label>Attacks first</label><select id="attack-first"><option value="left">Left team</option><option value="right">Right team</option></select></div>
+      <div><label>Players</label><select id="team-size" title="2v2: two player tabs a side, each with the player's webcam under it"><option value="5">5v5</option><option value="2">2v2 skirmish</option></select></div>
+    </div>
+    <label>Maps (pick the one being played; set the winner when a map ends)</label>
+    <div class="maps" id="maps"></div>
+  </section>
+
+  <section data-page="live">
+    <h2>Broadcast</h2>
+    <label>Timeouts left</label>
+    <div class="row">
+      <div class="wins"><button data-to="left" data-d="-1">−</button><b id="to-left">2</b><button data-to="left" data-d="1">+</button></div>
+      <div class="wins"><button data-to="right" data-d="-1">−</button><b id="to-right">2</b><button data-to="right" data-d="1">+</button></div>
+    </div>
+    <label>On screen</label>
+    <div class="btns">
+      <button id="call-left">Timeout: left team</button>
+      <button id="call-right">Timeout: right team</button>
+      <button id="tech-pause">Technical pause</button>
+      <button id="show-scoreboard" title="Keeps the scoreboard overlay (/scoreboard) on screen; otherwise it shows itself in the buy phase">Show scoreboard</button>
+    </div>
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="show-timeouts"> Timeout diamonds under the score</label>
+  </section>
+
+  <section data-page="editor">
+    <h2>HUD colours</h2>
+    <p class="note" style="margin-top:0">The HUD's two side colours. They still swap at half time, with the sides.</p>
+    <div class="row">
+      <div><label>Defenders (teal)</label>
+        <div class="row"><input type="color" class="swatch" id="defense-color"><input id="defense-hex" maxlength="7" spellcheck="false"></div></div>
+      <div><label>Attackers (red)</label>
+        <div class="row"><input type="color" class="swatch" id="attack-color"><input id="attack-hex" maxlength="7" spellcheck="false"></div></div>
+    </div>
+    <button id="colors-reset" style="margin-top:10px">Back to teal &amp; red</button>
+  </section>
+
+  <section class="wide" data-page="teams">
+    <h2>Players</h2>
+    <p class="note" style="margin:0 0 8px">Names typed here replace the ones from the game. Leave blank to use the game's.</p>
+    <div class="row" style="margin:0 0 10px">
+      <button id="scan-names" style="flex:0 0 auto" title="Reads every name off VALORANT's Tab scoreboard carefully and fills them in below, each by its player's agent">Scan names</button>
+      <span class="note" id="scan-result" style="margin:0">With the Tab scoreboard open in VALORANT (it's up in the buy phase): fills in every player's name from the game.</span>
+    </div>
+    <div class="players"><div id="players-left"></div><div id="players-right"></div></div>
+  </section>
+
+  <section class="wide" data-page="tournament">
+    <h2>Sponsors</h2>
+    <div id="sponsor-drop" class="drop" tabindex="0">Drop sponsor logos here, or <u>choose files</u>
+      <input type="file" id="sponsor-files" accept=".png,.jpg,.jpeg,.webp,.gif,.svg" multiple hidden></div>
+    <div id="sponsor-list" class="sponsor-list"></div>
+    <div class="row" style="margin-top:10px">
+      <label style="margin:0;flex:0 0 auto">Seconds each <input type="number" id="sponsor-seconds" min="1" max="60" step="0.5" style="width:70px"></label>
+      <button id="sponsor-save" class="primary" style="flex:0 0 auto">Save sponsors</button>
+      <span class="note" id="sponsor-note" style="margin:0"></span>
+    </div>
+    <p class="note">Rotate in the top right of the HUD, in this order. Saving puts them on the HUD now and makes them the rotation every time the app starts. With none, the HUD shows its own two.</p>
+  </section>
+
+  <section class="wide" data-page="agents">
+    <h2>Agent select</h2>
+    <div class="out"><span>Agent select overlay (OBS / vMix browser source, 1920×1080): shows itself during agent select</span>
+      <div class="row"><code id="url-select"></code><button data-copy="url-select">Copy</button></div></div>
+    <div class="row" style="align-items:center">
+      <label style="margin:0;flex:0 0 auto">Look</label>
+      <select id="select-look" style="flex:0 0 220px"><option value="pro">PRO Selector</option><option value="champions">Champions 2025</option></select>
+      <span class="note" id="select-status" style="margin:0"></span>
+    </div>
+    <div class="btns" style="margin-top:10px">
+      <button id="select-onair">Show now</button>
+      <button id="select-demo">Play demo</button>
+      <button id="select-clear">Clear</button>
+      <select id="select-map" style="flex:0 0 200px"></select>
+    </div>
+    <div class="players select-players"><div id="select-left"></div><div id="select-right"></div></div>
+    <p class="note">The map and each player's agent come from the observer's agent select screen (or set them here).
+      An agent being hovered shows as a silhouette; it fills in once locked. The map read becomes the current map
+      of the series.</p>
+  </section>
+
+  <section class="wide" data-page="mapbans">
+    <h2>Map bans</h2>
+    <div class="out"><span>Map bans graphics (OBS / vMix browser source, 1920×1080; also in GFX Engine under Game HUD)</span>
+      <div class="row"><code id="url-bans-bo1"></code><button data-copy="url-bans-bo1">Copy</button></div>
+      <div class="row" style="margin-top:6px"><code id="url-bans-bo3"></code><button data-copy="url-bans-bo3">Copy</button></div></div>
+    <label>Team A (bans first)</label>
+    <div class="checks mb-team-a"><label><input type="checkbox" data-team-a="left"> <span></span></label>
+      <label><input type="checkbox" data-team-a="right"> <span></span></label></div>
+    <div class="row" style="margin-top:14px;align-items:center">
+      <div class="seg" id="mb-format" style="flex:0 0 auto"><button data-f="bo3">Best of 3</button><button data-f="bo1">Best of 1</button></div>
+      <span class="note" id="mb-order" style="margin:0"></span>
+      <button id="mb-clear" style="flex:0 0 auto">Clear</button>
+    </div>
+    <div class="mb-steps" id="mb-steps"></div>
+    <p class="note">The official VCT veto. Each graphic shows its own veto as you fill it in, live on air too: bans in grey,
+      picks and the decider in colour, with whose side pick it was.</p>
+  </section>
+
+  <section class="wide" data-page="mapbans">
+    <h2>Map pool</h2>
+    <div class="mb-pool" id="mb-pool"></div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button id="mb-vct" style="flex:0 0 auto">Current VCT pool</button>
+      <span class="note" id="mb-pool-note" style="margin:0"></span>
+    </div>
+  </section>
+
+  <section class="wide" data-page="teams">
+    <h2>Player cams</h2>
+    <label class="toggle"><input type="checkbox" id="cams-on"> Show the spectated player's webcam on the HUD</label>
+    <div class="row cam-fonts">
+      <div><label>Name font</label><select id="cam-name-font"></select>
+        <label>Name size <span id="cam-name-size-val"></span></label><input type="range" id="cam-name-size" min="10" max="32" step="1"></div>
+      <div><label>K / D / A font</label><select id="cam-kda-font"></select>
+        <label>K / D / A size <span id="cam-kda-size-val"></span></label><input type="range" id="cam-kda-size" min="10" max="32" step="1"></div>
+    </div>
+    <h3>Cam links</h3>
+    <div id="cam-links" class="cam-links"></div>
+    <h3>Player Cam app</h3>
+    <div id="cam-list" class="cam-list"></div>
+    <p class="note">Players run the <b>SCC Player Cam</b> app on their PC, pick VALORANT, enter this PC's address
+      (<span id="cam-address">tick "Let other PCs on the network read the HUD" in Outputs</span>) and their Riot ID.
+      When the observer is spectating them, their cam pops up above the bottom left of the HUD, framed in black,
+      with their name and K / D / A by a strip in their side's colour. In a 2v2 (Series &amp; maps &gt; Players) every
+      player's cam stays up under their tab instead, showing the team logo until their cam connects.</p>
+    <p class="note">Or paste a player's <b>cam link</b> (a VDO.Ninja view link, or any page showing just their cam) beside
+      their Riot ID above. The Riot ID finds them in the match (by the name before the #), and the link takes over from
+      their Player Cam. Links work from anywhere, with a little more delay.</p>
+  </section>
+
+  <section class="wide" data-page="teams">
+    <h2>Players</h2>
+    <p class="note" style="margin-top:0">Links each player in the game to their player in the team's roster on GFX Engine (Teams &gt; Team members), by their in-game name. Linked players show on the engine's graphics with their player name, headshot and flag.</p>
+    <div class="link-teams">
+      <div class="link-team left" id="links-left"></div>
+      <div class="link-team right" id="links-right"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <button type="button" id="links-refresh">Refresh</button>
+      <span class="note" id="links-note" style="margin:0"></span>
+    </div>
+  </section>
+  <section class="wide" data-page="live overview">
+    <h2>Live data</h2>
+    <button id="reader" class="read-btn">Read VALORANT on this PC</button>
+    <div class="note" id="reader-status" style="margin:8px 0 10px"></div>
+    <div class="row" style="margin-bottom:10px">
+      <button id="reader-save" style="flex:0 0 auto" title="Saves the VALORANT screen as the reader sees it, with what it read, to the frames folder (to send for tuning)">Save frame</button>
+      <button id="reader-report" style="flex:0 0 auto" title="Zips everything to send in after a show: the frames the reader saved by itself when it couldn't read something, your saved frames and the log">Problem report</button>
+      <span class="note" style="margin:0">Something read wrong? Save a frame at that moment. The reader also saves one by itself when it can't read a screen. After the show, press Problem report and send the zip from the folder that opens.</span>
+    </div>
+    <div class="row" style="margin-bottom:10px;align-items:center">
+      <span class="note" id="riot-status" style="margin:0;flex:1"></span>
+    </div>
+    <div class="feed" id="feed"></div>
+    <details class="note" style="margin-top:8px">
+      <summary>Sending live data to the HUD</summary>
+      <p>Anything that reads the match can POST JSON to <code>/api/ingest</code> on this PC, e.g.
+      <code>{"source": "reader", "match": {"round": 5, "phase": "combat", "score": {"left": 3, "right": 1}},
+      "players": [{"team": "left", "slot": 1, "agent": "Jett", "health": 80, "credits": 2300}]}</code>.
+      Only the fields that changed need sending. The full list is in the README.</p>
+    </details>
+  </section>
+</main>
+<aside>
+  <section data-page="editor live">
+    <h2>Preview</h2>
+    <div class="preview" id="preview"><iframe src="/overlay" title="Overlay preview"></iframe></div>
+  </section>
+
+  <section data-page="overview">
+    <h2>Outputs</h2>
+    <div class="out"><span>HUD overlay (OBS / vMix browser source, 1920×1080)</span>
+      <div class="row"><code id="url-overlay"></code><button data-copy="url-overlay">Copy</button></div></div>
+    <div class="out"><span>Scoreboard overlay (shows itself in the buy phase)</span>
+      <div class="row"><code id="url-scoreboard"></code><button data-copy="url-scoreboard">Copy</button></div></div>
+    <div class="out"><span>vMix data source (CSV; also /hud.json, /hud.xml)</span>
+      <div class="row"><code id="url-csv"></code><button data-copy="url-csv">Copy</button></div></div>
+    <div class="out"><span>CSV / JSON / XML files</span>
+      <div class="row"><code id="out-dir"></code><button data-open="output">Open folder</button></div></div>
+    <label class="toggle"><input type="checkbox" id="network"> Let other PCs on the network read the HUD</label>
+    <div class="out" id="lan-row" hidden><span>From another PC</span>
+      <div class="row"><code id="url-lan"></code><button data-copy="url-lan">Copy</button></div></div>
+  </section>
+
+  <section data-page="overview">
+    <h2>Log</h2>
+    <div class="log" id="log"></div>
+  </section>
+</aside>
+</div>
+<script>window.SHELL = {"app": "VALORANT HUD", "logo": "assets/app_icon.png", "pages": [{"id": "overview", "label": "Overview"}, {"id": "editor", "label": "HUD Editor"}, {"id": "teams", "label": "Players & Teams", "group": "Event setup"}, {"id": "tournament", "label": "Tournament", "group": "Event setup"}, {"id": "live", "label": "Live Game", "group": "Live game"}, {"id": "agents", "label": "Agent Select", "icon": "draft", "group": "Live game"}, {"id": "mapbans", "label": "Map Bans", "icon": "tournament", "group": "Live game"}, {"id": "engine", "label": "GFX Engine", "icon": "engine", "group": "Connections"}]};</script>
+<script src="enginelink.js"></script>
+<script src="shell.js"></script>
+<script src="update.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let state = null;
+const MAPS = ["Abyss", "Ascent", "Bind", "Breeze", "Corrode", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Summit", "Sunset"];
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (data.error) alert(data.error); else apply(data);
+  return data;
+}
+function setIfIdle(el, value) { if (document.activeElement !== el) el.value = value; }
+
+// Teams.
+function teamForm(side) {
+  return `
+    <div class="row"><img id="${side}-logo-img" alt="">
+      <div><label>Tricode</label><input data-k="tricode" maxlength="5"></div></div>
+    <label>Team name</label><input data-k="name">
+    <label>Logo</label>
+    <div class="row"><select data-k="logo" id="${side}-logo"></select>
+      <button type="button" onclick="document.getElementById('${side}-upload').click()" style="flex:0 0 auto">Upload…</button>
+      <input type="file" id="${side}-upload" accept="image/*" hidden></div>
+    <label>Series wins</label>
+    <div class="wins"><button data-w="-1">−</button><b id="${side}-wins">0</b><button data-w="1">+</button></div>`;
+}
+for (const el of document.querySelectorAll(".team")) {
+  const side = el.dataset.side;
+  el.innerHTML = teamForm(side);
+  el.querySelectorAll("[data-k]").forEach(input => input.addEventListener("change", () =>
+    post("/api/config", { [side]: { [input.dataset.k]: input.value } })));
+  el.querySelectorAll("[data-w]").forEach(b => b.addEventListener("click", () =>
+    post("/api/config", { [side]: { wins: Math.max(0, state.config[side].wins + Number(b.dataset.w)) } })));
+  $(`${side}-upload`).addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => post("/api/logo", { side, filename: file.name, data: reader.result.split(",")[1] });
+    reader.readAsDataURL(file);
+  });
+}
+async function loadLogos(cfg) {
+  const logos = await (await fetch("/api/logos")).json();
+  for (const side of ["left", "right"]) {
+    const sel = $(`${side}-logo`), current = cfg[side].logo;
+    sel.innerHTML = [...new Set([current, ...logos])].map(l => `<option value="${l}">${l.split("/").pop()}</option>`).join("");
+    sel.value = current;
+  }
+}
+
+$("swap-sides").onclick = () => post("/api/swap", {});
+
+// Series and maps.
+$("best-of").onchange = e => {
+  const n = Number(e.target.value), maps = state.config.maps.slice(0, n);
+  while (maps.length < n) maps.push({ name: MAPS[maps.length % MAPS.length], winner: "" });
+  post("/api/config", { best_of: n, maps, current_map: Math.min(state.config.current_map, n - 1) });
+};
+$("attack-first").onchange = e => post("/api/config", { attack_first: e.target.value });
+$("team-size").onchange = e => post("/api/config", { team_size: Number(e.target.value) });
+function renderMaps(cfg) {
+  const box = $("maps");
+  const key = JSON.stringify([cfg.maps, cfg.current_map, cfg.left.tricode, cfg.right.tricode]);
+  if (box.dataset.key === key || box.contains(document.activeElement)) return;
+  box.dataset.key = key;
+  box.innerHTML = cfg.maps.map((m, i) => `
+    <div class="row">
+      <input type="radio" name="current-map" value="${i}" ${i === cfg.current_map ? "checked" : ""} title="Being played">
+      <span>Map ${i + 1}</span>
+      <select data-map="${i}">${MAPS.map(n => `<option ${n === m.name ? "selected" : ""}>${n}</option>`).join("")}</select>
+      <select data-winner="${i}">
+        <option value="" ${!m.winner ? "selected" : ""}>Not played yet</option>
+        <option value="left" ${m.winner === "left" ? "selected" : ""}>Won by ${cfg.left.tricode}</option>
+        <option value="right" ${m.winner === "right" ? "selected" : ""}>Won by ${cfg.right.tricode}</option>
+      </select>
+    </div>`).join("");
+  const maps = () => state.config.maps.map(m => ({ ...m }));
+  box.querySelectorAll("[data-map]").forEach(s => s.onchange = () => {
+    const list = maps(); list[s.dataset.map].name = s.value; post("/api/config", { maps: list });
+  });
+  box.querySelectorAll("[data-winner]").forEach(s => s.onchange = () => {
+    const list = maps(); list[s.dataset.winner].winner = s.value; post("/api/config", { maps: list });
+  });
+  box.querySelectorAll("[name=current-map]").forEach(r => r.onchange = () => post("/api/config", { current_map: Number(r.value) }));
+}
+
+// Broadcast controls.
+document.querySelectorAll("[data-to]").forEach(b => b.addEventListener("click", () => {
+  const side = b.dataset.to, n = Math.max(0, Math.min(2, state.config.timeouts[side] + Number(b.dataset.d)));
+  post("/api/config", { timeouts: { [side]: n } });
+}));
+for (const side of ["left", "right"])
+  $(`call-${side}`).onclick = () => {
+    const calling = state.config.timeout_call === side;
+    const change = { timeout_call: calling ? "" : side, tech_pause: false };
+    // Calling a timeout uses one up.
+    if (!calling && state.config.timeouts[side] > 0) change.timeouts = { [side]: state.config.timeouts[side] - 1 };
+    post("/api/config", change);
+  };
+$("reader").onclick = () => post("/api/reader", { enabled: !$("reader").classList.contains("reading") });
+// Sponsors: edited here, put on the HUD (and kept for next launch) by Save.
+let sponsors = null, sponsorsSaved = "";
+function sponsorUrl(p) { return "/" + p.split("/").map(encodeURIComponent).join("/"); }
+function drawSponsors() {
+  const box = $("sponsor-list");
+  box.innerHTML = "";
+  sponsors.forEach((p, i) => {
+    const d = document.createElement("div");
+    d.className = "sponsor";
+    d.style.backgroundImage = `url("${sponsorUrl(p)}")`;
+    d.title = p.split("/").pop();
+    d.innerHTML = `<span class="n">${i + 1}</span><span class="tools"><button title="Earlier">◀</button><button title="Later">▶</button><button title="Remove">✕</button></span>`;
+    const [back, fwd, del] = d.querySelectorAll("button");
+    back.onclick = () => { if (i > 0) { [sponsors[i - 1], sponsors[i]] = [sponsors[i], sponsors[i - 1]]; drawSponsors(); } };
+    fwd.onclick = () => { if (i < sponsors.length - 1) { [sponsors[i + 1], sponsors[i]] = [sponsors[i], sponsors[i + 1]]; drawSponsors(); } };
+    del.onclick = () => { sponsors.splice(i, 1); drawSponsors(); };
+    box.appendChild(d);
+  });
+  const changed = JSON.stringify([sponsors, Number($("sponsor-seconds").value)]) !== sponsorsSaved;
+  $("sponsor-note").textContent = changed ? "Not saved yet" : (sponsors.length ? `${sponsors.length} on the HUD` : "The HUD's own two");
+  $("sponsor-note").className = "note" + (changed ? " warn" : "");
+}
+async function addSponsorFiles(files) {
+  for (const file of files) {
+    if (!/\.(png|jpe?g|webp|gif|svg)$/i.test(file.name)) continue;
+    const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.readAsDataURL(file); });
+    const r = await (await fetch("/api/sponsor", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                  body: JSON.stringify({ filename: file.name, data }) })).json();
+    if (r.error) { alert(r.error); continue; }
+    sponsors.push(r.path);
+    drawSponsors();
+  }
+}
+const drop = $("sponsor-drop");
+drop.onclick = () => $("sponsor-files").click();
+$("sponsor-files").onchange = e => { addSponsorFiles([...e.target.files]); e.target.value = ""; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); addSponsorFiles([...e.dataTransfer.files]); };
+$("sponsor-seconds").oninput = drawSponsors;
+$("sponsor-save").onclick = async () => {
+  await post("/api/sponsors", { sponsors, seconds: Number($("sponsor-seconds").value) || 4 });
+  sponsorsSaved = JSON.stringify([sponsors, Number($("sponsor-seconds").value)]);
+  drawSponsors();
+};
+function applySponsors(cfg) {
+  if (sponsors !== null) return;  // loaded once; then edited here until saved
+  sponsors = [...(cfg.sponsors || [])];
+  $("sponsor-seconds").value = cfg.sponsor_seconds || 4;
+  sponsorsSaved = JSON.stringify([sponsors, Number($("sponsor-seconds").value)]);
+  drawSponsors();
+}
+
+$("reader-save").onclick = () => post("/api/reader/save", {});
+$("reader-report").onclick = () => post("/api/report", {});
+$("scan-names").onclick = async () => {
+  $("scan-names").disabled = true;
+  $("scan-result").textContent = "Scanning…";
+  let data = {};
+  try { data = await post("/api/reader/names", {}); }
+  catch (e) { data = { error: String(e) }; }
+  finally { $("scan-names").disabled = false; }
+  if (data.error) { $("scan-result").textContent = "Couldn't scan: " + data.error; return; }
+  const scan = state && state.app.scan;
+  if (scan) $("scan-result").textContent = `Filled in ${scan.found} of 10.`
+    + (scan.missed.length ? ` Couldn't tell whose: ${scan.missed.join(", ")} (agent not recognised yet): type those in.` : "");
+};
+$("tech-pause").onclick = () => post("/api/config", { tech_pause: !state.config.tech_pause, timeout_call: "" });
+$("show-scoreboard").onclick = () => post("/api/config", { show: { scoreboard: !state.config.show.scoreboard } });
+$("show-timeouts").onchange = e => post("/api/config", { show: { timeouts: e.target.checked } });
+
+// Players.
+for (const side of ["left", "right"]) {
+  $(`players-${side}`).innerHTML = [1, 2, 3, 4, 5].map(i => `
+    <div class="p"><img id="pimg-${side}-${i}" alt=""><input id="pname-${side}-${i}" placeholder="Player ${i}"><small id="pinfo-${side}-${i}"></small></div>`).join("");
+  for (let i = 1; i <= 5; i++)
+    $(`pname-${side}-${i}`).addEventListener("change", () => {
+      const names = [1, 2, 3, 4, 5].map(n => $(`pname-${side}-${n}`).value.trim());
+      post("/api/config", { player_names: { [side]: names } });
+    });
+}
+
+// HUD colours: sent when the picker closes (each change reloads the HUD).
+const COLOR_DEFAULTS = { defense: "#00ffcc", attack: "#ff4e5d" };
+for (const k of ["defense", "attack"]) {
+  $(`${k}-color`).addEventListener("input", e => { $(`${k}-hex`).value = e.target.value; });
+  $(`${k}-color`).addEventListener("change", e => post("/api/config", { [`${k}_color`]: e.target.value }));
+  $(`${k}-hex`).addEventListener("change", e => {
+    let v = e.target.value.trim();
+    if (!v.startsWith("#")) v = "#" + v;
+    if (/^#[0-9a-f]{6}$/i.test(v)) post("/api/config", { [`${k}_color`]: v.toLowerCase() });
+    else e.target.value = state.config[`${k}_color`];
+  });
+}
+$("colors-reset").onclick = () => post("/api/config", { defense_color: COLOR_DEFAULTS.defense, attack_color: COLOR_DEFAULTS.attack });
+
+function apply(s) {
+  applySponsors(s.config);
+  applyCams(s);
+  applySelect(s);
+  for (const k of ["defense", "attack"]) {
+    const c = s.config[`${k}_color`] || COLOR_DEFAULTS[k];
+    setIfIdle($(`${k}-color`), c);
+    setIfIdle($(`${k}-hex`), c);
+  }
+  const first = !state;
+  state = s;
+  const cfg = s.config, g = s.game, m = g.match, app = s.app;
+  $("dot").classList.toggle("on", g.connected);
+  $("status").textContent = g.connected ? `${m.map || "Match"} - ${m.phase || "live"}` : app.mode === "live" ? "Waiting for live data…" : "Starting…";
+  $("clock").textContent = `R${m.round} ${Math.floor(m.timer / 60)}:${String(Math.floor(m.timer % 60)).padStart(2, "0")}`;
+  for (const side of ["left", "right"]) {
+    const el = document.querySelector(`.team[data-side=${side}]`);
+    el.querySelectorAll("[data-k]").forEach(input => setIfIdle(input, cfg[side][input.dataset.k]));
+    $(`${side}-wins`).textContent = cfg[side].wins;
+    $(`${side}-logo-img`).src = "/" + cfg[side].logo;
+    $(`to-${side}`).textContent = cfg.timeouts[side];
+    $(`call-${side}`).classList.toggle("on", cfg.timeout_call === side);
+    $(`call-${side}`).textContent = `Timeout: ${cfg[side].tricode}`;
+    for (let i = 1; i <= 5; i++) {
+      const p = g.players.find(p => p.team === side && p.slot === i);
+      setIfIdle($(`pname-${side}-${i}`), (cfg.player_names[side] || [])[i - 1] || "");
+      $(`pname-${side}-${i}`).placeholder = p.name || `Player ${i}`;
+      const img = p.agent ? `/hud/Resources/Agentes/${p.agent}/${p.agent}.png` : "";
+      const pimg = $(`pimg-${side}-${i}`);
+      if ((pimg.getAttribute("src") || "") !== img) img ? pimg.setAttribute("src", img) : pimg.removeAttribute("src");
+      pimg.style.visibility = img ? "" : "hidden";  // not known yet: a blank, not a broken picture
+      pimg.title = p.agent || "Agent not recognised yet";
+      $(`pinfo-${side}-${i}`).textContent = p.agent ? `${p.alive ? p.health + " HP" : "dead"} · ¤${p.credits} · ${p.kills}/${p.deaths}/${p.assists}` : "";
+    }
+  }
+  if (first) loadLogos(cfg);
+  setIfIdle($("best-of"), String(cfg.best_of));
+  setIfIdle($("attack-first"), cfg.attack_first);
+  setIfIdle($("team-size"), String(cfg.team_size === 2 ? 2 : 5));
+  renderMaps(cfg);
+  applyMapBans(s);
+  $("tech-pause").classList.toggle("on", cfg.tech_pause);
+  $("show-scoreboard").classList.toggle("on", cfg.show.scoreboard);
+  $("show-timeouts").checked = cfg.show.timeouts !== false;
+  const rd = app.reader;
+  $("reader").classList.toggle("reading", !!rd.enabled);
+  $("reader").textContent = rd.enabled ? "Reading VALORANT — click to stop" : "Read VALORANT on this PC";
+  $("reader").disabled = !rd.available;
+  $("reader-status").textContent = !rd.available ? rd.status
+    : rd.enabled ? `${rd.status}${rd.age != null ? ` (last read ${rd.age}s ago)` : ""}. Keep the top bar visible; open the Tab scoreboard (e.g. in the buy phase) to read names, credits, weapons, ults and K/D/A.`
+    : "Off. Turn on when VALORANT (spectating) runs on this PC.";
+  const riot = app.riot || {};
+  $("riot-status").textContent = riot.received != null && riot.received < 30
+    ? `Riot Client: agent select and Riot IDs coming in (${riot.received}s ago)`
+    : `Riot Client on this PC: ${riot.status || "off"}`;
+  const f = app.feed;
+  $("feed").innerHTML = f.updates
+    ? `${f.updates} updates received; last ${f.age}s ago. Sources: ` + Object.entries(f.sources).map(([k, v]) => `<code>${k}</code> (${v}s ago)`).join(", ")
+    : "No live data received yet. Read VALORANT on this PC, or use <b>Demo match</b> to try the HUD.";
+
+  showUpdate(app.update);
+  if (first) {
+    $("url-overlay").textContent = `http://localhost:${app.port}/overlay`;
+    $("url-scoreboard").textContent = `http://localhost:${app.port}/scoreboard`;
+    $("url-csv").textContent = `http://localhost:${app.port}/hud.csv`;
+    $("out-dir").textContent = s.output_dir;
+    if (app.role !== "gfx") fetch("/api/role", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"role":"gfx"}' }).catch(() => {});
+  }
+  document.querySelectorAll("#mode button").forEach(b => b.classList.toggle("on", b.dataset.mode === app.mode));
+  $("mode-badge").textContent = app.mode === "live" ? "" : app.mode.toUpperCase();
+  $("demo-speed").hidden = app.mode !== "demo";
+  setIfIdle($("demo-speed"), String(app.demo_speed));
+  const ow = app.overlay_window;
+  $("ow").hidden = !ow.available;
+  if (ow.available) {
+    $("ow-btn").classList.toggle("on", ow.open);
+    $("ow-btn").textContent = ow.open ? "HUD on game: on" : "Show HUD on game";
+    const opts = ow.screens.map((label, i) => `<option value="${i}">${label}</option>`).join("");
+    if ($("ow-screen").dataset.opts !== opts) { $("ow-screen").innerHTML = opts; $("ow-screen").dataset.opts = opts; }
+    $("ow-screen").hidden = ow.screens.length < 2;
+    setIfIdle($("ow-screen"), String(ow.screen));
+  }
+  $("network").checked = app.network;
+  $("lan-row").hidden = !app.lan_url;
+  $("url-lan").textContent = app.lan_url ? `${app.lan_url}/overlay` : "";
+}
+const showUpdate = updateButton($("update"), $("version"));
+
+document.querySelectorAll("#mode button").forEach(b => b.addEventListener("click", () => {
+  if (b.dataset.mode !== state?.app.mode) post("/api/mode", { mode: b.dataset.mode, speed: Number($("demo-speed").value) });
+}));
+$("demo-speed").onchange = e => post("/api/mode", { mode: "demo", speed: Number(e.target.value) });
+$("ow-btn").onclick = () => post("/api/overlay-window", { open: !state.app.overlay_window.open });
+$("ow-screen").onchange = e => post("/api/overlay-window", { open: state.app.overlay_window.open, screen: Number(e.target.value) });
+
+// Outputs.
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  const t = document.createElement("textarea");
+  t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove();
+}
+document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => {
+  copyText($(b.dataset.copy).textContent);
+  const label = b.textContent; b.textContent = "Copied"; setTimeout(() => b.textContent = label, 1200);
+}));
+document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => post("/api/open", { folder: b.dataset.open })));
+$("cams-on").onchange = e => post("/api/config", { cams: { enabled: e.target.checked } });
+// Agent select: look, demo, and setting the map and agents by hand.
+$("select-look").onchange = e => post("/api/config", { agent_select: { look: e.target.value } });
+$("select-demo").onclick = () => post("/api/agent-select/demo", { on: !(state.agent_select || {}).demo });
+$("select-onair").onclick = () => post("/api/agent-select", { active: !(state.agent_select || {}).active });
+$("select-clear").onclick = () => post("/api/agent-select", { active: (state.agent_select || {}).active, map: "",
+  players: ["left", "right"].flatMap(team => [1, 2, 3, 4, 5].map(slot => ({ team, slot, agent: "", locked: false }))) });
+$("select-map").innerHTML = '<option value="">Map: from the screen</option>' + MAPS.map(m => `<option>${m}</option>`).join("");
+$("select-map").onchange = e => { if (e.target.value) post("/api/agent-select", { map: e.target.value }); };
+function selectPlayer(team, slot) {
+  const row = document.querySelector(`#select-${team} .pick[data-slot="${slot}"]`);
+  post("/api/agent-select", { players: [{ team, slot, agent: row.querySelector("select").value,
+                                          locked: row.querySelector("input").checked }] });
+}
+// Map bans: Team A, the pool, and each step of the Bo1 / Bo3 veto.
+let mbFormat = null;
+const mbSave = (form, steps) => post("/api/config", { map_bans: { [form]: { steps } } });
+const mbSteps = form => state.map_bans[form].map(s => ({ map: s.auto ? "" : s.map, side: s.side }));
+document.querySelectorAll("[data-team-a]").forEach(b => b.onchange = () => {
+  const side = b.checked ? b.dataset.teamA : (b.dataset.teamA === "left" ? "right" : "left");
+  post("/api/config", { map_bans: { team_a: side } });
+});
+document.querySelectorAll("#mb-format button").forEach(b => b.onclick = () => { mbFormat = b.dataset.f; applyMapBans(state, true); });
+$("mb-clear").onclick = () => { if (confirm("Clear the " + (mbFormat === "bo1" ? "best of 1" : "best of 3") + " veto?")) mbSave(mbFormat, []); };
+$("mb-vct").onclick = () => post("/api/config", { map_bans: { pool: null } });
+function applyMapBans(s, force) {
+  const mb = s.map_bans, cfg = s.config;
+  if (!mb) return;
+  if (!mbFormat) mbFormat = Number(cfg.best_of) === 1 ? "bo1" : "bo3";
+  $("url-bans-bo1").textContent = `http://localhost:${s.app.port}/map-bans?bo=1`;
+  $("url-bans-bo3").textContent = `http://localhost:${s.app.port}/map-bans?bo=3`;
+  const tri = side => cfg[side].tricode, a = mb.team_a, b = a === "left" ? "right" : "left";
+  document.querySelectorAll("[data-team-a]").forEach(box => {
+    box.checked = box.dataset.teamA === a;
+    box.nextElementSibling.textContent = `${tri(box.dataset.teamA)} (${box.dataset.teamA} team)`;
+  });
+  document.querySelectorAll("#mb-format button").forEach(x => x.classList.toggle("on", x.dataset.f === mbFormat));
+  $("mb-order").textContent = mbFormat === "bo1"
+    ? `${tri(a)} bans, ${tri(b)} bans, three times each; the last map is the decider and ${tri(a)} picks its side.`
+    : `${tri(a)} bans, ${tri(b)} bans, ${tri(a)} picks (${tri(b)} picks side), ${tri(b)} picks (${tri(a)} picks side), ${tri(a)} bans, ${tri(b)} bans; the last map is the decider and ${tri(a)} picks its side.`;
+  // The pool.
+  const pool = $("mb-pool"), poolKey = JSON.stringify([mb.maps, mb.pool]);
+  if (pool.dataset.key !== poolKey) {
+    pool.dataset.key = poolKey;
+    pool.innerHTML = mb.maps.map(m => `<label><input type="checkbox" value="${m}" ${mb.pool.includes(m) ? "checked" : ""}> ${m}</label>`).join("");
+    pool.querySelectorAll("input").forEach(i => i.onchange = () =>
+      post("/api/config", { map_bans: { pool: [...pool.querySelectorAll("input:checked")].map(x => x.value) } }));
+  }
+  const vct = JSON.stringify(mb.pool) === JSON.stringify(mb.vct_pool);
+  $("mb-pool-note").textContent = (vct ? "The current VCT pool: " : `${mb.pool.length} maps: `) + mb.pool.join(", ") + "."
+    + (mb.pool.length !== 7 ? " A VCT veto uses 7 maps; pick the decider by hand." : "");
+  // The veto.
+  const box = $("mb-steps"), steps = mb[mbFormat];
+  const key = JSON.stringify([mbFormat, steps, mb.pool, cfg.left.tricode, cfg.right.tricode]);
+  if (!force && (box.dataset.key === key || box.contains(document.activeElement))) return;
+  box.dataset.key = key;
+  const VERB = { ban: "bans", pick: "picks", decider: "" };
+  box.innerHTML = steps.map((st, i) => {
+    const used = new Set(steps.filter((x, j) => j !== i && x.map && !x.auto).map(x => x.map));
+    const opts = mb.pool.filter(m => !used.has(m) || m === st.map);
+    if (st.map && !opts.includes(st.map)) opts.push(st.map);
+    const first = st.action === "decider" ? `<option value="">${st.auto ? st.map + " (last map left)" : "Last map left"}</option>` : '<option value="">—</option>';
+    const mapSel = `<select data-step="${i}">${first}${opts.map(m => `<option ${m === st.map && !st.auto ? "selected" : ""}>${m}</option>`).join("")}</select>`;
+    const side = st.side_team ? `<span class="who">${tri(st.side_team)} starts on</span>
+      <select data-side="${i}"><option value="">—</option><option value="attack" ${st.side === "attack" ? "selected" : ""}>Attack</option>
+      <option value="defence" ${st.side === "defence" ? "selected" : ""}>Defence</option></select>` : "<span></span><span></span>";
+    const what = st.action === "decider" ? '<span class="decider">Decider</span>' : `<span><b>${tri(st.team)}</b> <span class="${st.action}">${VERB[st.action]}</span></span>`;
+    return `<div class="mb-step"><span class="n">${i + 1}</span>${what}${mapSel}${side}</div>`;
+  }).join("");
+  box.querySelectorAll("[data-step]").forEach(sel => sel.onchange = () => {
+    const list = mbSteps(mbFormat); list[sel.dataset.step].map = sel.value; mbSave(mbFormat, list);
+  });
+  box.querySelectorAll("[data-side]").forEach(sel => sel.onchange = () => {
+    const list = mbSteps(mbFormat); list[sel.dataset.side].side = sel.value; mbSave(mbFormat, list);
+  });
+}
+function applySelect(s) {
+  const a = s.agent_select || {};
+  setIfIdle($("select-look"), (s.config.agent_select || {}).look || "pro");
+  $("url-select").textContent = `http://localhost:${s.app.port}/agent-select`;
+  $("select-demo").textContent = a.demo ? "Stop demo" : "Play demo";
+  $("select-demo").classList.toggle("on", !!a.demo);
+  $("select-onair").textContent = a.active ? "Hide" : "Show now";
+  $("select-onair").classList.toggle("on", !!a.active);
+  $("select-status").textContent = a.active ? `On${a.map ? ": " + a.map : ""}${a.source ? " (from " + a.source + ")" : ""}` : "Off (waiting for agent select)";
+  if (document.activeElement !== $("select-map")) $("select-map").value = "";
+  for (const team of ["left", "right"]) {
+    const box = $(`select-${team}`), players = (a.players || {})[team] || [];
+    if (!box.children.length) {
+      box.innerHTML = `<label>${team === "left" ? "Left" : "Right"} team</label>` + [1, 2, 3, 4, 5].map(slot =>
+        `<div class="pick" data-slot="${slot}"><span></span><select><option value="">—</option>` +
+        (a.agents || []).map(g => `<option value="${g}">${g === "Kayo" ? "KAY/O" : g}</option>`).join("") +
+        `</select><label><input type="checkbox"> locked</label></div>`).join("");
+      box.querySelectorAll(".pick").forEach(row => {
+        const slot = Number(row.dataset.slot);
+        row.querySelector("select").onchange = () => selectPlayer(team, slot);
+        row.querySelector("input").onchange = () => selectPlayer(team, slot);
+      });
+    }
+    box.querySelectorAll(".pick").forEach((row, i) => {
+      const p = players[i] || {};
+      row.querySelector("span").textContent = p.name || `Player ${i + 1}`;
+      setIfIdle(row.querySelector("select"), p.agent || "");
+      const tick = row.querySelector("input");
+      if (document.activeElement !== tick) tick.checked = !!p.locked;
+    });
+  }
+}
+// The cam's name and K / D / A: any font installed on this PC, and sizes.
+let camFonts = null;
+async function loadCamFonts() {
+  try { camFonts = (await (await fetch("/api/fonts")).json()).fonts || []; } catch (e) { camFonts = []; }
+  if (!camFonts.length) return setTimeout(loadCamFonts, 3000);   // (still being listed)
+  const esc = t => t.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  for (const id of ["cam-name-font", "cam-kda-font"]) {
+    $(id).innerHTML = '<option value="">HUD font (default)</option>' +
+      camFonts.map(f => `<option value="${esc(f)}" style="font-family:'${esc(f)}'">${esc(f)}</option>`).join("");
+  }
+  if (state) applyCams(state);
+}
+loadCamFonts();
+$("cam-name-font").onchange = e => post("/api/config", { cams: { name_font: e.target.value } });
+$("cam-kda-font").onchange = e => post("/api/config", { cams: { kda_font: e.target.value } });
+for (const [id, key] of [["cam-name-size", "name_size"], ["cam-kda-size", "kda_size"]]) {
+  let t;
+  $(id).addEventListener("input", e => {
+    $(`${id}-val`).textContent = e.target.value + " px";
+    clearTimeout(t);
+    t = setTimeout(() => post("/api/config", { cams: { [key]: Number(e.target.value) } }), 120);
+  });
+}
+// Cam links: ten rows of Riot ID + link (config cams.links).
+const CAM_LINK_ROWS = 10;
+const camLinksBox = $("cam-links");
+camLinksBox.innerHTML = `<div class="hd"><span>Riot ID</span><span>Cam link</span></div><div class="hd"><span>Riot ID</span><span>Cam link</span></div>` +
+  Array.from({ length: CAM_LINK_ROWS }, (_, i) => `<div class="cam-link-row" data-i="${i}">` +
+    `<input class="riot" placeholder="Name#TAG" spellcheck="false"><input class="link" placeholder="VDO.Ninja link" spellcheck="false">` +
+    `<span class="who"></span><button type="button" class="hide" title="Hide this player's cam (link or Player Cam) on the HUD, e.g. when it isn't working">Hide</button></div>`).join("");
+// "  leaf #NA1 " -> "leaf#NA1" (as the app reads it)
+const tidyRiotId = t => String(t || "").trim().replace(/\s*#\s*/, "#");
+function saveCamLinks() {
+  const links = [...camLinksBox.querySelectorAll(".cam-link-row")].map(row => ({
+    riot_id: tidyRiotId(row.querySelector(".riot").value), link: row.querySelector(".link").value.trim() }));
+  while (links.length && !links[links.length - 1].riot_id && !links[links.length - 1].link) links.pop();
+  post("/api/config", { cams: { links } });
+}
+// Hide / Show a player's cam (by Riot ID): the HUD shows them with no cam.
+function setCamHidden(riotId, hide) {
+  const rid = tidyRiotId(riotId).toLowerCase();
+  if (!rid) return;
+  const hidden = ((state.config.cams || {}).hidden || []).filter(r => String(r).toLowerCase() !== rid);
+  if (hide) hidden.push(rid);
+  post("/api/config", { cams: { hidden } });
+}
+const camHidden = (s, riotId) => ((s.config.cams || {}).hidden || []).some(r => String(r).toLowerCase() === tidyRiotId(riotId).toLowerCase());
+camLinksBox.querySelectorAll(".hide").forEach(btn => btn.onclick = () => {
+  const rid = btn.closest(".cam-link-row").querySelector(".riot").value;
+  setCamHidden(rid, !camHidden(state, rid));
+});
+$("cam-list").addEventListener("click", e => {
+  const btn = e.target.closest(".hide");
+  if (btn) setCamHidden(btn.dataset.rid, !btn.classList.contains("on"));
+});
+camLinksBox.querySelectorAll("input").forEach(input => input.onchange = e => {
+  if (e.target.classList.contains("riot")) e.target.value = tidyRiotId(e.target.value);
+  saveCamLinks();
+});
+function applyCamLinks(s) {
+  const rows = (s.config.cams || {}).links || [], matched = (s.cams || {}).links || [];
+  camLinksBox.querySelectorAll(".cam-link-row").forEach(row => {
+    const r = rows[Number(row.dataset.i)] || {}, rid = tidyRiotId(r.riot_id).toLowerCase();
+    setIfIdle(row.querySelector(".riot"), r.riot_id || "");
+    setIfIdle(row.querySelector(".link"), r.link || "");
+    const m = matched.find(l => l.riot_id.toLowerCase() === rid);
+    const who = row.querySelector(".who");
+    who.className = "who" + (m && m.player ? " ok" : "");
+    who.textContent = !rid ? (r.link ? "Enter their Riot ID" : "")
+      : !m ? "Riot ID is Name#TAG"
+      : r.link && !m.link ? "Link isn't a web address"
+      : m.player ? `${m.player.name} (${s.config[m.player.team].tricode})`
+      : "not in this match yet";
+    who.title = who.textContent;
+    const hidden = !!rid && camHidden(s, rid), btn = row.querySelector(".hide");
+    btn.disabled = !rid;
+    btn.classList.toggle("on", hidden);
+    btn.textContent = hidden ? "Show" : "Hide";
+    row.classList.toggle("hidden", hidden);
+    if (hidden) who.textContent = "Hidden on the HUD", who.className = "who";
+  });
+}
+function applyCams(s) {
+  applyCamLinks(s);
+  const cc = s.config.cams || {};
+  $("cams-on").checked = cc.enabled !== false;
+  if (camFonts && camFonts.length) {
+    for (const [id, key] of [["cam-name-font", "name_font"], ["cam-kda-font", "kda_font"]]) {
+      const sel = $(id), want = cc[key] || "";
+      if (want && ![...sel.options].some(o => o.value === want)) sel.add(new Option(want + " (not on this PC)", want));
+      setIfIdle(sel, want);
+    }
+  }
+  for (const [id, key] of [["cam-name-size", "name_size"], ["cam-kda-size", "kda_size"]])
+    if (document.activeElement !== $(id)) { $(id).value = cc[key] || 18; $(`${id}-val`).textContent = (cc[key] || 18) + " px"; }
+  const pubs = (s.cams || {}).publishers || [], cfg = s.config;
+  const esc = t => String(t || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const html = pubs.length ? pubs.map(p => `<div class="cam"><b>${esc(p.riot_id)}</b><span class="note" style="margin:0">${esc(p.label)}</span>` +
+      (p.player ? `<span class="who ok">${esc(p.player.name)} (${esc(cfg[p.player.team].tricode)})</span>`
+                : `<span class="who">not in this match's players yet</span>`) +
+      `<button type="button" class="hide${p.hidden ? " on" : ""}" data-rid="${esc(p.riot_id)}">${p.hidden ? "Show" : "Hide"}</button></div>`).join("")
+    : `<div class="none">No player cams connected.</div>`;
+  if ($("cam-list").dataset.html !== html) { $("cam-list").dataset.html = html; $("cam-list").innerHTML = html; }
+  const host = s.app.lan_url ? s.app.lan_url.replace(/^https?:\/\//, "") : "";
+  $("cam-address").textContent = host ? host : 'tick "Let other PCs on the network read the HUD" in Outputs first';
+}
+$("network").onchange = e => post("/api/network", { enabled: e.target.checked });
+
+// Log.
+let logAfter = 0;
+async function pollLog() {
+  try {
+    const lines = await (await fetch(`/api/log?after=${logAfter}`, { cache: "no-store" })).json();
+    if (lines.length) {
+      const box = $("log"), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 20;
+      for (const l of lines) {
+        const row = document.createElement("div");
+        row.className = l.level;
+        row.innerHTML = `<span class="t">${l.time}</span>`;
+        row.append(l.message);
+        box.appendChild(row);
+        logAfter = l.id;
+      }
+      while (box.childElementCount > 500) box.firstChild.remove();
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) { /* app closing */ }
+  setTimeout(pollLog, 1000);
+}
+pollLog();
+
+function fitPreview() {
+  const box = $("preview");
+  box.querySelector("iframe").style.transform = `scale(${box.clientWidth / 1920})`;
+}
+new ResizeObserver(fitPreview).observe($("preview"));
+fitPreview();
+
+async function poll() {
+  try { apply(await (await fetch("/api/state", { cache: "no-store" })).json()); }
+  catch (e) { $("dot").classList.remove("on"); $("status").textContent = "HUD app not running"; }
+  setTimeout(poll, 1000);
+}
+poll();
+</script>
+<style>
+  .link-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .link-teams { grid-template-columns: 1fr; } }
+  .link-team { border-top: 4px solid var(--left); padding-top: 8px; }
+  .link-team.right { border-top-color: var(--right); }
+  .link-team h3 { margin: 0 0 6px; font-size: 13px; }
+  .link-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 190px; gap: 10px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .link-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .link-row select { padding: 5px 8px; margin: 0; }
+  .linked { color: #3ecf6e; font-size: 12px; }
+  .unlinked { color: #ff5a5a; font-size: 12px; }
+</style>
+<script>
+// Players: "Save IGN to player" links each in-game player to their player in
+// the GFX Engine's team roster (by in-game name). Same as the League HUD's.
+(function playerLinks() {
+  const byId = id => document.getElementById(id);
+  const esc = t => String(t == null ? "" : t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const call = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then(r => r.json());
+  function render(data) {
+    for (const side of ["left", "right"]) {
+      const box = byId(`links-${side}`), s = data && data.sides && data.sides[side];
+      if (!s) { box.innerHTML = ""; continue; }
+      const members = s.members.map(m => `<option value="${m.index}">${esc(m.name || m.ign || `Player ${m.index + 1}`)}</option>`).join("");
+      const rows = s.players.map(p => {
+        const m = p.linked === null ? null : s.members[p.linked];
+        return `<div class="link-row"><b title="${esc(p.ign)}">${esc(p.ign)}</b>` +
+          (m ? `<span class="linked">linked: ${esc(m.name || m.ign)}</span>` : `<span class="unlinked">unlinked</span>`) +
+          `<select data-side="${side}" data-ign="${esc(p.ign)}"${s.members.length ? "" : " disabled"}><option value="">Save IGN to player ▾</option>${members}</select></div>`;
+      }).join("");
+      box.innerHTML = `<h3>${esc(s.team || side + " team")}</h3>` +
+        (!s.found ? `<p class="note">No team called "${esc(s.team)}" in GFX Engine's Teams, so there's no roster to link to.</p>`
+          : !s.members.length ? `<p class="note">${esc(s.team)} has no team members in GFX Engine yet (Teams &gt; Team members).</p>` : "") +
+        (rows || `<p class="note">No players yet: they show once a game is on.</p>`);
+    }
+    for (const sel of document.querySelectorAll(".link-row select")) sel.addEventListener("change", async () => {
+      if (sel.value === "") return;
+      const data = await call("/api/engine/link", { side: sel.dataset.side, player: Number(sel.value), ign: sel.dataset.ign });
+      if (data.error) { alert(data.error); sel.value = ""; return; }
+      byId("links-note").textContent = `Saved ${sel.dataset.ign}.`;
+      render(data);
+    });
+  }
+  async function refresh(force) {
+    const box = byId("links-left").closest("section");
+    if (!force && (document.hidden || !box.offsetParent || box.contains(document.activeElement))) return;
+    try {
+      const data = await call("/api/engine/roster");
+      if (data.error) { render(null); byId("links-note").textContent = data.error.startsWith("Connect") ? "Connect to a GFX Engine (GFX Engine page) to link players." : data.error; return; }
+      if (!byId("links-note").textContent.startsWith("Saved")) byId("links-note").textContent = "";
+      render(data);
+    } catch (e) { /* the HUD is restarting */ }
+  }
+  byId("links-refresh").addEventListener("click", () => { byId("links-note").textContent = ""; refresh(true); });
+  setInterval(refresh, 4000);
+  refresh();
+})();
+</script>
+<script>
+// Custom design: HUD Builder, built in, in its own window.
+document.getElementById("custom-design").addEventListener("click", async () => {
+  const r = await fetch("/api/custom-design", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const d = await r.json().catch(() => ({}));
+  if (d.error) alert(d.error);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SCC GFX Engine</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="assets-ui/badge.png">
+<link rel="stylesheet" href="control.css">
+<link rel="stylesheet" href="appearance.css">
+<script src="appearance.js"></script>
+</head>
+<body>
+<header id="top">
+  <button class="brand" id="brand" title="Workspaces"><img src="assets-ui/badge.png" alt=""><span><b>GFX</b> ENGINE</span></button>
+  <div class="ws-chip"><button id="ws-pic" class="ws-pic" title="Workspaces"></button><input id="project-name" class="project-name" title="The workspace's name" spellcheck="false"></div>
+  <nav id="tabs">
+    <button data-tab="home" hidden>Home</button>
+    <button data-tab="control">Control</button>
+    <button data-tab="composer">Composer</button>
+    <button data-tab="global">Global</button>
+    <button data-tab="teams">Teams</button>
+    <button data-tab="tournament">Tournament</button>
+    <button data-tab="schedule">Upcoming Schedule</button>
+    <button data-tab="cameras">Camera Control Room</button>
+    <div class="extras" id="extras">
+      <button class="extras-btn" id="extras-btn" aria-haspopup="true" aria-expanded="false">Extras <span class="caret">▾</span></button>
+      <div class="extras-menu" id="extras-menu" hidden>
+        <button data-tab="assets">Assets</button>
+        <button data-tab="data">Data</button>
+        <button data-tab="transitions">Transitions</button>
+        <button data-tab="outputs">Outputs</button>
+        <button data-tab="appearance">Appearance</button>
+      </div>
+    </div>
+  </nav>
+  <div class="top-right">
+    <span id="net" class="pill" title="Other PCs reach this engine at"></span>
+    <button id="update" class="update" hidden></button>
+    <span id="version" class="muted small"></span>
+  </div>
+</header>
+
+<!-- APPEARANCE: the look and highlight colour (appearance.js) -->
+<main id="page-appearance" class="page" hidden>
+  <div class="page-head"><h2>Appearance</h2><span class="muted">How GFX Engine looks on this PC. Graphics on air don't change.</span></div>
+  <div class="appearance-page"><div id="appearance-box"></div></div>
+</main>
+
+<!-- HOME: the workspaces -->
+<main id="page-home" class="page" hidden>
+  <div class="home">
+    <div class="home-hero">
+      <img src="assets-ui/logo.png" alt="St. Clair Saints GFX Engine" class="home-logo">
+    </div>
+    <div class="home-head">
+      <h2>My Workspaces</h2>
+      <span class="muted">One per event or show: its own graphics, files, data, transitions and global settings. Fonts are shared by all of them.</span>
+    </div>
+    <div id="ws-grid" class="ws-grid"></div>
+  </div>
+</main>
+
+<!-- GLOBAL: the event's basics, used by every graphic and sent to/from the game HUDs -->
+<main id="page-global" class="page" hidden>
+  <div class="page-head">
+    <h2>Global configuration</h2>
+    <span class="muted">Set these once: every graphic in this workspace can use them, and connected game HUDs keep the score up to date.</span>
+    <div class="spacer"></div>
+    <button id="g-swap" class="small" title="Swap the left and right teams">⇄ Swap sides</button>
+    <button id="g-reset" class="small" title="Both scores back to 0">Reset series</button>
+  </div>
+  <div class="global">
+    <section class="panel team-card" data-side="left"></section>
+    <section class="panel series-card">
+      <div class="panel-head"><h3>Series</h3></div>
+      <div class="pad">
+        <div id="g-score" class="g-score"></div>
+        <div class="two">
+          <label>Best of<select id="g-bestof"><option>1</option><option>3</option><option>5</option><option>7</option><option>9</option></select></label>
+          <label>Game<input id="g-game" placeholder="(from the score)"></label>
+        </div>
+        <label>Event<input id="g-event" placeholder="e.g. NACE Varsity"></label>
+        <label>Stage<input id="g-stage" placeholder="e.g. Playoffs - Semi-final"></label>
+      </div>
+    </section>
+    <section class="panel team-card" data-side="right"></section>
+    <section class="panel g-brand">
+      <div class="panel-head"><h3>Tournament logo</h3></div>
+      <div class="pad">
+        <div id="g-tourney" class="logo-drop wide" title="Click or drop the tournament's logo">Click or drop the tournament's logo</div>
+        <div class="row-gap" style="justify-content:center"><button class="ghost small" id="g-tourney-clear" hidden>Remove logo</button></div>
+        <p class="muted small">Every tournament logo spot in the graphics shows it.</p>
+      </div>
+    </section>
+    <section class="panel g-sponsors">
+      <div class="panel-head"><h3>Sponsors</h3><span class="muted small">Shown in turn in every sponsor spot</span></div>
+      <div class="pad">
+        <div id="g-sponsor-list" class="sponsor-list"></div>
+        <div id="g-sponsor-add" class="sponsor-add" title="Click or drop sponsor logos">+ Click or drop sponsor logos</div>
+      </div>
+    </section>
+    <section class="panel g-loop">
+      <div class="panel-head"><h3>Background loop</h3>
+        <label class="toggle"><input type="checkbox" id="g-loop-on"> On</label></div>
+      <div class="pad">
+        <div class="loop-preview" id="g-loop-preview"><div class="loop-layer"><video id="g-loop-video" muted loop autoplay playsinline></video><div id="g-loop-tint" class="tint"></div></div></div>
+        <div class="loop-row">
+          <label>Colour<input type="color" id="g-loop-color"></label>
+          <label>Brightness <span id="g-loop-bright-v" class="muted"></span><input type="range" id="g-loop-bright" min="0.2" max="3" step="0.1"></label>
+          <label>Speed <span id="g-loop-speed-v" class="muted"></span><input type="range" id="g-loop-speed" min="0.1" max="3" step="0.1"></label>
+        </div>
+        <div class="row-gap">
+          <button class="small" id="g-loop-file">Choose video…</button>
+          <button class="small ghost" id="g-loop-default" title="The SCC loop that comes with the engine">Use the SCC loop</button>
+          <input type="file" id="g-loop-input" accept="video/*,.mov,.webm,.mp4,.mxf" hidden>
+        </div>
+        <p class="muted small">Plays behind the schedule and the other full-screen boards.</p>
+      </div>
+    </section>
+    <section class="panel g-ticker">
+      <div class="panel-head"><h3>Ticker</h3><span class="muted small">One line each, shown one after another</span></div>
+      <div class="pad">
+        <textarea id="g-ticker" rows="7" placeholder="WELCOME TO ST. CLAIR SAINTS ESPORTS&#10;FOLLOW @SCCSAINTS FOR HIGHLIGHTS"></textarea>
+        <p class="muted small">Every ticker in the graphics scrolls these ({{Global!Ticker}}).</p>
+      </div>
+    </section>
+    <section class="panel g-custom">
+      <div class="panel-head"><h3>More fields</h3><button class="small" id="g-custom-add">+ Add</button></div>
+      <div id="g-custom" class="pad"></div>
+    </section>
+    <section class="panel g-tokens">
+      <div class="panel-head"><h3>Using them in graphics</h3></div>
+      <div class="pad">
+        <p class="muted small">Click to copy, then paste into a text layer or a field. A picture layer or field can use a logo the same way
+          (in Control, its list has the team logos).</p>
+        <div id="g-token-list" class="token-list"></div>
+      </div>
+    </section>
+    <section class="panel g-feeds">
+      <div class="panel-head"><h3>Game HUDs</h3><span class="muted small">In a HUD: Connect to GFX Engine</span></div>
+      <div class="pad stats-line"><span id="g-stats"></span><button class="ghost small" id="g-stats-clear" title="Forget the last game's stats">Clear stats</button></div>
+      <div id="g-feeds" class="pad"></div>
+    </section>
+  </div>
+</main>
+
+<!-- TEAMS: the team list every workspace shares -->
+<main id="page-teams" class="page" hidden>
+  <div class="page-head">
+    <h2>Teams</h2>
+    <span class="muted">Every workspace shares this list. Global's team dropdowns and the tournament pick from it.</span>
+    <div class="spacer"></div>
+    <button class="small" id="t-add">+ Add team</button>
+    <button class="small" id="t-import" title="Name, Short name, Logo, Colour columns">Import CSV…</button>
+    <a class="btn small" id="t-export" href="/library/teams.csv" download="teams.csv">Export CSV</a>
+    <input type="file" id="t-import-file" accept=".csv,text/csv" hidden>
+  </div>
+  <div class="teams-page">
+    <section class="panel teams-list">
+      <div class="panel-head"><input id="t-find" class="search" placeholder="Find a team…"><span class="muted small" id="t-count"></span></div>
+      <div class="pad t-filter"><select id="t-game"><option value="">All games</option></select></div>
+      <div id="t-list" class="team-list"></div>
+    </section>
+    <section class="panel team-edit" id="t-edit"></section>
+  </div>
+</main>
+
+<!-- TOURNAMENT: the brackets the bracket graphics show -->
+<main id="page-tournament" class="page" hidden>
+  <div class="page-head">
+    <h2>Tournament</h2>
+    <span class="muted">The standings and bracket graphics show these. Enter the scores and the winners go through.</span>
+  </div>
+    <section class="g-tournament">
+      <div class="tourney">
+        <div class="tn-part panel pad" id="st-part">
+          <div class="tn-head"><h4>Standings</h4>
+            <div class="seg" id="st-count"><button data-count="8">8 teams</button><button data-count="16">16 teams</button></div>
+            <label class="row-gap muted small">The box shows <select id="st-stat"></select></label>
+            <label class="row-gap muted small">Second box <select id="st-stat2"></select></label>
+            <div class="spacer"></div>
+            <button class="small ghost" id="st-sort" title="Most wins first (then fewest losses, most points, best map difference)">Sort by record</button>
+            <button class="small ghost" id="st-clear" title="Keep the teams, clear every result">Clear results</button></div>
+          <div class="st-top">
+            <label class="muted small">Title <input id="st-title" placeholder="(Global's event)"></label>
+            <label class="muted small">Under it <input id="st-subtitle" placeholder="e.g. LEADERBOARD"></label>
+            <div id="st-drop" class="st-drop" title="Click or drop team logos">Drop team logos here: each one fills the next empty row, named after its file (and goes in the team list)</div>
+          </div>
+          <div id="st-rows" class="st-rows"></div>
+          <p class="muted small">The Standings (8 teams) and Standings (16 teams) graphics show these, down the left column first. Pick a team from the team list, or type a new one; drop a logo on a row to give that team its logo.</p>
+        </div>
+        <div class="tn-part panel pad">
+          <div class="tn-head"><h4>Knockout bracket</h4>
+            <div class="seg" id="tn-size"><button data-size="8">8 teams</button><button data-size="16">16 teams</button></div>
+            <div class="seg" id="tn-format"><button data-format="single">Single elimination</button><button data-format="double">Double elimination</button></div>
+            <label class="row-gap muted small" title="The bracket graphic shows each team's short name (from the Teams tab) instead of the full name"><input type="checkbox" id="tn-short"> Short names on air</label>
+            <label class="row-gap muted small" id="tn-reset-wrap" title="If the lower bracket's team wins the grand final, they play it again"><input type="checkbox" id="tn-reset"> Grand final reset</label>
+            <div class="spacer"></div>
+            <button class="small ghost" id="tn-top-scores" title="Keep the teams, clear every score">Clear scores</button></div>
+          <div id="tn-top" class="tn-rounds"></div>
+        </div>
+        <div class="tn-part panel pad">
+          <div class="tn-head"><h4>Groups</h4><div class="spacer"></div>
+            <button class="small ghost" id="tn-group-scores" title="Keep the teams, clear every score">Clear scores</button></div>
+          <div id="tn-groups" class="tn-groups"></div>
+        </div>
+        <datalist id="team-names"></datalist>
+      </div>
+    </section>
+</main>
+
+<!-- UPCOMING SCHEDULE: the matches the Schedule graphic lists -->
+<main id="page-schedule" class="page" hidden>
+  <div class="page-head">
+    <h2>Upcoming Schedule</h2>
+    <span class="muted">The Schedule graphic lists these, top to bottom.</span>
+    <div class="spacer"></div>
+    <label class="row-gap muted">Show <select id="s-count"><option value="1">1 match</option><option value="2">2 matches</option><option value="3">3 matches</option></select></label>
+    <button class="small" id="s-add">+ Add match</button>
+    <span class="muted small" id="s-saved"></span>
+    <button class="small primary" id="s-save">Save</button>
+  </div>
+  <div class="schedule-page">
+    <div id="s-list" class="s-list"></div>
+  </div>
+</main>
+
+<!-- CAMERA CONTROL ROOM: the player cams, each camera set from here -->
+<main id="page-cameras" class="page" hidden>
+  <div class="page-head">
+    <h2>Camera Control Room</h2>
+    <span class="muted" id="cr-note"></span>
+    <div class="spacer"></div>
+    <label class="row-gap muted">Lighting <select id="cr-looks"></select></label>
+    <button class="small" id="cr-recall" title="Set every cam to this saved lighting">Recall</button>
+    <button class="small" id="cr-save" title="Save every cam's lighting under a name">Save as…</button>
+    <button class="small" id="cr-delete">Delete</button>
+    <button class="small" id="cr-add" title="A HUD that isn't connected to this engine">+ HUD address</button>
+  </div>
+  <div class="cr-body">
+    <div class="cr-grid" id="cr-grid"></div>
+    <aside class="panel cr-side" id="cr-side"></aside>
+  </div>
+</main>
+
+<!-- CONTROL: Preview / Program, the take bar, the rundown and the fields -->
+<main id="page-control" class="page" hidden>
+  <section class="monitors">
+    <div class="monitor pvw">
+      <div class="mon-head"><span class="tally pvw">PREVIEW</span><span id="pvw-list" class="mon-list"></span>
+        <button class="ghost small" id="pvw-clear" title="Take everything off Preview">Clear</button></div>
+      <div class="mon-box"><iframe id="mon-pvw" title="Preview"></iframe></div>
+    </div>
+    <div class="takebar">
+      <div id="tr-chips" class="tr-chips"></div>
+      <label id="stinger-delay-row" class="stinger-delay" title="When TAKE uses a stinger, the new graphics come in under it and play their animations this long after TAKE, so they're seen once the stinger clears. 0: they just cut in.">Delay Animations When Taking Stingers By:
+        <span><input id="stinger-delay" type="number" min="0" max="60000" step="50" placeholder="0"> ms</span></label>
+      <button id="take" class="take" title="Preview to Program with the transition above (Space)">TAKE</button>
+      <button id="cut" class="cut" title="Preview to Program at once (Enter)">CUT</button>
+      <button id="pgm-clear" class="ghost" title="Take everything off Program">Clear Program</button>
+    </div>
+    <div class="monitor pgm">
+      <div class="mon-head"><span class="tally pgm">PROGRAM</span><span id="pgm-list" class="mon-list"></span>
+        <a id="pgm-open" class="ghost small btn" target="_blank" title="Open the Program output in a window">Open ↗</a></div>
+      <div class="mon-box"><iframe id="mon-pgm" title="Program"></iframe></div>
+    </div>
+  </section>
+  <section class="control-bottom">
+    <div class="rundown panel">
+      <div class="panel-head"><h3>Graphics</h3><input id="rundown-filter" class="search" placeholder="Find…"></div>
+      <div id="rundown" class="rundown-list"></div>
+    </div>
+    <div class="fields panel">
+      <div class="panel-head"><h3 id="fields-title">Fields</h3>
+        <div class="row-gap">
+          <button id="fields-send" class="primary small" title="Show these values on Program now, without a transition">Update on air</button>
+        </div>
+      </div>
+      <div id="fields" class="fields-list"></div>
+    </div>
+  </section>
+</main>
+
+<!-- COMPOSER: graphics, their layers, the canvas, the selected layer's properties -->
+<main id="page-composer" class="page" hidden>
+  <aside class="comp-left panel">
+    <div class="panel-head"><h3>Graphics</h3>
+      <div class="row-gap"><button class="small" id="comp-import" title="A new graphic from a Photoshop file (layers and text come across), OpenRaster or picture; or from a video (.mov from After Effects keeps its transparency), Lottie animation (.json / .lottie) or After Effects project (.aep, rendered with After Effects on this PC). Affinity, Krita, GIMP, Procreate: save as .psd first. A .sccgfx file exported from another GFX Engine brings its graphics in with their files">Import</button>
+        <button class="small" id="comp-new" title="New, empty graphic">+ New</button>
+        <input type="file" id="comp-import-file" accept=".psd,.psb,.ora,.png,.jpg,.jpeg,.webp,.gif,.svg,.avif,.bmp,.afdesign,.afphoto,.afpub,.af,.kra,.xcf,.procreate,.clip,.ptg,.ai,.sketch,.fig,.mov,.mp4,.webm,.m4v,.mxf,.avi,.mkv,.json,.lottie,.zip,.aep,.aepx,.sccgfx" hidden></div></div>
+    <div id="comp-list" class="comp-list"></div>
+    <div class="panel-head"><h3>Layers</h3>
+      <div class="add-layer">
+        <button class="small" data-add="text" title="Add text">T</button>
+        <button class="small" data-add="rect" title="Add a shape">▭</button>
+        <button class="small" data-add="image" title="Add a picture">🖼</button>
+        <button class="small" data-add="video" title="Add a video">▶</button>
+        <button class="small" data-add="lottie" title="Add a Lottie (After Effects) animation">✦</button>
+        <select id="add-special" class="small" title="Special elements: the teams' logos, names and scores, the tournament logo, the sponsors… from Global"></select>
+      </div></div>
+    <div id="layer-list" class="layer-list"></div>
+  </aside>
+  <section class="canvas-wrap">
+    <div class="canvas-bar">
+      <span id="canvas-name" class="strong"></span>
+      <span class="muted small" id="canvas-pos"></span>
+      <div class="spacer"></div>
+      <button class="small" id="canvas-zoom" title="Zoom: Ctrl + scroll wheel. Click (or Ctrl+0) to fit the whole graphic">Fit</button>
+      <button class="small" id="anim-in" title="Play the layers' In animation">▶ In</button>
+      <button class="small" id="anim-out" title="Play the layers' Out animation">Out</button>
+      <select id="canvas-bg" class="small" title="Canvas background">
+        <option value="checker">Checker</option><option value="black">Black</option><option value="grey">Grey</option><option value="white">White</option>
+      </select>
+      <button class="small" id="comp-export" title="This graphic and every file it uses (pictures, videos, fonts, data sources) as one .sccgfx file: send it to another PC and use Import in its GFX Engine">Export</button>
+      <button class="small" id="comp-dup">Duplicate</button>
+      <button class="small danger" id="comp-del">Delete</button>
+    </div>
+    <div id="canvas" class="canvas"><div id="canvas-stage" class="gfx-stage"></div><div id="canvas-sel"></div></div>
+  </section>
+  <aside class="props panel" id="props"></aside>
+</main>
+
+<!-- ASSETS -->
+<main id="page-assets" class="page" hidden>
+  <div class="page-head">
+    <h2>Assets</h2>
+    <div class="chips" id="asset-kinds"></div>
+    <div class="spacer"></div>
+    <label class="small muted" title="Frames per second for PNG sequences (in a .zip)">PNG sequence fps
+      <input type="number" id="seq-fps" value="30" min="1" max="120" style="width:64px"></label>
+    <button id="asset-folder" class="small">Open folder</button>
+    <button id="asset-add" class="primary">Add files…</button>
+    <input type="file" id="asset-file" multiple hidden>
+  </div>
+  <div id="jobs" class="jobs"></div>
+  <div id="missing-fonts" class="notice" hidden></div>
+  <div class="drop" id="asset-drop">Drop files here: Photoshop (.psd) becomes a graphic; video (.mov with alpha from After Effects, .mp4, .webm, PNG sequences in a .zip) is made web-ready;
+    After Effects projects (.aep) are rendered by After Effects on this PC; fonts (.ttf, .otf), pictures, Lottie (.json / .lottie from After Effects), and spreadsheets (.csv, .xlsx).</div>
+  <div id="asset-grid" class="asset-grid"></div>
+</main>
+
+<!-- DATA -->
+<main id="page-data" class="page" hidden>
+  <aside class="panel data-left">
+    <div class="panel-head"><h3>Data sources</h3><button class="small primary" id="src-add">+ Add</button></div>
+    <div id="src-list" class="src-list"></div>
+    <div class="help">
+      <b>Using data in graphics</b>
+      <p>Click a cell to copy its reference, then paste it into a text field or a text layer:</p>
+      <p><code>{{Match!B2}}</code> the cell B2 of "Match"<br>
+         <code>{{Match!Team#3}}</code> the "Team" column, 3rd row<br>
+         <code>{{Match!Score}}</code> the cell next to "Score" in column A</p>
+      <p><code>{{time}}</code> <code>{{time24}}</code> <code>{{date}}</code> the clock;
+         <code>{{countdown:19:30}}</code> the time left until 7:30 PM.</p>
+    </div>
+  </aside>
+  <section class="panel data-main" id="src-main"></section>
+</main>
+
+<!-- TRANSITIONS -->
+<main id="page-transitions" class="page" hidden>
+  <div class="page-head">
+    <h2>Transitions</h2>
+    <span class="muted">What TAKE can use between Preview and Program. Turned-on ones show on the take bar.</span>
+    <div class="spacer"></div>
+    <button class="small" data-new-tr="fade">+ Fade</button>
+    <button class="small" data-new-tr="dip">+ Dip</button>
+    <button class="small" data-new-tr="wipe">+ Wipe</button>
+    <button class="small primary" data-new-tr="stinger">+ Stinger</button>
+  </div>
+  <div id="tr-list" class="tr-list"></div>
+</main>
+
+<!-- OUTPUTS -->
+<main id="page-outputs" class="page" hidden>
+  <div class="out-grid">
+    <section class="panel">
+      <div class="panel-head"><h3>Outputs</h3></div>
+      <p class="muted small">Add these as Browser sources (1920×1080) in OBS or vMix. They're see-through, and play the transitions.</p>
+      <div id="out-urls"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h3>Network</h3></div>
+      <label class="toggle"><input type="checkbox" id="net-allow"> Let other PCs use this engine (outputs, control panel, finding it)</label>
+      <label>Other PCs reach it on<select id="net-address"></select></label>
+      <p class="muted small" id="net-address-note"></p>
+      <label>This engine's name on the network<input id="net-name" placeholder="(this PC's name)"></label>
+      <div class="panel-head"><h3>Bitfocus Companion</h3></div>
+      <p class="muted small">Import <b>SCC-GFX-Companion-module.tgz</b> (from the engine's release on GitHub) on Companion's Modules page,
+        then add an <b>SCC GFX Engine</b> connection with:</p>
+      <div id="companion-info"></div>
+      <div class="panel-head"><h3>Engines on the network</h3><button class="small" id="net-scan">Scan</button></div>
+      <div id="engines" class="engines"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h3>Export</h3></div>
+      <p class="muted small">The ticked graphics, to take to another GFX Engine or to play without the engine.</p>
+      <div id="export-list" class="export-list"></div>
+      <div class="row-gap"><button id="export-all" class="small">All</button><button id="export-none" class="small">None</button>
+        <div class="spacer"></div><button id="share-go" title="The graphics with every file they use (pictures, videos, fonts, data sources) as one .sccgfx file: on the other PC, Composer &gt; Import it">For another GFX Engine</button>
+        <button id="export-go" class="primary" title="Plain web files: a browser source, CasparCG or SPX template, or a web page. The values on Preview are used">Export .zip</button></div>
+      <p class="muted small"><b>For another GFX Engine</b> makes one <code>.sccgfx</code> file of them with their pictures, videos, fonts and data sources:
+        on the other PC, use Import in Composer. An engine on this network can get them straight away: <b>Send graphics</b> beside it under Network.</p>
+      <p class="muted small"><b>Export .zip</b> is plain web files that play without the engine (browser source, CasparCG or SPX template, web page; the values on Preview are used).
+        In the zip, open <code>index.html</code>. Add <code>?autoplay=0</code> to wait for play(), <code>?Field=Text</code> to set a field,
+        or <code>?live=http://this-pc:8782</code> to follow this engine's Program.</p>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h3>Workspace</h3></div>
+      <div class="row-gap"><a class="btn" href="/api/backup">Download a backup (.zip)</a><button id="ws-folder">Open folder</button></div>
+      <div class="row-gap" style="margin-top:8px"><button id="ws-pack" title="The SCC graphics this workspace doesn't have yet, with their files">Add the SCC graphics it's missing</button></div>
+      <div class="panel-head"><h3>Log</h3></div>
+      <div id="log" class="log"></div>
+    </section>
+  </div>
+</main>
+
+<div id="dialog" class="dialog-back" hidden>
+  <form class="dialog panel" id="dialog-form" method="dialog">
+    <div class="panel-head"><h3 id="dialog-title">New workspace</h3></div>
+    <div class="pad">
+      <div class="ws-new">
+        <label class="pic-pick" title="Choose a picture"><span id="dlg-pic" class="ws-pic big"></span>
+          <input type="file" id="dlg-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden><span class="small">Picture…</span></label>
+        <div style="flex:1">
+          <label>Name<input id="dlg-name" placeholder="e.g. NACE Spring 2027" maxlength="80" required></label>
+          <div id="dlg-template-row">
+            <label>Start with</label>
+            <label class="toggle"><input type="radio" name="dlg-template" value="scc" checked> The SCC graphics (scorebug, lower thirds, screens, stingers…)</label>
+            <label class="toggle"><input type="radio" name="dlg-template" value="empty"> Nothing (an empty workspace)</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-btns">
+      <button type="button" id="dlg-delete" class="danger" hidden>Delete workspace</button>
+      <div class="spacer"></div>
+      <button type="button" id="dlg-cancel">Cancel</button>
+      <button type="submit" class="primary" id="dlg-ok">Create</button>
+    </div>
+  </form>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<script src="vendor/lottie.min.js"></script>
+<script src="runtime.js"></script>
+<script src="control.js"></script>
+<script src="livedata.js"></script>
+<script src="composer.js"></script>
+<script src="pages.js"></script>
+<script src="home.js"></script>
+<script src="tournament.js"></script>
+<script src="schedule.js"></script>
+<script src="cameras.js"></script>
+</body>
+</html>

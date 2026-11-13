@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Draft</title>
+<!-- Champ select overlay (OBS / vMix browser source, 1920x1080): the "Europe"
+     layout of RCVolus' lol-pick-ban-ui (MIT, see draft/LICENSE-lol-pick-ban-ui.txt),
+     driven by the app's /api/draft. -->
+<link rel="stylesheet" href="draft/europe.css">
+<style>
+  /* SCC: team logos by the team names, and the logo nudges (scale / x / y). */
+  .Europe .Team .TeamLogo { flex: 0 0 auto; width: 53px; height: 53px; margin-left: 12px;
+                            display: flex; align-items: center; justify-content: center; }
+  .Europe .Team.TeamRed .TeamLogo { margin-left: 0; margin-right: 12px; }
+  .Europe .Team .TeamLogo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .Europe .Logo img { transform-origin: 50% 50%; }
+
+  /* SCC: the HUD's fonts (from its profile): the kills font for the timer and
+     the series score, the team short-name font for every other text. */
+  body, .Europe .Team .TeamName, .Europe .Patch, .Europe .Team .CoachName,
+  .Europe .Team .Picks .Pick .PlayerName, .Europe .ChampName {
+    font-family: var(--font-short, "Heathergreen"), "Saira Condensed", sans-serif;
+    font-weight: var(--font-short-weight, 400); font-style: var(--font-short-style, normal);
+  }
+  .Europe .Timer, .Europe .Team .TeamScore {
+    font-family: var(--font-kill, "Inter"), "Saira Condensed", sans-serif;
+    font-weight: var(--font-kill-weight, 700); font-style: var(--font-kill-style, normal);
+    font-variant-numeric: tabular-nums;
+  }
+  .Europe .Patch { line-height: var(--box-patch-height); font-size: 28px; letter-spacing: .03em; }
+  .Europe .Team .TeamScore { margin-top: 0; height: var(--box-ban-height); line-height: var(--box-ban-height); font-size: 44px; }
+  .Europe .Team .Picks .Pick .PlayerName { font-size: 22px; letter-spacing: .02em; }
+  .Europe .Team.TeamBlue .Picks .Pick.Active span, .Europe .Team.TeamRed .Picks .Pick.Active span { font-size: 26px; }
+
+  /* SCC: the champion's name along the bottom of its picture. */
+  .Europe .Team .Picks .Pick .ChampName {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: 28px; line-height: 30px;
+    text-align: center; color: #fff; font-size: 22px; text-transform: uppercase; letter-spacing: .03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px;
+    background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0)); text-shadow: 0 1px 3px #000;
+  }
+  .Europe .Team .Picks .Pick.WithChampName .SummonerSpells {
+    top: calc(var(--box-pick-height) - 30px - 28px - var(--summoner-spell-size));
+  }
+</style>
+<style>
+  /* Team colour changes blend over instead of jumping. */
+  @property --color-blue { syntax: "<color>"; inherits: true; initial-value: rgb(0,151,196); }
+  @property --color-red { syntax: "<color>"; inherits: true; initial-value: rgb(222,40,70); }
+  .Overlay.Europe { transition: --color-blue 1s ease, --color-red 1s ease; }
+
+  /* SCC: the HUD's background loop behind the middle box (logo, phase,
+     timer), under the team colour glows, which fade in and out. */
+  .Europe .Timer .BgLoop { position: absolute; inset: 0; z-index: -5; overflow: hidden; isolation: isolate;
+                           opacity: 0; transition: opacity 1s ease; }
+  .Europe .Timer .BgLoop.On { opacity: 1; }
+  .Europe .Timer .BgLoop video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .Europe .Timer .BgLoop .Tint { position: absolute; inset: 0; mix-blend-mode: multiply; transition: background 1s; }
+  .Europe .Timer .BgLoop::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.1); }
+  .Europe .Timer .Background, .Europe .Timer .Background.Blue, .Europe .Timer .Background.Red {
+    left: 0; opacity: 0; transition: opacity .9s ease-in-out, background 1s;
+  }
+  .Europe .Timer.Blue .Background.Blue, .Europe .Timer.Red .Background.Red { opacity: .75; }
+  .Europe .Timer.Blue.Red .Background { opacity: .5; }
+</style>
+<style>
+  /* SCC: when the draft ends it slides down out of frame. */
+  .Europe .ChampSelect { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  .Europe.SlideOut .ChampSelect { transform: translateY(440px); transition: transform .9s cubic-bezier(.55, 0, .75, .3); }
+</style>
+<style id="fonts"></style>
+</head>
+<body>
+<div id="overlay" class="Overlay Europe TheAbsoluteVoid">
+  <div class="ChampSelect">
+    <div class="MiddleBox">
+      <div class="Logo"><img id="logo" alt=""></div>
+      <div class="Patch" id="phase"></div>
+      <div class="Timer" id="timer">
+        <div class="BgLoop" id="bg-loop"><video muted loop autoplay playsinline></video><div class="Tint"></div></div>
+        <div class="Background Blue"></div>
+        <div class="Background Red"></div>
+        <div class="TimerChars" id="timer-chars"></div>
+      </div>
+    </div>
+    <div class="Team TeamBlue" id="team-blue"></div>
+    <div class="Team TeamRed" id="team-red"></div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const PLACEHOLDERS = ["top", "jung", "mid", "bot", "sup"].map(r => `draft/${r}_splash_placeholder.svg`);
+const BAN_PLACEHOLDER = "draft/ban_placeholder.svg";
+const url = p => !p ? "" : /^https?:/.test(p) ? p : "/" + p.split("/").map(encodeURIComponent).join("/");
+
+// Fit the page to the window (?fit=1, like the HUD).
+if (params.get("fit") === "1") {
+  const fit = () => {
+    const k = Math.min(innerHeight / 1080, innerWidth / 1920);
+    Object.assign(document.body.style, { transformOrigin: "0 0", transform: `translateX(${(innerWidth - 1920 * k) / 2}px) scale(${k})` });
+  };
+  addEventListener("resize", fit); fit();
+}
+
+// Built once per team, then only changed where the draft changes.
+function el(tag, cls, parent) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+const teams = {};
+function buildTeam(side) {
+  const root = $(`team-${side}`);
+  const picks = el("div", "Picks", root);
+  const t = { picks: [], bans: [] };
+  for (let i = 0; i < 5; i++) {
+    const pick = el("div", "Pick", picks);
+    const spells = el("div", "SummonerSpells", pick);
+    const s1 = el("img", "", spells), s2 = el("img", "", spells);
+    const imgBox = el("div", "PickImage", pick);
+    const img = el("img", "", imgBox);
+    const champName = el("div", "ChampName", imgBox);
+    const name = el("span", "", el("div", "PlayerName", pick));
+    t.picks.push({ pick, spells, s1, s2, imgBox, img, champName, name });
+  }
+  const bansRow = el("div", "Bans", el("div", "BansWrapper", root));
+  const score = el("div", "TeamScore");
+  const logoBox = el("div", "TeamLogo");
+  const logo = el("img", "", logoBox);
+  const teamName = el("div", "TeamName");
+  const nameText = document.createTextNode("");
+  teamName.appendChild(nameText);
+  const coach = el("div", "CoachName", teamName);
+  const bansBox = el("div", "BansBox");
+  for (let i = 0; i < 5; i++) {
+    if (i === 3) el("div", "Spacing", bansBox);
+    const ban = el("div", "Ban", bansBox);
+    const imgBox = el("div", "BanImage", ban);
+    t.bans.push({ imgBox, img: el("img", "", imgBox) });
+  }
+  // Blue: score, name, bans. Red: bans, name, score (mirrored).
+  if (side === "blue") bansRow.append(score, logoBox, teamName, bansBox);
+  else bansRow.append(bansBox, teamName, logoBox, score);
+  Object.assign(t, { bansRow, score, teamName, nameText, coach, logoBox, logo });
+  teams[side] = t;
+}
+buildTeam("blue"); buildTeam("red");
+
+function setSrc(img, src) { if (img.getAttribute("src") !== src) img.setAttribute("src", src); }
+
+function nudge(img, a) {
+  a = a || {};
+  const k = Number(a.scale ?? 1), x = Number(a.x || 0), y = Number(a.y || 0);
+  img.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
+}
+
+function renderTeam(side, team, info, show) {
+  const t = teams[side];
+  const logo = show.team_logos && info.logo;
+  t.logoBox.style.display = logo ? "" : "none";
+  if (logo) { setSrc(t.logo, url(info.logo)); nudge(t.logo, info.logo_adjust); }
+  t.bansRow.classList.toggle("WithScore", !!show.score);
+  t.score.style.display = show.score ? "" : "none";
+  t.score.textContent = info.score ?? 0;
+  t.nameText.nodeValue = info.name || "";
+  const coaches = show.coaches && !!info.coach;   // no name: the bigger team name, as without coaches
+  t.teamName.classList.toggle("WithoutCoaches", !coaches);
+  t.coach.style.display = coaches ? "" : "none";
+  t.coach.textContent = `Coach: ${info.coach || ""}`;
+  for (let i = 0; i < 5; i++) {
+    const p = (team.picks || [])[i] || {}, v = t.picks[i];
+    const champ = p.champion || {};
+    setSrc(v.img, champ.loading || PLACEHOLDERS[i]);
+    v.pick.classList.toggle("Active", !!p.active);
+    v.imgBox.classList.toggle("Active", !!p.active);
+    v.name.textContent = p.name || "";
+    const champName = show.champ_names && champ.name && !p.active ? champ.name : "";
+    v.champName.textContent = champName;
+    v.champName.style.display = champName ? "" : "none";
+    v.pick.classList.toggle("WithChampName", !!champName);
+    const spells = show.spells && champ.name && !p.active && p.spell1 && p.spell2;
+    v.spells.style.display = spells ? "" : "none";
+    if (spells) { setSrc(v.s1, p.spell1); setSrc(v.s2, p.spell2); }
+    const b = (team.bans || [])[i] || {}, bv = t.bans[i];
+    setSrc(bv.img, (b.champion || {}).square || BAN_PLACEHOLDER);
+    bv.imgBox.classList.toggle("Active", !!b.active);
+  }
+}
+
+// The opening: as the Europe layout plays it when champ select starts.
+let shown = false, timers = [];
+function setAnim(cls) {
+  $("overlay").className = "Overlay Europe " + cls;
+}
+function open() {
+  shown = true;
+  timers.forEach(clearTimeout);
+  setAnim("TheAbsoluteVoid");   // (back from a slide out: start over)
+  timers = [
+    setTimeout(() => setAnim("AnimationHidden"), 500),
+    setTimeout(() => setAnim("AnimationTimer AnimationBansPick"), 1200),
+    setTimeout(() => setAnim("AnimationBansPick AnimationBansPickOnly"), 2650),
+    setTimeout(() => setAnim("AnimationPigs"), 3650),
+  ];
+}
+const SLIDE_OUT_MS = 900;
+function close() {
+  shown = false;
+  timers.forEach(clearTimeout);
+  // Slide what's on screen down, then hide it.
+  $("overlay").classList.add("SlideOut");
+  timers = [setTimeout(() => setAnim("TheAbsoluteVoid"), SLIDE_OUT_MS + 50)];
+}
+
+// The HUD's fonts (its profile's), loaded once and again when they change.
+let fontsKey = "";
+function loadFonts(f) {
+  const key = JSON.stringify(f || {});
+  if (!f || key === fontsKey) return;
+  fontsKey = key;
+  $("fonts").textContent = (f.faces || []).map(x =>
+    `@font-face { font-family: "${x.family}"; src: url("${x.src}"); ${x.weight ? `font-weight: ${x.weight};` : ""} ${x.style ? `font-style: ${x.style};` : ""} }`).join("\n");
+  const root = document.documentElement.style;
+  for (const [name, v] of [["kill", f.kill], ["short", f.short]]) {
+    if (!v) continue;
+    root.setProperty(`--font-${name}`, `"${v.family}"`);
+    root.setProperty(`--font-${name}-weight`, v.weight || 400);
+    root.setProperty(`--font-${name}-style`, v.italic ? "italic" : "normal");
+  }
+}
+
+function lighten(c, amount) {
+  if (!/^#[0-9a-f]{6}$/i.test(c || "")) return c;
+  const n = parseInt(c.slice(1), 16);
+  const ch = shift => Math.round(((n >> shift) & 255) + (255 - ((n >> shift) & 255)) * amount);
+  return "#" + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, "0")).join("");
+}
+
+// The background loop, as the HUD plays it (speed, brightness, team tint).
+function renderBg(bg, blue, red) {
+  const box = $("bg-loop"), v = box.querySelector("video");
+  const src = bg && bg.on && bg.video ? url(bg.video) : "";
+  if (v.dataset.src !== src) {
+    v.dataset.src = src;
+    delete v.dataset.failed;
+    if (src) { v.src = src; v.play().catch(() => {}); } else { v.removeAttribute("src"); v.load(); }
+  }
+  box.classList.toggle("On", !!src && !v.dataset.failed);
+  if (!src) return;
+  const rate = Math.min(4, Math.max(0.0625, Number(bg.speed) || 1));
+  if (v.playbackRate !== rate) v.playbackRate = rate;
+  const b = Math.min(3, Math.max(0, Number(bg.brightness ?? 1)));
+  box.style.filter = b === 1 ? "" : `brightness(${b})`;
+  v.style.filter = bg.tint ? "grayscale(1) brightness(1.6)" : "";
+  const tint = box.querySelector(".Tint");
+  tint.style.display = bg.tint ? "" : "none";
+  // As the HUD: lightened team colours, blended across the middle.
+  const l = lighten(blue, .35), r = lighten(red, .35);
+  tint.style.background = `linear-gradient(to right, ${l} 0%, ${l} 30%, ${r} 70%, ${r} 100%)`;
+}
+$("bg-loop").querySelector("video").addEventListener("error", e => { e.target.dataset.failed = "1"; $("bg-loop").classList.remove("On"); });
+
+const LAYOUT = "europe";
+function render(s) {
+  // Another look chosen in the control panel: load it (unless one was asked for).
+  if (s.layout && s.layout !== LAYOUT && !params.get("layout")) { location.reload(); return; }
+  const d = s.draft || {};
+  const root = $("overlay");
+  loadFonts(s.fonts);
+  renderBg(s.bg, s.teams.blue.color || "rgb(0,151,196)", s.teams.red.color || "rgb(222,40,70)");
+  root.style.setProperty("--color-blue", s.teams.blue.color || "rgb(0,151,196)");
+  root.style.setProperty("--color-red", s.teams.red.color || "rgb(222,40,70)");
+  setSrc($("logo"), url(params.get("logo") || s.logo || "assets/logos/scc.png"));
+  nudge($("logo"), s.logo_adjust);
+  if (!d.active) { if (shown) close(); return; }
+  if (!shown) open();
+  $("phase").textContent = d.phase || "";
+  const timer = $("timer");
+  timer.classList.toggle("Blue", !!d.blue.active || (!d.blue.active && !d.red.active));
+  timer.classList.toggle("Red", !!d.red.active || (!d.blue.active && !d.red.active));
+  const t = String(d.timer ?? 0);
+  const chars = $("timer-chars");
+  if (chars.dataset.t !== t) {
+    chars.dataset.t = t;
+    chars.innerHTML = d.timer >= 100 ? t : t.split("").map(c => `<div class="TimerChar">${c}</div>`).join("");
+  }
+  renderTeam("blue", d.blue, s.teams.blue, s.show);
+  renderTeam("red", d.red, s.teams.red, s.show);
+}
+
+async function poll() {
+  try { render(await (await fetch("/api/draft", { cache: "no-store" })).json()); } catch (e) { /* app restarting */ }
+  setTimeout(poll, 250);
+}
+poll();
+</script>
+</body>
+</html>
