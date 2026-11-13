@@ -1,0 +1,13 @@
+/* SCC Broadcast Engine: the GFX Engine's pages inside the app's window.
+   The app's top bar has every page and the workspaces, so no sidebar. */
+html.sccbe #top { display: none !important; }
+html.sccbe body:has(#top) { grid-template-columns: minmax(0, 1fr) !important; }
+html.sccbe body:has(#top) > main.page { grid-column: 1 !important; }
+
+/* The bar between Preview / Program and Graphics / Fields on Control. */
+html.sccbe .sccbe-split { flex: 0 0 12px; margin: -6px 0; cursor: row-resize; display: grid; place-items: center; touch-action: none; user-select: none; }
+html.sccbe .sccbe-split span { width: 64px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.18); transition: background .15s, width .15s; }
+html.sccbe .sccbe-split:hover span, html.sccbe .sccbe-split.drag span { background: rgba(255,255,255,.55); width: 110px; }
+html.sccbe .monitors.sccbe-small .takebar { padding-top: 22px; gap: 4px; }
+html.sccbe .monitors.sccbe-small .takebar .stinger-delay { display: none; }
+html.sccbe .monitors.sccbe-small #page-control button.take, html.sccbe .monitors.sccbe-small button.take { height: 46px !important; font-size: 17px !important; }

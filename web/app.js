@@ -24,6 +24,9 @@ const ICONS = {
   outputs: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
   link: '<path d="M10 14a4 4 0 005.6 0l3-3a4 4 0 00-5.6-5.6l-1 1M14 10a4 4 0 00-5.6 0l-3 3a4 4 0 005.6 5.6l1-1"/>',
+  appearance: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 010 18z" fill="currentColor"/>',
+  log: '<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   hudpc: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4M6 13l3-4 3 3 2-2 3 3"/>',
 };
 const icon = (name, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ""}</svg>`;
@@ -107,6 +110,9 @@ function render() {
   if (!S.settings.setup_done) return showView("setup");
   if (route === "setup") route = "home";
   const [head, sub] = route.split("/");
+  rosPanel(head === "engine" && (sub || "control") === "control");
+  Ros.show("builder", head === "ros");
+  if (head === "ros") return showView("ros");
   if (head === "home") return showView("home");
   if (head === "settings") { showView("settings"); if (sub === "updates") $("#updates").scrollIntoView({ block: "center" }); return; }
   if (head === "engine") return showEngine(sub || "control");
@@ -134,6 +140,7 @@ function showFrame(key, url) {
     f.dataset.base = url.replace(/#.*$/, "");
     f.allow = "camera; microphone; display-capture; autoplay; clipboard-read; clipboard-write; fullscreen";
     f.src = url;
+    f.className = key;
     $("#frames").appendChild(f);
     frames[key] = f;
   } else if (f.dataset.seq !== String(navSeq)) {
@@ -189,7 +196,10 @@ function renderBar() {
   const games = S.parts.filter(p => p.kind === "game");
   $('[data-menu="games"]').classList.toggle("on", games.some(g => g.key === head));
   $('[data-menu="build"]').classList.toggle("on", head === "builder" || (head === "engine" && ["composer", "assets", "transitions"].includes(sub)));
-  $('[data-menu="event"]').classList.toggle("on", head === "engine" && ["global", "teams", "tournament", "schedule", "outputs", "data"].includes(sub));
+  $('[data-menu="event"]').classList.toggle("on", head === "ros" || (head === "engine" && ["global", "teams", "tournament", "schedule"].includes(sub)));
+  $('[data-menu="system"]').classList.toggle("on", head === "settings" || (head === "engine" && ["outputs", "data", "appearance", "home"].includes(sub)));
+  renderWorkspaceChip(head);
+  fitBar();
   $("#chip-settings").classList.toggle("on", head === "settings");
   const anyGame = games.find(g => g.status === "on");
   $("#d-games").className = "d" + (anyGame ? " g" : games.some(g => g.status === "error") ? " r" : "");
@@ -226,6 +236,64 @@ function renderGamesMenu(games) {
     + `<div class="hd"><a href="#settings">Switch games on or off in Settings ›</a></div>`;
 }
 
+// --- the run of show on Control, and the workspaces ---------------------------------
+
+let rosOn = false;
+function rosPanel(on) {
+  // (only when the engine's Control page is what's showing)
+  on = on && !!S.engine.base && (S.engine.remote || part("engine").status === "on");
+  if (on === rosOn) return;
+  rosOn = on;
+  $("#ros-panel").hidden = !on;
+  document.body.classList.toggle("ros-on", on);
+  Ros.show("panel", on);
+}
+
+let wsList = null;
+function renderWorkspaceChip(head) {
+  const chip = $("#chip-ws"), e = S.engine;
+  chip.hidden = !(head === "engine" && e.ok);
+  if (chip.hidden) return;
+  chip.querySelector("b").textContent = e.workspace || "Workspace";
+  const pic = chip.querySelector(".wspic");
+  const cur = wsList && wsList.workspaces.find(w => w.id === wsList.current);
+  const want = cur && cur.picture ? `url("${e.base}/api/workspace-picture/${encodeURIComponent(cur.id)}")` : "";
+  if (pic.style.backgroundImage !== want) pic.style.backgroundImage = want;
+  if (!wsList) loadWorkspaces();
+  fitBar();
+}
+// When the bar is too narrow for everything, first drop the app name, then
+// the labels on the tabs that aren't open (their icons stay).
+function fitBar() {
+  const bar = $("#bar");
+  bar.classList.remove("compact", "icons");
+  const nav = $("#nav");
+  for (const t of nav.querySelectorAll(".t")) if (!t.title) t.title = t.textContent.replace(/▾/g, "").trim();
+  const over = () => bar.scrollWidth > bar.clientWidth + 1 || nav.scrollWidth > nav.clientWidth + 1 ||
+    $("#nav").getBoundingClientRect().right > bar.querySelector(".right").getBoundingClientRect().left - 6;
+  if (over()) bar.classList.add("compact");
+  if (over()) bar.classList.add("icons");
+}
+async function loadWorkspaces() {
+  try { wsList = await api("/api/engine/workspaces"); } catch (e) { wsList = { workspaces: [], current: "" }; }
+  renderWorkspaceMenu();
+}
+function renderWorkspaceMenu() {
+  const e = S.engine, ws = (wsList && wsList.workspaces) || [];
+  $("#menu-ws").innerHTML = `<div class="hd">Workspaces</div>` + ws.map(w => `<button class="mi${w.id === wsList.current ? " on" : ""}" data-ws="${esc(w.id)}">
+      <span class="wspic"${w.picture ? ` style="background-image:url('${e.base}/api/workspace-picture/${encodeURIComponent(w.id)}?v=${Math.round(w.updated || 0)}')"` : ""}>${w.picture ? "" : esc((w.name || "?").slice(0, 1))}</span>
+      <span class="wsn">${esc(w.name)}<small>${w.graphics || 0} graphics</small></span>${w.id === wsList.current ? `<span class="st">open</span>` : ""}</button>`).join("")
+    + `<a class="mi" href="#engine/home">${icon("settings")}Manage workspaces<span class="st">new, rename, picture</span></a>`;
+}
+$("#menu-ws").addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-ws]");
+  if (!b) return;
+  closeMenus();
+  if (b.dataset.ws === wsList.current) return;
+  try { wsList = await api("/api/engine/workspace", { id: b.dataset.ws }); renderWorkspaceMenu(); refresh(); }
+  catch (err) { alertBox(err.message); }
+});
+
 function closeMenus() { for (const m of document.querySelectorAll(".menu")) m.hidden = true; }
 for (const b of document.querySelectorAll("[data-menu]")) {
   b.addEventListener("click", e => {
@@ -233,8 +301,9 @@ for (const b of document.querySelectorAll("[data-menu]")) {
     const menu = $("#menu-" + b.dataset.menu), open = menu.hidden;
     closeMenus();
     if (!open) return;
+    if (b.dataset.menu === "ws") loadWorkspaces();
     const r = b.getBoundingClientRect();
-    menu.style.left = Math.min(r.left, innerWidth - 312) + "px";
+    menu.style.left = Math.max(8, Math.min(r.left, innerWidth - 320)) + "px";
     menu.hidden = false;
   });
 }
@@ -319,6 +388,7 @@ function scaleMonitors() {
   }
 }
 addEventListener("resize", scaleMonitors);
+addEventListener("resize", () => fitBar());
 
 $("#home-games").addEventListener("click", e => {
   const on = e.target.closest("[data-on]"), re = e.target.closest("[data-restart]"), card = e.target.closest("[data-open]");

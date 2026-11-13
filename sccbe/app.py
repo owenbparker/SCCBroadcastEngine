@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -16,6 +17,7 @@ from urllib.parse import urlparse
 from . import parts as P
 from .config import APP_DIR, DATA_DIR, FROZEN, ROLES, Settings, control_pc_url, web_file
 from .log import log, lines
+from .ros import RunOfShow
 from .updater import Updater, clean_up_old_update
 from .version import VERSION
 
@@ -33,6 +35,7 @@ class Shell:
         self.httpd = None
         self._engine = {"t": 0, "data": None}
         self._engine_lock = threading.Lock()
+        self.ros = RunOfShow(os.path.join(DATA_DIR, "shell", "run-of-show.json"))
 
     # --- parts ---------------------------------------------------------------
 
@@ -127,7 +130,10 @@ class Shell:
                         logo = base + "/" + logo.lstrip("/")
                     return {"name": t.get("name") or "", "short": t.get("short") or "", "score": t.get("score") or 0,
                             "color": t.get("color") or "", "logo": logo}
+                sched = g.get("schedule") or {}
                 out.update(ok=True, version=(s.get("app") or {}).get("version", ""),
+                           schedule=[m for m in sched.get("matches") or [] if isinstance(m, dict)],
+                           graphics=[{"id": c.get("id"), "name": c.get("name")} for c in (s.get("project") or {}).get("compositions", [])],
                            workspace=(s.get("workspace") or {}).get("name", ""),
                            match={"event": g.get("event") or "", "stage": g.get("stage") or "",
                                   "best_of": g.get("best_of") or 0, "left": team("left"), "right": team("right")},
@@ -138,6 +144,72 @@ class Shell:
         with self._engine_lock:
             self._engine = {"t": time.monotonic(), "data": out, "base": base}
         return out
+
+    def engine_call(self, path, body=None, timeout=4):
+        """Ask the GFX Engine this PC uses (its own or the Control PC's)."""
+        base, _ = self.engine_base()
+        if not base:
+            raise ValueError("No GFX Engine: switch it on, or set the Control PC in Settings")
+        data = None if body is None else json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(base + path, data=data, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8") or "{}")
+        except urllib.error.HTTPError as e:
+            try:
+                msg = json.loads(e.read().decode("utf-8")).get("error")
+            except Exception:
+                msg = None
+            raise ValueError(msg or f"The GFX Engine said {e.code}")
+        except (urllib.error.URLError, OSError) as e:
+            raise ValueError(f"Can't reach the GFX Engine at {base} ({getattr(e, 'reason', e)})")
+
+    def ros_state(self):
+        e = self.engine_summary()
+        if e.get("ok"):
+            try:
+                self.ros.auto_apply(e.get("schedule") or [], (e.get("match") or {}).get("best_of"))
+            except Exception as err:
+                log(f"Run of show: couldn't follow the Schedule ({err})", "warn")
+        out = self.ros.state()
+        out["engine"] = {"ok": e.get("ok", False), "graphics": e.get("graphics") or [],
+                         "schedule": e.get("schedule") or [], "match": e.get("match")}
+        return out
+
+    def ros_post(self, path, body):
+        r = self.ros
+        if path == "/api/ros/template":
+            return {"template": r.save_template(body.get("template") or {})}
+        if path == "/api/ros/template/delete":
+            r.delete_template(body.get("id"))
+        elif path == "/api/ros/template/new":
+            from .ros import starter_template
+            return {"template": r.save_template(starter_template(body.get("game") or "val", int(body.get("best_of") or 3)))}
+        elif path == "/api/ros/apply":
+            e = self.engine_summary()
+            from .ros import pick_match
+            match = body.get("match") or pick_match(e.get("schedule") or []) or {}
+            if not match.get("best_of") and (e.get("match") or {}).get("best_of"):
+                match["best_of"] = e["match"]["best_of"]
+            r.apply(match, body.get("template_id"), body.get("best_of"))
+        elif path in ("/api/ros/next", "/api/ros/go"):
+            show = r.data.get("show")
+            if not show:
+                raise ValueError("No run of show yet")
+            e = self.engine_summary()
+            m = e.get("match") if e.get("ok") else None
+            scores = [m["left"]["score"], m["right"]["score"]] if m else None
+            index = show.get("current", -1) + 1 if path == "/api/ros/next" else int(body.get("index", -1))
+            r.go(index, scores if path == "/api/ros/next" else None)
+        elif path == "/api/ros/reset":
+            r.reset()
+        elif path == "/api/ros/show":
+            r.edit_show(body.get("segments"), body.get("start"))
+        elif path == "/api/ros/auto":
+            r.set_auto(body.get("on"))
+        else:
+            raise KeyError(path)
+        return self.ros_state()
 
     # --- state -----------------------------------------------------------------
 
@@ -193,6 +265,13 @@ def make_handler(shell):
                 return self._json(shell.state())
             if path == "/api/log":
                 return self._json({"lines": lines()})
+            if path == "/api/ros":
+                return self._json(shell.ros_state())
+            if path == "/api/engine/workspaces":
+                try:
+                    return self._json(shell.engine_call("/api/workspaces"))
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 400)
             if path in ("/", "/index.html"):
                 path = "/index.html"
             f = web_file(path)
@@ -206,6 +285,22 @@ def make_handler(shell):
             path = urlparse(self.path).path
             try:
                 body = self._body()
+                if path.startswith("/api/ros/"):
+                    return self._json(shell.ros_post(path, body))
+                if path == "/api/engine/workspace":
+                    shell.engine_call("/api/workspaces/open", {"id": body.get("id")})
+                    with shell._engine_lock:
+                        shell._engine["data"] = None
+                    return self._json(shell.engine_call("/api/workspaces"))
+                if path == "/api/engine/cue":
+                    # A graphic of the run of show onto Preview (by its name).
+                    e = shell.engine_summary()
+                    name = (body.get("name") or "").strip().lower()
+                    comp = next((g for g in e.get("graphics") or [] if (g.get("name") or "").strip().lower() == name), None)
+                    if not comp:
+                        raise ValueError(f"No graphic called {body.get('name')} in this workspace")
+                    shell.engine_call("/api/cue", {"id": comp["id"], "on": True})
+                    return self._json({"ok": True, "graphic": comp})
                 if path == "/api/setup":
                     shell.setup(body)
                 elif path == "/api/part":

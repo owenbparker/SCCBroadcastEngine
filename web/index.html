@@ -20,8 +20,10 @@
     <button class="t" data-menu="games"><i data-i="games"></i>Games<span class="d" id="d-games"></span><span class="dd">▾</span></button>
     <button class="t" data-menu="build"><i data-i="composer"></i>Build<span class="dd">▾</span></button>
     <button class="t" data-menu="event"><i data-i="global"></i>Event<span class="dd">▾</span></button>
+    <button class="t" data-menu="system"><i data-i="outputs"></i>System<span class="dd">▾</span></button>
   </nav>
   <div class="right">
+    <button class="chip ws" id="chip-ws" data-menu="ws" title="Workspaces" hidden><span class="wspic"></span><b></b><span class="dd">▾</span></button>
     <span class="chip" id="chip-engine" title="The GFX Engine this PC uses"><span class="dot"></span><span>Engine</span><b>…</b></span>
     <span class="chip" id="chip-match" hidden><i data-i="global" class="sm"></i><b></b></span>
     <a class="chip update" id="chip-update" href="#settings/updates" hidden></a>
@@ -43,10 +45,17 @@
   <a class="mi" href="#engine/teams"><i data-i="teams"></i>Teams</a>
   <a class="mi" href="#engine/tournament"><i data-i="bracket"></i>Tournament</a>
   <a class="mi" href="#engine/schedule"><i data-i="schedule"></i>Schedule</a>
-  <div class="hd">System</div>
-  <a class="mi" href="#engine/outputs"><i data-i="outputs"></i>Outputs &amp; Network</a>
-  <a class="mi" href="#engine/data"><i data-i="data"></i>Data sources</a>
+  <a class="mi" href="#ros"><i data-i="log"></i>Run of show<span class="st">templates per game</span></a>
 </div>
+<div class="menu glass" id="menu-system" hidden>
+  <div class="hd">System</div>
+  <a class="mi" href="#engine/outputs"><i data-i="outputs"></i>Outputs &amp; Network<span class="st">OBS links</span></a>
+  <a class="mi" href="#engine/data"><i data-i="data"></i>Data sources</a>
+  <a class="mi" href="#engine/appearance"><i data-i="appearance"></i>Engine appearance</a>
+  <a class="mi" href="#settings"><i data-i="settings"></i>Settings<span class="st">this PC</span></a>
+</div>
+<div class="menu glass" id="menu-ws" hidden></div>
+<div class="colours glass" id="rb-colours" hidden></div>
 
 <main id="main">
   <!-- Home -->
@@ -99,7 +108,7 @@
 
   <!-- A part that isn't running -->
   <section class="view" id="v-off" hidden>
-    <div class="off glass">
+    <div class="offcard glass">
       <img id="off-icon" alt="">
       <h2 id="off-title"></h2>
       <p id="off-text"></p>
@@ -173,9 +182,20 @@
     </div>
   </section>
 
+  <!-- Run of show builder -->
+  <section class="view" id="v-ros" hidden>
+    <div class="rb">
+      <aside class="rb-left glass2"><h2>Run of show</h2><div class="sub">Templates per game</div><div id="rb-templates"></div></aside>
+      <div class="rb-mid glass2"><div class="rb-banner" id="rb-banner"></div><div id="rb-editor"></div></div>
+      <aside class="rb-right glass2" id="rb-tonight"></aside>
+    </div>
+  </section>
+
+  <aside class="ros-panel glass2" id="ros-panel" hidden></aside>
   <div id="frames"></div>
 </main>
 
 <script src="app.js"></script>
+<script src="ros.js"></script>
 </body>
 </html>

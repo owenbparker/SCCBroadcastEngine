@@ -14,7 +14,8 @@ copy is changed in three small ways, all listed in PATCHES below:
   * updater.py: the app no longer updates itself; SCC Broadcast Engine has
     one updater for everything (sccbe/updater.py).
   * a few pages follow the address bar's #tab, so the top bar can open them
-    on the right tab.
+    on the right tab, and load the files in overlays/<name>/ (the app's look
+    and behaviour when the page is shown inside the app's window).
 
 apps/SOURCES.json records the repository, branch and commit each copy came from.
 """
@@ -79,10 +80,25 @@ HASH_FOLLOW = ("\n// SCC Broadcast Engine: the top bar opens a tab by changing t
                "addEventListener(\"hashchange\", () => { const t = location.hash.slice(1); if (t && t !== App.tab) showTab(t); });\n"
                "document.addEventListener(\"DOMContentLoaded\", () => { const t = location.hash.slice(1); if (t && !App.tab) showTab(t); });\n")
 
+EMBED = '<link rel="stylesheet" href="sccbe-embed.css"><script src="sccbe-embed.js"></script>'
+
+
+def load_embed(t):
+    """The overlay's look and behaviour inside the app (overlays/<app>/web/sccbe-embed.*)."""
+    if "sccbe-embed.js" in t:
+        return t
+    if "</head>" not in t:
+        raise SystemExit("A page lost its </head>; update tools/sync_apps.py")
+    return t.replace("</head>", "<!-- SCC Broadcast Engine (overlays/) -->\n" + EMBED + "\n</head>", 1)
+
+
 # (app, file inside apps/<app>, function(text) -> text)
 PATCHES = [
     ("gfxengine", "web/control.js", lambda t: t if "SCC Broadcast Engine" in t else t + HASH_FOLLOW),
+    ("gfxengine", "web/control.html", load_embed),
+    ("multistream", "web/index.html", load_embed),
 ]
+OVERLAYS = os.path.join(ROOT, "overlays")
 
 
 def run(*cmd, cwd=None):
@@ -117,6 +133,9 @@ def copy_app(name, src, commit, record):
             text = patch(name, f.read())
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
+    overlay = os.path.join(OVERLAYS, name)
+    if os.path.isdir(overlay):
+        shutil.copytree(overlay, out, dirs_exist_ok=True)
     for app, rel, patch in PATCHES:
         if app == name:
             path = os.path.join(out, rel)
