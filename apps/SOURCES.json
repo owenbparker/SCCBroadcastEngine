@@ -37,7 +37,7 @@
   "smashhud": {
     "repo": "owenbparker/SmashHUD_SCC",
     "branch": "claude/project-thread-7aamdb",
-    "commit": "772e53f74427e09f87a717b470695f03e16d4b30"
+    "commit": "a850ef85caaafb3bb3f3c4a623aecba72f173658"
   },
   "valhud": {
     "repo": "owenbparker/VALHUDSCC",

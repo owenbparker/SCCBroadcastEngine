@@ -5,3 +5,12 @@ __pycache__/
 /data/
 /apps/multistream/bin/
 smoke-test.txt
+# Files the parts write next to themselves when run from source or tested
+/apps/*/certs/
+/apps/*/hud-builder/
+/apps/*/output/
+/apps/*/logos/
+/apps/*/config.json
+/apps/*/settings.json
+/apps/*/workspaces/
+/apps/*/library/
