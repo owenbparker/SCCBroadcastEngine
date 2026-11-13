@@ -217,7 +217,7 @@ const Ros = (() => {
       <div class="li"><span>Match</span><span class="v">${esc([m.team1, m.team2].filter(Boolean).join(" vs ") || "–")}</span></div>
       <div class="li"><span>From Schedule</span><span class="v">${esc([m.date, m.time].filter(Boolean).join(" · ") || "–")}</span></div>
       <div class="li"><span>Template</span><span class="v">${esc((show && show.template_name) || "none (blank)")}</span></div>
-      <div class="li"><span>Starts at</span><span class="v"><input id="rb-start" value="${esc(m.time || "")}" placeholder="19:00" size="5"></span></div>
+      <div class="li" title="When the first map starts (from the Schedule). The pre-show counts back from it."><span>Match starts at</span><span class="v"><input id="rb-start" value="${esc(m.time || "")}" placeholder="19:00" size="5"></span></div>
       <div class="tn-list">`;
     let lastBlock = null;
     segs.forEach((s, i) => {

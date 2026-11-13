@@ -61,6 +61,16 @@ class ShowTests(unittest.TestCase):
         self.assertEqual(tl[0]["end"], late)
         self.assertEqual(tl[1]["start"], late)
 
+    def test_first_map_starts_at_the_match_time(self):
+        show = self.r.apply({"game": "VALORANT", "date": "2026-11-13", "time": "20:30", "best_of": 3})
+        tl = ros.timeline(show, now=0)
+        at = lambda t: datetime.datetime.fromtimestamp(t).strftime("%H:%M")  # noqa: E731
+        self.assertEqual([s["title"] for s in show["segments"]][2], "Map 1")
+        self.assertEqual(at(tl[2]["start"]), "20:30")      # the match block
+        self.assertEqual(at(tl[0]["start"]), "20:05")      # countdown 15 + casters 10 before it
+        self.assertEqual(at(tl[1]["start"]), "20:20")
+        self.assertEqual(at(tl[3]["start"]), "21:10")      # after a 40 min map
+
     def test_series_won_skips_remaining_maps(self):
         self.r.apply({"game": "VALORANT", "best_of": 3})
         for i in range(5):            # through Map 2

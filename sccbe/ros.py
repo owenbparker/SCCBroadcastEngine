@@ -176,7 +176,8 @@ def series_over(show, scores):
 
 def timeline(show, now=None):
     """Each segment's start and end (epoch seconds) and whether it's an
-    estimate. Before the show starts, the first starts at the match's time."""
+    estimate. Before the show starts, the first map starts at the match's
+    time (from the Schedule), the pre-show just before it."""
     now = now or time.time()
     segs, times = show["segments"], show.get("times") or {}
     out, t, est = [], None, False
@@ -186,6 +187,11 @@ def timeline(show, now=None):
         start = datetime.datetime.fromisoformat(f"{m.get('date')}T{m.get('time')}").timestamp()
     except (TypeError, ValueError):
         start = None
+    if start:
+        # The match's time is when the first map starts: what comes before it
+        # (the pre-show) is counted back from there by its lengths.
+        first_map = next((i for i, x in enumerate(segs) if x.get("map")), 0)
+        start -= sum(x["mins"] for x in segs[:first_map]) * 60
     for i, s in enumerate(segs):
         real = times.get(s["id"]) or {}
         if real.get("start"):
