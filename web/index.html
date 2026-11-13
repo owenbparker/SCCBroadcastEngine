@@ -56,6 +56,7 @@
 </div>
 <div class="menu glass" id="menu-ws" hidden></div>
 <div class="colours glass" id="rb-colours" hidden></div>
+<div class="rb-modal" id="rb-modal" hidden><div class="box glass" id="rb-modal-box"></div></div>
 
 <main id="main">
   <!-- Home -->
@@ -185,7 +186,9 @@
   <!-- Run of show builder -->
   <section class="view" id="v-ros" hidden>
     <div class="rb">
-      <aside class="rb-left glass2"><h2>Run of show</h2><div class="sub">Templates per game</div><div id="rb-templates"></div></aside>
+      <aside class="rb-left glass2"><h2>Run of show</h2><div class="sub">Templates per game</div><div id="rb-templates"></div>
+        <div class="rb-share"><button id="rb-import" title="Add templates from an .sccros file (or drop one on this page)">Import…</button><button id="rb-shareall" title="Save templates as a file, or send them to another PC">Export…</button></div>
+        <input type="file" id="rb-file" accept=".sccros,.json" multiple hidden></aside>
       <div class="rb-mid glass2"><div class="rb-banner" id="rb-banner"></div><div id="rb-editor"></div></div>
       <aside class="rb-right glass2" id="rb-tonight"></aside>
     </div>

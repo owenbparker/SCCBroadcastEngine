@@ -5,19 +5,22 @@ switched on for this PC. Serves http://127.0.0.1:8770/ for the app window.
 import json
 import mimetypes
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from . import parts as P
 from .config import APP_DIR, DATA_DIR, FROZEN, ROLES, Settings, control_pc_url, web_file
 from .log import log, lines
-from .ros import RunOfShow
+from . import rosnet
+from .ros import EXT, RunOfShow, read_doc
 from .updater import Updater, clean_up_old_update
 from .version import VERSION
 
@@ -94,6 +97,10 @@ class Shell:
         for part in reversed(self.parts):
             if part.status != "off":
                 part.stop()
+        net = getattr(self, "ros_net", None)
+        if net:
+            net.shutdown()
+            net.server_close()
         if self.httpd:
             self.httpd.shutdown()
             self.httpd.server_close()
@@ -207,6 +214,20 @@ class Shell:
             r.edit_show(body.get("segments"), body.get("start"))
         elif path == "/api/ros/auto":
             r.set_auto(body.get("on"))
+        elif path == "/api/ros/import":
+            # An .sccros file's text. With no mode and a name taken, nothing
+            # is added yet: the page asks "replace or keep both?" first.
+            templates = read_doc(body.get("text") or "")
+            mode = body.get("mode")
+            clashes = r.clashes(templates)
+            if not mode and clashes:
+                return {"clashes": clashes, "names": [t["name"] for t in templates]}
+            result = r.import_templates(templates, mode or "keep")
+            return {**self.ros_state(), "imported": result}
+        elif path == "/api/ros/send":
+            doc = r.export(body.get("ids") or None, rosnet.pc_name())
+            result = rosnet.send(body.get("to"), doc, body.get("mode") or "replace")
+            return {**self.ros_state(), "sent": result}
         else:
             raise KeyError(path)
         return self.ros_state()
@@ -267,6 +288,35 @@ def make_handler(shell):
                 return self._json({"lines": lines()})
             if path == "/api/ros":
                 return self._json(shell.ros_state())
+            if path == "/api/ros/export":
+                q = parse_qs(urlparse(self.path).query)
+                ids = [i for i in (q.get("ids") or [""])[0].split(",") if i]
+                try:
+                    doc = shell.ros.export(ids, rosnet.pc_name())
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 400)
+                name = doc["templates"][0]["name"] if len(doc["templates"]) == 1 else "Run of show templates"
+                name = unicodedata.normalize("NFKD", name.replace("·", "-")).encode("ascii", "ignore").decode()
+                name = re.sub(r'[\\/:*?"<>|;]+', " ", name)
+                name = re.sub(r"\s+", " ", name).strip() or "Run of show"
+                body = json.dumps(doc, indent=1).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", f'attachment; filename="{name}{EXT}"')
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if path == "/api/ros/pcs":
+                hints = []
+                try:
+                    hints = [e.get("ip") for e in shell.engine_call("/api/engines", timeout=2).get("engines") or []]
+                except ValueError:
+                    pass
+                hints.append(shell.settings.get().get("control_pc") or "")
+                return self._json({"pcs": rosnet.find([h for h in hints if h]), "self": rosnet.pc_name(),
+                                   "addresses": rosnet.own_addresses()})
             if path == "/api/engine/workspaces":
                 try:
                     return self._json(shell.engine_call("/api/workspaces"))
@@ -337,6 +387,7 @@ def start(shell, port=None):
     shell.httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(shell))
     shell.httpd.daemon_threads = True
     threading.Thread(target=shell.httpd.serve_forever, name="shell-http", daemon=True).start()
+    shell.ros_net = rosnet.start(shell.ros)
     clean_up_old_update()
     shell.updater.check_in_background()
     log(f"SCC Broadcast Engine {VERSION} at http://127.0.0.1:{port}/ (data in {DATA_DIR})")

@@ -15,6 +15,12 @@ Engine's Schedule (teams, game, start time): repeat blocks once per map, the
 text filled in ({{Match.TeamA}}, {{Map.N}}, ...). The app picks the game from
 that match and uses its template; a game with no template starts blank.
 
+Templates travel between PCs as .sccros files (JSON: {"format": "scc-ros",
+"version": 1, "templates": [...]}, see export_doc / read_doc), or are sent
+straight to another PC's SCC Broadcast Engine (sccbe/app.py, NET_PORT). On
+import a template whose name is already taken either replaces that one (it
+keeps its id, so tonight's show still points at it) or is kept as "Name 2".
+
 Times are worked out, not stored: a segment starts when the one before it
 ended (or, before then, when it's expected to). "Next segment" records the
 real times, so when a game runs long everything after it moves.
@@ -199,6 +205,51 @@ def timeline(show, now=None):
     return out
 
 
+FORMAT = "scc-ros"
+FORMAT_VERSION = 1
+EXT = ".sccros"
+
+
+def export_doc(templates, source=""):
+    return {"format": FORMAT, "version": FORMAT_VERSION, "app": "SCC Broadcast Engine", "from": _str(source, 80),
+            "exported": datetime.datetime.now().isoformat(timespec="seconds"),
+            "templates": [clean_template(t) for t in templates]}
+
+
+def read_doc(data):
+    """The templates in an .sccros file (its text or parsed JSON). Also takes
+    a bare template or a list of them. Raises ValueError if it isn't one."""
+    if isinstance(data, (bytes, bytearray)):
+        data = data.decode("utf-8-sig", "replace")
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except ValueError:
+            raise ValueError("That file isn't a run of show template (.sccros)")
+    if isinstance(data, dict) and data.get("format") == FORMAT:
+        if int(data.get("version") or 1) > FORMAT_VERSION:
+            raise ValueError("That file is from a newer SCC Broadcast Engine: update this one first")
+        items = data.get("templates")
+    elif isinstance(data, dict) and isinstance(data.get("blocks"), list):
+        items = [data]
+    elif isinstance(data, list):
+        items = data
+    else:
+        raise ValueError("That file isn't a run of show template (.sccros)")
+    out = [clean_template(t) for t in (items or [])[:200] if isinstance(t, dict)]
+    if not out:
+        raise ValueError("There are no run of show templates in that file")
+    return out
+
+
+def _free_name(name, taken):
+    """"Show" -> "Show 2" (or 3, ...) when the name is taken."""
+    n = 2
+    while f"{name} {n}".lower() in taken:
+        n += 1
+    return f"{name} {n}"
+
+
 class RunOfShow:
     def __init__(self, path):
         self.path = path
@@ -211,6 +262,8 @@ class RunOfShow:
                 self.data["templates"] = [clean_template(t) for t in d.get("templates") or []]
                 self.data["show"] = d.get("show")
                 self.data["auto"] = d.get("auto", True) is not False
+                if isinstance(d.get("received"), dict):
+                    self.data["received"] = d["received"]
             except (OSError, ValueError):
                 pass
 
@@ -242,6 +295,49 @@ class RunOfShow:
         with self.lock:
             self.data["templates"] = [t for t in self.data["templates"] if t["id"] != tid]
             self.save()
+
+    def clashes(self, templates):
+        """Names of these templates that this PC already has."""
+        have = {t["name"].strip().lower() for t in self.data["templates"]}
+        return [t["name"] for t in templates if t["name"].strip().lower() in have]
+
+    def import_templates(self, templates, mode="keep", source=""):
+        """Add templates (from read_doc). mode, for a name that's taken:
+        "replace" that template, or "keep" both (the new one is "Name 2").
+        Returns {"added": [names], "replaced": [names]}."""
+        if mode not in ("replace", "keep"):
+            raise ValueError("Pick replace or keep both")
+        added, replaced = [], []
+        with self.lock:
+            ts = self.data["templates"]
+            for t in templates:
+                t = clean_template(copy.deepcopy(t))
+                by_name = {x["name"].strip().lower(): i for i, x in enumerate(ts)}
+                i = by_name.get(t["name"].strip().lower())
+                if i is not None and mode == "replace":
+                    t["id"] = ts[i]["id"]
+                    ts[i] = t
+                    replaced.append(t["name"])
+                    continue
+                if i is not None:
+                    t["name"] = _free_name(t["name"], set(by_name))
+                if any(x["id"] == t["id"] for x in ts):
+                    t["id"] = new_id()
+                ts.append(t)
+                added.append(t["name"])
+            if source:
+                n = (self.data.get("received") or {}).get("n", 0) + 1
+                self.data["received"] = {"n": n, "from": _str(source, 80), "names": added + replaced, "t": time.time()}
+            self.save()
+        return {"added": added, "replaced": replaced}
+
+    def export(self, ids=None, source=""):
+        ts = self.data["templates"]
+        if ids:
+            ts = [t for t in ts if t["id"] in ids]
+        if not ts:
+            raise ValueError("No templates to export")
+        return export_doc(ts, source)
 
     def for_game(self, game):
         return next((t for t in self.data["templates"] if t["game"] == game), None) or \
@@ -355,4 +451,4 @@ class RunOfShow:
         if show:
             show["timeline"] = timeline(show, now)
         return {"templates": copy.deepcopy(self.data["templates"]), "show": show, "auto": self.data.get("auto", True),
-                "games": GAMES, "colours": COLOURS}
+                "games": GAMES, "colours": COLOURS, "received": copy.deepcopy(self.data.get("received"))}

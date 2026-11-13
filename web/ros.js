@@ -18,6 +18,7 @@ const Ros = (() => {
 
   async function load() {
     try { R = await api("/api/ros"); } catch (e) { return; }
+    noteReceived();
     if (visible.panel) renderPanel();
     if (visible.builder) renderTonight();
   }
@@ -188,7 +189,8 @@ const Ros = (() => {
       html += `<button class="rb-add" data-sadd="${bi}">${icon("plus")}Segment</button></div>`;
     });
     html += `<div class="row"><button data-badd="0">${icon("plus")}Block</button><button data-badd="1">↻ Repeat block</button>
-      <button id="rb-dup">Duplicate template</button><button id="rb-del" class="danger">Delete template</button><span class="mut small" id="rb-saved"></span></div>`;
+      <button id="rb-dup">Duplicate template</button><button id="rb-export" title="Save this template as an .sccros file to load on another PC">Export</button>
+      <button id="rb-send" title="Send this template to another PC's SCC Broadcast Engine">Send to another PC…</button><button id="rb-del" class="danger">Delete template</button><span class="mut small" id="rb-saved"></span></div>`;
     ed.innerHTML = html;
     renderTonight();
   }
@@ -273,6 +275,11 @@ const Ros = (() => {
       const copy = JSON.parse(JSON.stringify(T));
       copy.id = uid(); copy.name = T.name + " (copy)";
       editing = copy;
+    } else if (b.id === "rb-export" || b.id === "rb-send") {
+      clearTimeout(saveTimer);
+      api("/api/ros/template", { template: T }).catch(() => {}).then(() =>
+        b.id === "rb-export" ? exportFile([T.id]) : shareBox([T.id]));
+      return;
     } else if (b.id === "rb-del") {
       if (!confirmBox(`Delete the template “${T.name}”?`)) return;
       const id = T.id; editing = null;
@@ -325,6 +332,140 @@ const Ros = (() => {
     }
   });
   $("#rb-tonight").addEventListener("change", e => { if (e.target.id === "rb-start") send("/api/ros/show", { start: e.target.value.trim() }); });
+
+  // --- sharing: .sccros files and other PCs ----------------------------------------
+
+  let receivedN = null;
+  function noteReceived() {
+    const r = R && R.received, n = r ? r.n : 0;
+    if (receivedN !== null && n !== receivedN && r)
+      alertBox(`Run of show: ${r.names.length} template${r.names.length === 1 ? "" : "s"} arrived from ${r.from} (${r.names.join(", ")})`);
+    receivedN = n;
+  }
+
+  const modal = $("#rb-modal"), box = $("#rb-modal-box");
+  let pendingAsk = null;
+  function closeBox() { modal.hidden = true; box.innerHTML = ""; if (pendingAsk) { const p = pendingAsk; pendingAsk = null; p(""); } }
+  modal.addEventListener("click", e => { if (e.target === modal || e.target.closest("[data-close]")) closeBox(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !modal.hidden) closeBox(); });
+
+  function exportFile(ids) {
+    location.href = "/api/ros/export?ids=" + encodeURIComponent(ids.join(","));
+  }
+
+  const segCount = t => t.blocks.reduce((n, b) => n + b.segments.length, 0);
+  function shareBox(ticked) {
+    if (!R || !R.templates.length) return alertBox("No templates to share yet");
+    const on = new Set(ticked && ticked.length ? ticked : R.templates.map(t => t.id));
+    box.innerHTML = `<h2>Export or send templates</h2>
+      <h3>Templates</h3><div class="ticks" id="sh-ticks">${R.templates.map(t => `<label><input type="checkbox" value="${t.id}"${on.has(t.id) ? " checked" : ""}>
+        <span>${esc(t.name)}</span><small>${esc(gameName(t.game))} · ${segCount(t)} segments</small></label>`).join("")}</div>
+      <h3>As a file</h3>
+      <div class="row" style="margin-top:0"><button class="k" id="sh-file">Export .sccros file</button><span class="mut small">Load it on another PC with Import… (USB stick, Drive, Discord…)</span></div>
+      <h3>To another PC on the network</h3>
+      <div class="row" style="margin-top:0"><span class="small">If that PC already has a template with the same name:</span>
+        <select id="sh-mode"><option value="replace">Replace it</option><option value="keep">Keep both</option></select></div>
+      <div class="pcs" id="sh-pcs" style="margin-top:10px"><div class="mut small">Looking for other SCC Broadcast Engines…</div></div>
+      <div class="row"><input id="sh-addr" placeholder="Or type its address, e.g. 192.168.2.41" spellcheck="false"><button id="sh-addr-go">Send</button></div>
+      <div class="row end"><button data-close>Done</button></div>`;
+    modal.hidden = false;
+    findPcs();
+  }
+  const tickedIds = () => [...box.querySelectorAll("#sh-ticks input:checked")].map(i => i.value);
+
+  async function findPcs() {
+    const list = $("#sh-pcs");
+    let r;
+    try { r = await api("/api/ros/pcs"); } catch (e) { if (list.isConnected) list.innerHTML = `<div class="mut small">${esc(e.message)}</div>`; return; }
+    if (!list.isConnected) return;
+    const me = r.addresses && r.addresses.length ? ` This PC is ${esc(r.self)} (${esc(r.addresses.join(", "))}).` : "";
+    list.innerHTML = r.pcs.length ? r.pcs.map(p => `<div class="pc"><span><b>${esc(p.name)}</b><small>${esc(p.address)} · ${p.templates} template${p.templates === 1 ? "" : "s"}${p.version ? " · v" + esc(p.version) : ""}</small></span>
+        <button data-send="${esc(p.address)}">Send</button></div>`).join("") + `<div class="mut small" style="margin-top:4px">${me.trim()}</div>`
+      : `<div class="mut small">No other SCC Broadcast Engine found on this network. Is it open on the other PC? You can type its address below.${me}</div>`;
+  }
+
+  async function sendTo(to, btn) {
+    const ids = tickedIds();
+    if (!ids.length) return alertBox("Tick at least one template");
+    if (!to) return alertBox("Type the other PC's address");
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = "Sending…";
+    try {
+      const r = await api("/api/ros/send", { to, ids, mode: $("#sh-mode").value });
+      R = r;
+      const s = r.sent, parts = [];
+      if (s.added.length) parts.push(`added ${s.added.join(", ")}`);
+      if (s.replaced.length) parts.push(`replaced ${s.replaced.join(", ")}`);
+      btn.textContent = "Sent ✓";
+      const row = btn.closest(".pc"); if (row) row.classList.add("ok");
+      alertBox(`Sent to ${s.name || to}: ${parts.join("; ")}`);
+    } catch (e) { btn.textContent = label; alertBox(e.message); }
+    btn.disabled = false;
+  }
+
+  modal.addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.id === "sh-file") { const ids = tickedIds(); if (!ids.length) return alertBox("Tick at least one template"); exportFile(ids); }
+    if (b.dataset.send) sendTo(b.dataset.send, b);
+    if (b.id === "sh-addr-go") sendTo($("#sh-addr").value.trim(), b);
+  });
+  modal.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "sh-addr") sendTo(e.target.value.trim(), $("#sh-addr-go")); });
+
+  // Import: read the file here, the app adds it (asking first if a name is taken).
+  async function importFiles(files) {
+    for (const f of files) {
+      let text;
+      try { text = await f.text(); } catch (e) { alertBox(`Couldn't read ${f.name}`); continue; }
+      let r;
+      try { r = await api("/api/ros/import", { text }); } catch (e) { alertBox(`${f.name}: ${e.message}`); continue; }
+      if (r.clashes) {
+        const mode = await askClash(f.name, r.clashes, r.names);
+        if (!mode) continue;
+        try { r = await api("/api/ros/import", { text, mode }); } catch (e) { alertBox(`${f.name}: ${e.message}`); continue; }
+      }
+      R = r;
+      const got = r.imported.added.concat(r.imported.replaced);
+      const t = R.templates.find(x => x.name === got[got.length - 1]);
+      if (t) editing = JSON.parse(JSON.stringify(t));
+      renderBuilder();
+      alertBox(`Imported ${got.join(", ")}`);
+    }
+  }
+  function askClash(file, clashes, names) {
+    return new Promise(done => {
+      const one = clashes.length === 1;
+      box.innerHTML = `<h2>${one ? "A template with that name is already here" : "Some templates are already here"}</h2>
+        <p class="mut">${esc(file)} has ${names.length} template${names.length === 1 ? "" : "s"}. This PC already has ${one ? "one" : "ones"} called:</p>
+        <ul class="names">${clashes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>
+        <div class="row end" style="margin-top:20px"><button data-m="">Cancel</button><button data-m="keep">Keep both</button><button class="k" data-m="replace">Replace ${one ? "it" : "them"}</button></div>`;
+      modal.hidden = false;
+      const pick = e => {
+        const b = e.target.closest("[data-m]");
+        if (!b) return;
+        modal.removeEventListener("click", pick);
+        pendingAsk = null;
+        closeBox();
+        done(b.dataset.m);
+      };
+      pendingAsk = m => { modal.removeEventListener("click", pick); done(m); };
+      modal.addEventListener("click", pick);
+    });
+  }
+
+  $("#rb-import").addEventListener("click", () => $("#rb-file").click());
+  $("#rb-file").addEventListener("change", e => { const files = [...e.target.files]; e.target.value = ""; importFiles(files); });
+  $("#rb-shareall").addEventListener("click", () => shareBox(null));
+  const rbView = $("#v-ros .rb");
+  rbView.addEventListener("dragover", e => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); rbView.classList.add("drop"); } });
+  rbView.addEventListener("dragleave", e => { if (!rbView.contains(e.relatedTarget)) rbView.classList.remove("drop"); });
+  rbView.addEventListener("drop", e => {
+    rbView.classList.remove("drop");
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    const files = [...e.dataTransfer.files].filter(f => /\.(sccros|json)$/i.test(f.name));
+    if (files.length) importFiles(files); else alertBox("Drop an .sccros file (a run of show template) here");
+  });
 
   // --- shown / hidden -----------------------------------------------------------------
 

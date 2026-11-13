@@ -1,6 +1,10 @@
 import datetime
+import json
 import os
+import socket
 import tempfile
+import urllib.error
+import urllib.request
 import unittest
 
 from sccbe import ros
@@ -90,6 +94,82 @@ class ShowTests(unittest.TestCase):
         again = ros.RunOfShow(self.r.path)
         self.assertEqual(len(again.data["templates"]), 1)
         self.assertEqual(titles(again.data["show"]), titles(self.r.data["show"]))
+
+
+
+class ShareTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.a = ros.RunOfShow(os.path.join(self.dir, "a.json"))
+        self.b = ros.RunOfShow(os.path.join(self.dir, "b.json"))
+        self.t = self.a.save_template(ros.starter_template("val", 3))
+
+    def test_export_then_import_on_another_pc(self):
+        doc = self.a.export(source="CONTROL-PC")
+        self.assertEqual(doc["format"], "scc-ros")
+        got = ros.read_doc(json.dumps(doc))
+        self.assertEqual(self.b.clashes(got), [])
+        r = self.b.import_templates(got)
+        self.assertEqual(r, {"added": [self.t["name"]], "replaced": []})
+        self.assertEqual(self.b.data["templates"][0]["blocks"], self.t["blocks"])
+
+    def test_name_taken_replace_keeps_its_id(self):
+        mine = self.b.save_template(dict(ros.starter_template("val", 3), blocks=[]))
+        got = ros.read_doc(json.dumps(self.a.export()))
+        self.assertEqual(self.b.clashes(got), [self.t["name"]])
+        r = self.b.import_templates(got, "replace")
+        self.assertEqual(r["replaced"], [self.t["name"]])
+        self.assertEqual(len(self.b.data["templates"]), 1)
+        self.assertEqual(self.b.data["templates"][0]["id"], mine["id"])
+        self.assertEqual(len(self.b.data["templates"][0]["blocks"]), 3)
+
+    def test_name_taken_keep_both(self):
+        got = ros.read_doc(json.dumps(self.a.export()))
+        self.b.import_templates(got)
+        self.b.import_templates(got, "keep")
+        self.b.import_templates(got, "keep")
+        names = [t["name"] for t in self.b.data["templates"]]
+        self.assertEqual(names, [self.t["name"], self.t["name"] + " 2", self.t["name"] + " 3"])
+        self.assertEqual(len({t["id"] for t in self.b.data["templates"]}), 3)
+
+    def test_export_some(self):
+        other = self.a.save_template(ros.starter_template("lol", 1))
+        doc = self.a.export([other["id"]])
+        self.assertEqual([t["name"] for t in doc["templates"]], [other["name"]])
+
+    def test_bad_files(self):
+        for bad in ("not json", "{}", '{"format": "scc-ros", "templates": []}', b"\x00\x01"):
+            with self.assertRaises(ValueError):
+                ros.read_doc(bad)
+        with self.assertRaises(ValueError):
+            ros.read_doc({"format": "scc-ros", "version": 99, "templates": [self.t]})
+        self.assertEqual(len(ros.read_doc(self.t)), 1)   # a bare template is fine too
+
+    def test_send_over_the_network(self):
+        from sccbe import rosnet
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        old = rosnet.NET_PORT
+        rosnet.NET_PORT = port
+        httpd = rosnet.start(self.b, port)
+        try:
+            self.assertEqual(rosnet.hello(rosnet.address("127.0.0.1"))["templates"], 0)
+            r = rosnet.send("127.0.0.1", self.a.export(), "replace")
+            self.assertEqual(r["added"], [self.t["name"]])
+            self.assertEqual(self.b.data["received"]["names"], [self.t["name"]])
+            again = rosnet.send("http://127.0.0.1:8770/", self.a.export(), "replace")
+            self.assertEqual(again["replaced"], [self.t["name"]])
+            with self.assertRaises(ValueError):
+                rosnet.send("127.0.0.1", {"format": "nope"}, "replace")
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/ros/receive", data=b"x", headers={"Content-Type": "text/plain"})
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=3)
+            self.assertEqual(e.exception.code, 415)
+        finally:
+            rosnet.NET_PORT = old
+            httpd.shutdown()
+            httpd.server_close()
 
 
 if __name__ == "__main__":
