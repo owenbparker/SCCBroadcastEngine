@@ -35,10 +35,10 @@ APPS = os.path.join(ROOT, "apps")
 # name: (repository, branch, folders and files to copy)
 SOURCES = {
     "gfxengine": ("owenbparker/GFX-Engine", "claude/project-thread-0j8ocb", ["gfxengine", "web", "starter", "tests", "hud-link", "companion-module"]),
-    "lolhud": ("owenbparker/LeagueHUDSCC", "claude/project-thread-7aamdb", ["lolhud", "web", "tests", "companion-module", "design"]),
-    "valhud": ("owenbparker/VALHUDSCC", "claude/project-thread-0j8ocb", ["valhud", "web", "tests"]),
+    "lolhud": ("owenbparker/LeagueHUDSCC", "claude/project-thread-dvfc00", ["lolhud", "web", "tests", "companion-module", "design"]),
+    "valhud": ("owenbparker/VALHUDSCC", "claude/project-thread-dvfc00", ["valhud", "web", "tests"]),
     "codhud": ("owenbparker/COD_SCC_HUD", "claude/project-thread-7aamdb", ["codhud", "web", "tests"]),
-    "rlhud": ("owenbparker/RLHUD_SCC", "claude/project-thread-7aamdb", ["rlhud", "web", "tests"]),
+    "rlhud": ("owenbparker/RLHUD_SCC", "claude/project-thread-dvfc00", ["rlhud", "web", "tests"]),
     "smashhud": ("owenbparker/SmashHUD_SCC", "claude/project-thread-7aamdb", ["smashhud", "web", "tests"]),
     "owhud": ("owenbparker/OWHUD_SCC", "claude/project-thread-7aamdb", ["owhud", "web", "tests"]),
     # One copy of HUD Builder serves its own page and every game's "Custom design".
