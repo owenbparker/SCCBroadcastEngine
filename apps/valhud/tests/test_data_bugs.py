@@ -218,5 +218,123 @@ class SidesFromNamesTests(unittest.TestCase):
             self.assertEqual(by[("right", 3)], "R3")
 
 
+class NextMapWithoutAgentSelectTests(unittest.TestCase):
+    """A won map cleared the HUD until the next agent select was seen: with
+    the reader off in agent select (or only the Riot Client seeing it) the
+    HUD stayed blank the whole next map."""
+
+    def test_next_maps_score_brings_the_hud_back(self):
+        from valhud import series
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, maps=[{"name": "Lotus", "winner": ""}, {"name": "Bind", "winner": ""}], current_map=0)
+            app.ingest({"source": "screen", "match": {"score": {"left": 12, "right": 10}}})
+            app.ingest({"source": "screen", "match": {"score": {"left": 13, "right": 10}}})
+            self.assertEqual(app.config.get()["maps"][0]["winner"], "left")
+            app.series.won_at -= series.CLEAR_AFTER + 1
+            app.refresh()
+            self.assertTrue(app.series.cleared)
+            app.ingest({"source": "screen", "match": {"score": {"left": 0, "right": 0}},
+                        "players": [{"team": "left", "slot": 1, "agent": "Jett"}]})
+            self.assertFalse(app.series.cleared)
+            self.assertEqual(app.config.get()["current_map"], 1)
+            self.assertEqual(app.state["players"][0]["agent"], "Jett")
+
+
+class NamesNeedTwoReadsTests(unittest.TestCase):
+    def test_one_misread_name_doesnt_show(self):
+        from valhud.reader import ScreenReader
+        r = ScreenReader(lambda u: None)
+        up = lambda n: {"players": [{"team": "left", "slot": 1, "name": n}]}
+        u = up("chronicle"); r._steady_names(u); self.assertNotIn("name", u["players"][0])
+        u = up("chronicle"); r._steady_names(u); self.assertEqual(u["players"][0]["name"], "chronicle")
+        u = up("chr"); r._steady_names(u); self.assertEqual(u["players"][0]["name"], "chronicle")
+        u = up("chronicle"); r._steady_names(u); self.assertEqual(u["players"][0]["name"], "chronicle")
+
+    def test_riot_id_wins_over_a_read_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, player_names={"left": ["", "Typed", "", "", ""], "right": [""] * 5})
+            app.ingest({"source": "screen", "players": [{"team": "left", "slot": 1, "agent": "Jett", "name": "chr"},
+                                                        {"team": "left", "slot": 2, "agent": "Sova", "name": "x"}]})
+            app.ingest({"source": "riot", "riot_roster": {"left": [{"name": "chronicle", "agent": "Jett"},
+                                                                   {"name": "RiotSova", "agent": "Sova"}], "right": []}})
+            self.assertEqual(app.state["players"][0]["name"], "chronicle")
+            self.assertEqual(app.state["players"][1]["name"], "Typed")
+
+
+class AttackFirstFromMapBansTests(unittest.TestCase):
+    def test_side_pick_sets_who_attacks_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            steps = [{"map": "Abyss"}, {"map": "Bind"}, {"map": "Haven", "side": "defence"},
+                     {"map": "Lotus", "side": "defence"}, {"map": "Sunset"}, {"map": "Corrode"}, {"side": "attack"}]
+            app = make_app(tmp, best_of=3, attack_first="left",
+                           map_bans={"team_a": "left", "pool": None, "bo3": {"steps": steps}})
+            app.refresh()
+            cfg = app.config.get()
+            self.assertEqual([m["name"] for m in cfg["maps"]], ["Haven", "Lotus", "Summit"])
+            # Haven: Team A's pick, the right team chose to defend -> left attacks.
+            self.assertEqual(cfg["attack_first"], "left")
+            app.config.update({"current_map": 1})
+            app.refresh()   # Lotus: the left team chose defence
+            self.assertEqual(app.config.get()["attack_first"], "right")
+            app.config.update({"current_map": 2})
+            app.refresh()   # the decider: Team A (left) chose attack
+            self.assertEqual(app.config.get()["attack_first"], "left")
+            app.config.update({"attack_first": "right"})   # set by hand: left alone
+            app.refresh()
+            self.assertEqual(app.config.get()["attack_first"], "right")
+
+
+class ObserverPcRiotSidesTests(unittest.TestCase):
+    """The Riot Client on the observer PC put teams on sides by that PC's own
+    "who attacks first" (never set there), not the GFX PC's."""
+
+    def test_riot_readings_turned_to_this_pcs_setting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, attack_first="right")
+            app.ingest({"source": "riot", "agent_select": {"active": True, "attack_first": "left", "players": [
+                {"team": "left", "slot": 1, "agent": "Killjoy", "locked": True, "name": "RedPlayer"}]}})
+            v = app.agent_select.view([])["players"]
+            self.assertEqual(v["right"][0]["name"], "RedPlayer")
+            app.ingest({"source": "riot", "attack_first": "left",
+                        "riot_roster": {"left": [{"name": "RedPlayer", "agent": "Killjoy"}], "right": []}})
+            self.assertEqual(app.riot_roster["right"][0]["name"], "RedPlayer")
+
+
+class CamMatchTests(unittest.TestCase):
+    def test_exact_name_beats_an_earlier_close_one(self):
+        from valhud.cams import match_players
+        players = [{"team": "left", "slot": 1, "name": "Leafy"}, {"team": "left", "slot": 2, "name": "Leaf"}]
+        got = match_players(["Leafy1#NA1", "Leafy#NA1"], players)
+        self.assertEqual(got["Leafy#NA1"]["slot"], 1)
+
+
+class AgentSelectNameCutShortTests(unittest.TestCase):
+    """Names confirmed mid-animation stayed cut short ("Juw" for "Juwan")."""
+
+    def test_longer_name_takes_over(self):
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy not installed")
+        from valhud import selectreader
+
+        class Ocr:
+            calls = 0
+
+            def words(self, img):
+                Ocr.calls += 1
+                return [("Juw" if Ocr.calls <= 30 else "Juwan", 0, 0)]
+        img = frame("agent_select", "locked_00.webp")
+        names, ocr, layout = {}, Ocr(), selectreader.Layout()
+        for _ in range(2):
+            selectreader.read(img, ocr, names, layout)
+        self.assertEqual(names[("defenders", 0)], "Juw")
+        for _ in range(3):
+            for k in [k for k in names if k[0] == "checked"]:
+                names[k] = 0   # (as if two seconds had passed)
+            selectreader.read(img, ocr, names, layout)
+        self.assertEqual(names[("defenders", 0)], "Juwan")
+
+
 if __name__ == "__main__":
     unittest.main()

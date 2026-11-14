@@ -203,7 +203,12 @@ class HudApp:
         """Live data from a feed (screen reader, Riot Client, another tool)."""
         if isinstance(update, dict) and isinstance(update.get("riot_roster"), dict):
             update = dict(update)
-            self.riot_roster, self.riot_at = update.pop("riot_roster"), time.time()
+            roster, used = update.pop("riot_roster"), update.pop("attack_first", None)
+            if used in ("left", "right") and used != (self.config.get().get("attack_first") or "left"):
+                # (sides from another PC's "who attacks first", e.g. the
+                # observer PC's, which is never set: turned round to this one's)
+                roster = {"left": roster.get("right") or [], "right": roster.get("left") or []}
+            self.riot_roster, self.riot_at = roster, time.time()
             if not update.get("match") and not update.get("players"):
                 if self.mode == "live":
                     self.refresh()
@@ -290,9 +295,13 @@ class HudApp:
             # (its teams come from who attacks first: the top bar's agents
             # say they're the other way round)
             roster = {"left": roster.get("right") or [], "right": roster.get("left") or []}
+        typed = cfg.get("player_names") or {}
         for p in state["players"]:
-            if not p.get("name") and p.get("agent") and roster:
-                # The Riot Client's roster: the Riot ID of the player on that agent.
+            own = (typed.get(p["team"]) or [""] * 5)
+            if p.get("agent") and roster and not (p["slot"] <= len(own) and str(own[p["slot"] - 1]).strip()):
+                # The Riot Client's roster: the Riot ID of the player on that
+                # agent (exact, so it wins over a name read off the screen;
+                # a typed name still wins over it).
                 match = [q["name"] for q in roster.get(p["team"]) or [] if q.get("agent") == p["agent"] and q.get("name")]
                 if len(match) == 1:
                     p["name"] = match[0]
