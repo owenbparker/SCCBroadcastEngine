@@ -34,7 +34,7 @@ APPS = os.path.join(ROOT, "apps")
 
 # name: (repository, branch, folders and files to copy)
 SOURCES = {
-    "gfxengine": ("owenbparker/GFX-Engine", "claude/project-thread-25uy3g", ["gfxengine", "web", "starter", "tests", "hud-link", "companion-module"]),
+    "gfxengine": ("owenbparker/GFX-Engine", "claude/project-thread-0j8ocb", ["gfxengine", "web", "starter", "tests", "hud-link", "companion-module"]),
     "lolhud": ("owenbparker/LeagueHUDSCC", "claude/project-thread-7aamdb", ["lolhud", "web", "tests", "companion-module", "design"]),
     "valhud": ("owenbparker/VALHUDSCC", "claude/project-thread-0j8ocb", ["valhud", "web", "tests"]),
     "codhud": ("owenbparker/COD_SCC_HUD", "claude/project-thread-7aamdb", ["codhud", "web", "tests"]),
