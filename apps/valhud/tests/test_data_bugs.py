@@ -449,5 +449,62 @@ class ScannedNamesByAgentTests(unittest.TestCase):
             self.assertEqual(app.config.get()["scanned_names"], [])
 
 
+class ScoreMisreadTests(unittest.TestCase):
+    def _feed(self, r, left, right):
+        u = {"match": {"score": {"left": left, "right": right}, "round": left + right + 1}}
+        r._steady_score(u)
+        return u["match"].get("score")
+
+    def test_a_dropped_digit_read_twice_doesnt_count(self):
+        from valhud.reader import ScreenReader
+        r = ScreenReader(lambda u: None)
+        self._feed(r, 11, 9)
+        self.assertEqual(self._feed(r, 11, 9), {"left": 11, "right": 9})
+        self.assertIsNone(self._feed(r, 1, 9))      # "11" read as "1"
+        self.assertIsNone(self._feed(r, 1, 9))      # twice: still not
+        self.assertEqual(self._feed(r, 11, 9), {"left": 11, "right": 9})
+        self.assertIsNone(self._feed(r, 12, 9))     # a round on: second read
+        self.assertEqual(self._feed(r, 12, 9), {"left": 12, "right": 9})
+        for _ in range(4):                          # a real jump (joined late, a missed read): five reads
+            self.assertIsNone(self._feed(r, 14, 12))
+        self.assertEqual(self._feed(r, 14, 12), {"left": 14, "right": 12})
+        self.assertIsNone(self._feed(r, 0, 0))      # the next map: second read
+        self.assertEqual(self._feed(r, 0, 0), {"left": 0, "right": 0})
+
+
+class SpectatedByCardFirstTests(unittest.TestCase):
+    def test_card_agent_beats_a_misread_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp)
+            app.ingest({"source": "test", "match": {"attackers": "right"},
+                        "players": [{"team": "right", "slot": 5, "agent": "Cypher", "name": "Gora46"},
+                                    {"team": "left", "slot": 1, "agent": "Jett", "name": "Gora4"}]})
+            # The camera's just cut to the Cypher; the name read is the last one's (or misread).
+            app.ingest({"source": "observer", "spectating": {"text": "Gora4", "agent": "Cypher", "side": "attackers"}})
+            self.assertEqual(app.state["match"]["observed"], {"team": "right", "slot": 5})
+
+
+class TwoATeamFieldsTests(unittest.TestCase):
+    def test_alive_and_credits_count_only_the_two(self):
+        from valhud.config import DEFAULTS
+        import copy
+        cfg = copy.deepcopy(DEFAULTS)
+        cfg["team_size"] = 2
+        s = game.merge(game.empty_state(), {"players": [{"team": "left", "slot": 1, "health": 0, "credits": 1000},
+                                                        {"team": "left", "slot": 2, "credits": 2000}]})
+        f = game.fields(s, cfg)
+        self.assertEqual(f["ALIVE LEFT"], 1)
+        self.assertEqual(f["CREDITS LEFT"], 3000)
+
+
+class RiotDoesntMakeItLiveTests(unittest.TestCase):
+    def test_riot_map_only_doesnt_keep_the_hud_live(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp)
+            app.ingest({"source": "riot", "riot_roster": {"left": [], "right": []}, "match": {"map": "Bind"}})
+            self.assertFalse(app.state["connected"])
+            self.assertEqual(app.state["match"]["map"], "Bind")
+
+
 if __name__ == "__main__":
     unittest.main()
