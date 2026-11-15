@@ -1140,7 +1140,7 @@ h4.Map1 > span, h4.Map2 > span, h4.Map3 > span {
 }
 
 .SponsorsLogo {
-    background-image: url(Resources/Sponsors/Sponsor1.png);
+    background-image: none;   /* only sponsors saved in the app or the GFX Engine (driver.js) */
     background-repeat: no-repeat;
     background-size: cover;
     background-position: center;

@@ -588,7 +588,7 @@ position: absolute;
 }
 
 .LogoSponsor{
-    background-image: url(Resources/Logos/Gstack.png);
+    background-image: none;   /* only sponsors saved in the app or the GFX Engine (select.js) */
     background-repeat: no-repeat;
     background-size: contain;
     background-position: center;

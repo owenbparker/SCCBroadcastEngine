@@ -37,15 +37,18 @@
   }
 
   // Sponsors (under the map): the logos saved in the control panel, in turn
-  // (the template's own until some are saved).
+  // (empty until some are saved: no placeholder logos).
   var sponsor = { key: "", i: 0, timer: null };
   function setSponsors(list, seconds) {
     var box = document.querySelector(".LogoSponsor");
-    if (!box || !list || !list.length) return;
+    if (!box) return;
+    list = (list || []).filter(Boolean);
     var key = JSON.stringify([list, seconds]);
     if (key === sponsor.key) return;
     sponsor.key = key;
     clearInterval(sponsor.timer);
+    sponsor.i = 0;
+    if (!list.length) { box.style.backgroundImage = "none"; return; }
     var next = function () { box.style.backgroundImage = 'url("' + url(list[sponsor.i++ % list.length]) + '")'; };
     next();
     if (list.length > 1) sponsor.timer = setInterval(next, Math.max(1, Number(seconds) || 4) * 1000);

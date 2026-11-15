@@ -119,21 +119,27 @@
     }
   }
 
-  // Sponsors (top right): the logos saved in the control panel, in turn
-  // (the template's own two until some are saved).
+  // Sponsors (top right): the logos saved in the control panel or sent by
+  // the GFX Engine, in turn. None saved: the corner stays empty (the
+  // template's own placeholder logos are never shown).
   if (!SCOREBOARD && typeof SponsorTimer !== "undefined") clearInterval(SponsorTimer);
   var sponsor = { key: "", i: 0, timer: null, swap: null };
   var SPONSOR_FADE = 400;   // ms each way
   function setSponsors(list, seconds) {
     var logo = document.querySelector(".SponsorsLogo"), box = document.querySelector(".Sponsors");
     if (SCOREBOARD || !logo) return;
-    var paths = (list && list.length ? list : ["hud/Resources/Sponsors/Sponsor1.png", "hud/Resources/Sponsors/Sponsor2.png"])
-      .map(function (p) { return "/" + String(p).split("/").map(encodeURIComponent).join("/"); });
+    var paths = (list || []).filter(Boolean).map(function (p) { return "/" + String(p).split("/").map(encodeURIComponent).join("/"); });
     var key = JSON.stringify([paths, seconds]);
     if (key === sponsor.key) return;
     sponsor.key = key;
     sponsor.i = 0;
     clearInterval(sponsor.timer);
+    clearTimeout(sponsor.swap);
+    if (!paths.length) {
+      if (box) box.style.display = "none";
+      logo.style.backgroundImage = "none";
+      return;
+    }
     if (box) box.style.display = "block";
     // Each logo fades out, then the next fades in (the template's CSS
     // transition on every property cross-blended one logo into the next).
