@@ -1,47 +1,56 @@
 {
   "codhud": {
     "repo": "owenbparker/COD_SCC_HUD",
-    "branch": "claude/project-thread-7aamdb",
-    "commit": "6b9e53e96110adf70cdf75ec0d1165c768f366b0"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "e71be46329d11b746cb9651723c230e794c34889",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "gfxengine": {
     "repo": "owenbparker/GFX-Engine",
-    "branch": "claude/project-thread-0j8ocb",
-    "commit": "a14545cb1bb1316b686804039426ccc4714cb2aa"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "64449bfec1a7b8185de77af86c4762983222be96",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "hudbuilder": {
     "repo": "owenbparker/HUD-Builder",
-    "branch": "claude/project-thread-7aamdb",
-    "commit": "70108265be941351c96ff82b17ebe67efab45233"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "946c84165d6a5109c27ed8f043a6ba0864d991d3",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "lolhud": {
     "repo": "owenbparker/LeagueHUDSCC",
-    "branch": "claude/project-thread-dvfc00",
-    "commit": "757ef997d8e2c88a69500542db0e342b0980b523"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "380f318364a3b1fac0b3d4c13063eae8f2f8a4f5",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "multistream": {
     "repo": "owenbparker/multistream_scc",
-    "branch": "claude/project-thread-p3dr1d",
-    "commit": "4d119ef698e01f78a8cf743de7805ac42d3607cb"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "c2212ab879527c169bd59373efb1fdaedadcf29f",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "owhud": {
     "repo": "owenbparker/OWHUD_SCC",
-    "branch": "claude/project-thread-7aamdb",
-    "commit": "85b2e0d504448c72fea35056e6fdc467dac8300d"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "99118d9741f9480463a88f2ba96482299ec74677",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "rlhud": {
     "repo": "owenbparker/RLHUD_SCC",
-    "branch": "claude/project-thread-dvfc00",
-    "commit": "23ac6efa81f7d04067be5496bd2ab37ab6d5eea8"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "25851d341aec87eaa68164e1d482bf95f8a4700d",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "smashhud": {
     "repo": "owenbparker/SmashHUD_SCC",
-    "branch": "claude/project-thread-7aamdb",
-    "commit": "a850ef85caaafb3bb3f3c4a623aecba72f173658"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "8f5840e1189985a9c565a89aa16df84c1b943fed",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   },
   "valhud": {
     "repo": "owenbparker/VALHUDSCC",
-    "branch": "claude/project-thread-dvfc00",
-    "commit": "7d71cb9dd6d586f3a8e370029c600c55ea9b3e8c"
+    "branch": "claude/project-thread-kdm2u4",
+    "commit": "b299fa116a3b9177de5b474e041a2a88fbdf038c",
+    "note": "last copy from the old repository; apps/ is the code since 2026-11-15"
   }
 }

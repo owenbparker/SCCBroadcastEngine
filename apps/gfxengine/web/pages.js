@@ -423,6 +423,7 @@ addEventListener("drop", e => {
       plain("Port", String(s.app.port)));
     const allow = $("#net-allow");
     allow.checked = s.app.network;
+    $("#net-require").checked = !!s.app.require_key;
     // The one network other PCs reach it on (an NDI VLAN, say), or every one.
     const pick = $("#net-address"), net = s.app.network_address || "";
     const nets = [...(s.app.all_addresses || [])];
@@ -456,15 +457,34 @@ addEventListener("drop", e => {
       h("a", { class: "btn small", href: `${e.url}/control`, target: "_blank" }, "Open"))) :
       [h("div", { class: "muted small" }, scan ? "No other engines found." : "None seen yet. Engines that allow the network show up here by themselves; Scan looks for them too.")]));
   }
+  const sentKeys = {};   // (other engines' pairing codes, while this page is open)
   async function sendTo(e) {
     const ids = App.comps().filter(c => chosen.has(c.id)).map(c => c.id);
     if (!ids.length) return toast("Tick the graphics to send under Export", true);
     toast(`Sending ${ids.length} graphic(s) to ${e.name}…`);
-    const r = await api("/api/share/send", { url: e.url, comps: ids }).catch(() => null);
-    if (r) toast(`${e.name} has them now: ${r.comps.join(", ")}`);
+    const post = key => fetch("/api/share/send", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: e.url, comps: ids, key }) }).then(r => r.json()).catch(() => ({ error: "Couldn't send" }));
+    let r = await post(sentKeys[e.url] || "");
+    for (let tries = 0; r.code === "key_needed" && tries < 3; tries++) {
+      const code = await Pairing.ask(tries ? `That wasn't ${e.name}'s code.` : `${e.name} asks for its pairing code (on that PC: Outputs > Network).`);
+      if (!code) return;
+      sentKeys[e.url] = code;
+      r = await post(code);
+    }
+    if (r.error) return toast(r.error, true);
+    toast(`${e.name} has them now: ${r.comps.join(", ")}`);
   }
   $("#net-scan").addEventListener("click", () => engines(true));
   $("#net-allow").addEventListener("change", e => api("/api/settings", { allow_network: e.target.checked }));
+  $("#net-require").addEventListener("change", e => api("/api/settings", { require_key: e.target.checked }));
+  $("#net-key-show").addEventListener("click", async () => {
+    const r = await api("/api/network/key").catch(() => null);
+    if (r) $("#net-key").textContent = r.key;
+  });
+  $("#net-key-new").addEventListener("click", async () => {
+    const r = await api("/api/network/key", { new: true }).catch(() => null);
+    if (r) { $("#net-key").textContent = r.key; toast("New pairing code: other PCs need this one now"); }
+  });
   $("#net-name").addEventListener("change", e => api("/api/settings", { name: e.target.value.trim() }));
   $("#net-address").addEventListener("change", e => api("/api/settings", { network_address: e.target.value }));
   $("#export-all").addEventListener("click", () => { App.comps().forEach(c => chosen.add(c.id)); render(); });

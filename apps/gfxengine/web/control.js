@@ -18,7 +18,67 @@ function h(tag, attrs, ...kids) {
   return e;
 }
 const $ = s => document.querySelector(s);
-const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+// The pairing code: an engine can ask other PCs for it before they change
+// anything. Every change this page sends carries it (kept per engine in this
+// browser); the first time the engine asks, a box asks for it.
+const Pairing = (() => {
+  const STORE = "scc-pairing-code";
+  const raw = window.fetch.bind(window);
+  let asking = null;
+  let given = new URLSearchParams(location.search).get("key") || "";   // (SCC Broadcast Engine on a HUD PC passes it)
+  const stored = () => { try { return localStorage.getItem(STORE) || ""; } catch (e) { return ""; } };
+  const get = () => (given || stored()).replace(/\D/g, "");
+  const set = v => { given = ""; try { v ? localStorage.setItem(STORE, v) : localStorage.removeItem(STORE); } catch (e) { /* (private window) */ } };
+  function ask(why) {
+    if (asking) return asking;
+    asking = new Promise(resolve => {
+      const input = h("input", { inputmode: "numeric", autocomplete: "off", maxlength: 6, placeholder: "6 digits",
+        style: { fontSize: "22px", letterSpacing: "4px", width: "9em" } });
+      const done = v => { back.remove(); asking = null; resolve(v); };
+      const go = () => done(input.value.replace(/\D/g, "") || null);
+      input.addEventListener("keydown", e => { if (e.key === "Enter") go(); if (e.key === "Escape") done(null); });
+      const back = h("div", { class: "dialog-back" },
+        h("div", { class: "dialog panel" },
+          h("div", { class: "pad" },
+            h("h3", {}, "Pairing code"),
+            h("p", { class: "muted small" }, why || "This engine asks other PCs for its pairing code before they change anything."),
+            h("p", { class: "muted small" }, "On the engine's own PC it's under Outputs > Network."),
+            h("label", {}, "Code", input)),
+          h("div", { class: "dialog-btns" }, h("span", { style: { flex: 1 } }),
+            h("button", { type: "button", onclick: () => done(null) }, "Cancel"),
+            h("button", { type: "button", class: "primary", onclick: go }, "Use code"))));
+      document.body.append(back);
+      input.focus();
+    });
+    return asking;
+  }
+  const sameOrigin = input => {
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    return !/^[a-z]+:/i.test(url) || url.startsWith(location.origin + "/");
+  };
+  window.fetch = async (input, init) => {
+    const method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD" || !sameOrigin(input)) return raw(input, init);
+    const send = code => {
+      const headers = new Headers((init && init.headers) || {});
+      if (code) headers.set("X-SCC-Key", code);
+      return raw(input, { ...(init || {}), headers });
+    };
+    let r = await send(get());
+    for (let tries = 0; r.status === 401 && tries < 3; tries++) {
+      const answer = await r.clone().json().catch(() => ({}));
+      if (answer.code !== "key_needed") break;
+      const code = await ask(tries ? "That code wasn't right. Check it on the engine's PC (Outputs > Network)." : "");
+      if (!code) break;
+      set(code);
+      r = await send(code);
+    }
+    return r;
+  };
+  return { get, set, ask };
+})();
+const esc =s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 let toastTimer;
 function toast(msg, error) {
   const t = $("#toast");
@@ -157,8 +217,19 @@ App.on(s => {
   btn.hidden = !(up.available && up.can_install) && up.status !== "downloading" && up.status !== "installing";
   btn.disabled = up.status === "downloading" || up.status === "installing";
   btn.textContent = up.status === "downloading" ? `Downloading ${up.progress}%` : up.status === "installing" ? "Installing…" : `Update to ${up.latest}`;
+  if (up.busy && up.available) btn.title = `${up.busy}: update once it's over`;
+  // "Go back to vX": the version the last update replaced, kept beside the app.
+  const back = $("#update-back");
+  back.hidden = !(up.previous && up.can_install) || btn.disabled;
+  back.textContent = `↩ Go back to ${up.previous || ""}`;
+  back.dataset.version = up.previous || "";
+  if (up.channel === "test") $("#version").textContent += " (test builds)";
 });
 $("#update").addEventListener("click", () => api("/api/update/install"));
+$("#update-back").addEventListener("click", e => {
+  if (confirm(`Go back to ${e.currentTarget.dataset.version}?\n\nThis puts back the version you had before the last update. The engine closes and reopens (about 10 seconds): Program goes blank in OBS until it's back. Your workspace and settings are kept.`))
+    api("/api/update/rollback");
+});
 
 // --- CONTROL ----------------------------------------------------------------
 (function control() {

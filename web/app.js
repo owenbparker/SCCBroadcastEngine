@@ -158,7 +158,9 @@ function showEngine(tab) {
       [["Switch on the GFX Engine here", () => post("/api/part", { key: "engine", on: true }), true], ["Enter the Control PC", () => go("settings")]]);
   }
   if (!e.remote && p.status !== "on") return showOff(p);
-  showFrame("engine", `${e.base}/control#${tab}`);
+  // (the Control PC's pairing code, so its control panel doesn't ask for it on this PC)
+  const key = e.remote && S.settings.control_pc_key ? `?key=${encodeURIComponent(S.settings.control_pc_key)}` : "";
+  showFrame("engine", `${e.base}/control${key}#${tab}`);
 }
 
 function showOff(p) {
@@ -419,12 +421,18 @@ function renderSettings() {
     const desc = PART_TEXT[p.key] || `Game HUD (port ${p.port})`;
     return `<div class="part-set"><span class="ic">${partIcon(p)}</span>
       <div class="nm"><b>${esc(p.title)}</b><span>${c ? `<span class="dot ${c}"></span>${w} · ` : ""}${esc(desc)}</span>
-      ${p.status === "error" ? `<span class="err">${esc(p.error)}</span>` : ""}</div>
+      ${p.status === "error" || (p.status === "starting" && p.error) ? `<span class="err">${esc(p.error)}</span>` : ""}
+      ${p.separate && p.restarts ? `<span class="err">Started again ${p.restarts} time${p.restarts > 1 ? "s" : ""} after stopping by itself</span>` : ""}</div>
       ${p.status === "on" || p.status === "error" ? `<button class="small" data-restart="${p.key}">Restart</button>` : ""}
       <button class="toggle${on ? " on" : ""}" data-toggle="${p.key}" aria-pressed="${on}" title="${on ? "Switch off" : "Switch on"}"></button></div>`;
   }).join("");
+  const sep = $("#separate-huds");
+  sep.classList.toggle("on", !!s.separate_huds);
+  sep.setAttribute("aria-pressed", String(!!s.separate_huds));
   const cp = $("#control-pc");
   if (document.activeElement !== cp) cp.value = s.control_pc || "";
+  const ck = $("#control-pc-key");
+  if (document.activeElement !== ck) ck.value = s.control_pc_key || "";
   const e = S.engine;
   $("#control-pc-status").innerHTML = e.remote
     ? (e.base ? `<span class="dot ${e.ok ? "g" : "r"}"></span> ${e.ok ? "Connected to " + esc(e.base) : "Can't reach " + esc(e.base) + (e.error ? " (" + esc(e.error) + ")" : "")}` : "Not set")
@@ -441,6 +449,12 @@ function renderSettings() {
   ib.hidden = !(up.available && up.can_install) && !["downloading", "installing"].includes(up.status);
   ib.disabled = ["downloading", "installing"].includes(up.status);
   ib.textContent = up.status === "downloading" ? `Downloading ${up.progress}%` : up.status === "installing" ? "Installing…" : `Install ${up.latest}`;
+  if (up.busy && up.available) ib.title = `${up.busy}: update once it's over`;
+  const back = $("#u-back");
+  back.hidden = !(up.previous && up.can_install) || ib.disabled;
+  back.textContent = `↩ Go back to ${up.previous || ""}`;
+  back.dataset.version = up.previous || "";
+  if (up.channel === "test") $("#u-version").textContent += " (test builds)";
   $("#f-app").textContent = S.app.app_dir;
   $("#f-data").textContent = S.app.data_dir;
 }
@@ -451,12 +465,19 @@ $("#parts-list").addEventListener("click", e => {
   if (r) post("/api/part/restart", { key: r.dataset.restart });
 });
 $("#save-control-pc").onclick = () => post("/api/settings", { control_pc: $("#control-pc").value });
+$("#separate-huds").onclick = () => post("/api/settings", { separate_huds: !S.settings.separate_huds });
+$("#save-control-pc-key").onclick = () => post("/api/settings", { control_pc_key: $("#control-pc-key").value });
+$("#control-pc-key").addEventListener("keydown", e => { if (e.key === "Enter") $("#save-control-pc-key").click(); });
 $("#control-pc").addEventListener("keydown", e => { if (e.key === "Enter") $("#save-control-pc").click(); });
 for (const b of document.querySelectorAll("#bg-seg button")) b.onclick = () => post("/api/settings", { background: b.dataset.bg });
 $("#solid-colour").addEventListener("change", e => post("/api/settings", { solid_colour: e.target.value }));
 $("#home-name").addEventListener("change", e => post("/api/settings", { name: e.target.value }));
 $("#u-check").onclick = () => post("/api/update/check", {});
 $("#u-install").onclick = () => post("/api/update/install", {});
+$("#u-back").onclick = () => {
+  if (confirm(`Go back to ${$("#u-back").dataset.version}?\n\nThis puts back the version you had before the last update. Everything closes and reopens (about 15 seconds): graphics and HUDs go blank in OBS until it's back. Your data is kept.`))
+    post("/api/update/rollback", {});
+};
 $("#chip-update").addEventListener("click", () => setTimeout(() => go("settings/updates")));
 $("#open-data").onclick = () => post("/api/open-folder", { which: "data" });
 $("#open-app").onclick = () => post("/api/open-folder", { which: "app" });

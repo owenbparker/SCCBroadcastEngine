@@ -160,6 +160,41 @@ class PostgameTests(unittest.TestCase):
              [(6, 19, 5, 1188, 2, 1), (10, 18, 1, 1038, 5, 2), (11, 18, 5, 1490, 6, 2), (7, 18, 3, 1262, 3, 2)]]
     NAMES = [["JayK", "JWill", "AriseJJ", "A47"], ["ForfeitDesert61", "IceDagger", "HoT0wn", "Pointbreak"]]
 
+    def test_adds_up(self):
+        from PIL import Image
+        from codhud import postgame
+        got = postgame.read(to_reference(Image.open(postgame.SAMPLE).convert("RGB")))
+        self.assertIsNone(postgame.check(got))
+        # A 1 read as 7: the top team has more kills than the bottom team died.
+        bad = json.loads(json.dumps(got))
+        bad["teams"][0]["players"][0]["kills"] = 77
+        self.assertIn("misread", postgame.check(bad))
+
+    def test_saved_scoreboards(self):
+        """Every real scoreboard kept in tests/fixtures/scoreboards (a picture
+        and the .json of what it says) still reads right."""
+        from PIL import Image
+        from codhud import postgame
+        folder = os.path.join(os.path.dirname(__file__), "fixtures", "scoreboards")
+        for name in sorted(n for n in os.listdir(folder) if n.endswith(".png")):
+            with open(os.path.join(folder, name[:-4] + ".json"), encoding="utf-8") as f:
+                want = json.load(f)["read"]
+            got = postgame.read(to_reference(Image.open(os.path.join(folder, name)).convert("RGB")))
+            self.assertEqual(self.numbers(got), self.numbers(want), name)
+
+    def test_keeps_scoreboards(self):
+        import tempfile
+        from codhud import postgame
+        tmp = tempfile.mkdtemp()
+        saver = postgame.ScoreboardSaver(tmp)
+        saver.KEEP, saver.EVERY = 2, 0
+        frame = np.zeros((1080, 1920, 3), np.uint8)
+        for i in range(3):
+            saver._at = {}
+            self.assertTrue(saver.save(frame, got={"teams": []}))
+            time.sleep(0.01)
+        self.assertEqual(len([n for n in os.listdir(tmp) if n.endswith(".png")]), 2)
+
     def numbers(self, got):
         return [[(p["kills"], p["deaths"], p["assists"], p["damage"], p["ntk"], p["streak"]) for p in t["players"]] for t in got["teams"]]
 

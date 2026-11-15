@@ -44,6 +44,21 @@ the top right), and the role changed.
 - **Settings**: this PC's role, which parts run, the Control PC, the Home
   background (solid colour or the SCC BG loop), updates and folders.
 
+## Other PCs and the pairing code
+
+The engine has a 6-digit **pairing code** (Event > Outputs & Network). With
+"Ask other PCs for the pairing code" on, anything on another PC that changes
+something (a game HUD there, Bitfocus Companion, the control panel opened in a
+browser there) needs it once: a HUD asks for it on its GFX Engine page,
+Companion has a "Pairing code" field, a browser asks the first time.
+Outputs (OBS and vMix browser sources) never need it. A web page open in a
+browser on any PC can't change anything without the code either.
+
+New installs ask for the code from the start. Installs from before it existed
+keep working as they did until the box is ticked.
+
+See [docs/STATE.md](docs/STATE.md) for which part owns which data (the one place each thing is set).
+
 ## Your files
 
 Everything that's yours is in the `data` folder next to `SCCBroadcastEngine.exe`,
@@ -59,9 +74,12 @@ python SCCBroadcastEngine.py --no-window     # no window: http://127.0.0.1:8770/
 python tools/run_tests.py                    # every test: the app's and each part's
 ```
 
-Each part's code is in `apps/<part>/`, copied from its own repository by
-`tools/sync_apps.py` (see that file for the three small changes it makes, and
-`apps/SOURCES.json` for the branch and commit each copy came from). The app
+Each part's code is in `apps/<part>/`, and **this is where it's changed**:
+since 2026-11-15 SCC Broadcast Engine is the only app, and the old app
+repositories (GFX Engine, the game HUDs, HUD Builder, Multistream) are frozen.
+Their code was first copied in by `tools/sync_apps.py` (now retired; see that
+file for the small changes it made), and `apps/SOURCES.json` records the last
+commit copied from each. Player Cam stays its own app (players install it). The app
 itself (top bar, Home, Settings, starting the parts, the updater) is in
 `sccbe/` and `web/`.
 

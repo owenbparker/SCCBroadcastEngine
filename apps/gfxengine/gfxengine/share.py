@@ -102,22 +102,31 @@ def build(workspace, assets, comp_ids):
     return buf.getvalue()
 
 
-def send(blob, url, name):
-    """Hands the file to another engine's Import (its address: http://PC:port). Returns its answer."""
+class KeyNeeded(ValueError):
+    """The other engine wants its pairing code."""
+
+
+def send(blob, url, name, key=""):
+    """Hands the file to another engine's Import (its address: http://PC:port). Returns its answer.
+    key: that engine's pairing code, if it asks for one."""
     url = url.rstrip("/")
     if not re.match(r"https?://[^/]+$", url):
         raise ValueError("That isn't an engine's address")
-    req = urllib.request.Request(url + "/api/upload?graphic=1", data=blob, method="POST",
-                                 headers={"X-Filename": urllib.request.quote(name + EXT),
-                                          "Content-Type": "application/octet-stream"})
+    headers = {"X-Filename": urllib.request.quote(name + EXT), "Content-Type": "application/octet-stream"}
+    if key:
+        headers["X-SCC-Key"] = str(key).strip()
+    req = urllib.request.Request(url + "/api/upload?graphic=1", data=blob, method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         try:
-            msg = json.loads(e.read()).get("error")
+            answer = json.loads(e.read())
         except ValueError:
-            msg = None
+            answer = {}
+        msg = answer.get("error") if isinstance(answer, dict) else None
+        if isinstance(answer, dict) and answer.get("code") == "key_needed":
+            raise KeyNeeded("The other engine wants its pairing code (on that PC: Outputs > Network)") from None
         raise ValueError(f"The other engine said: {msg or e.code}") from None
     except (urllib.error.URLError, OSError) as e:
         raise ValueError(f"Couldn't reach the engine at {url} ({getattr(e, 'reason', e)})") from None

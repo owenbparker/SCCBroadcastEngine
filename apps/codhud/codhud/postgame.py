@@ -211,6 +211,69 @@ def read_row(frame, y):
     return row
 
 
+def check(got):
+    """Does the reading add up? Every kill on one team is a death on the
+    other (deaths can also be falls and suicides), so a team's kills are never
+    more than the other team's deaths. Returns why not, or None."""
+    teams = (got or {}).get("teams") or []
+    if len(teams) != 2 or not all(t["players"] for t in teams):
+        return None   # (one table only: nothing to check against)
+    total = lambda t, k: sum(p.get(k) or 0 for p in t["players"])
+    for a, b, which in ((teams[0], teams[1], "top"), (teams[1], teams[0], "bottom")):
+        if total(a, "kills") > total(b, "deaths"):
+            return (f"the {which} team's kills ({total(a, 'kills')}) are more than the other team's deaths "
+                    f"({total(b, 'deaths')}): a number's misread")
+    for t in teams:
+        for p in t["players"]:
+            if (p.get("kills") or 0) > 150 or (p.get("deaths") or 0) > 150 or (p.get("damage") or 0) > 40000:
+                return f"a number too big to be right ({p})"
+    return None
+
+
+class ScoreboardSaver:
+    """Keeps the end-of-game scoreboards the reader saw (the picture and what
+    it read, or why not) in a folder, so every real one can become a test:
+    copy a picture and its .json into tests/fixtures/scoreboards/ and fix the
+    .json's numbers if they were misread."""
+
+    KEEP = 200          # pictures kept (the oldest go first)
+    EVERY = 20.0        # seconds between saves of the same kind of reading
+
+    def __init__(self, folder):
+        self.folder = folder
+        self._at = {}
+
+    def save(self, frame, got=None, error=None):
+        kind = "error" if error else "read"
+        now = time.time()
+        if now - self._at.get(kind, 0) < self.EVERY:
+            return None
+        self._at[kind] = now
+        try:
+            import json
+            from PIL import Image
+            os.makedirs(self.folder, exist_ok=True)
+            base = os.path.join(self.folder, time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+                                + f"-{int(now * 1000) % 1000:03d}" + ("-error" if error else ""))
+            Image.fromarray(frame[:, :, :3].astype(np.uint8)).save(base + ".png")
+            with open(base + ".json", "w", encoding="utf-8") as f:
+                json.dump({"read": got, "error": error}, f, indent=1)
+            self._prune()
+            return base
+        except Exception as e:
+            log(f"Couldn't keep the scoreboard picture: {e!r}", "warn")
+            return None
+
+    def _prune(self):
+        pics = sorted(n for n in os.listdir(self.folder) if n.endswith(".png"))
+        for n in pics[:-self.KEEP] if len(pics) > self.KEEP else []:
+            for ext in (".png", ".json"):
+                try:
+                    os.remove(os.path.join(self.folder, n[:-4] + ext))
+                except OSError:
+                    pass
+
+
 # --- reading the names --------------------------------------------------------------
 
 def read_words(frame, box, ocr):
@@ -312,7 +375,8 @@ class PostgameReader:
     away; the post-game screen read the same twice in a row becomes the
     stats (and goes to the GFX Engine)."""
 
-    def __init__(self, on_read=None):
+    def __init__(self, on_read=None, saver=None):
+        self.saver = saver      # (ScoreboardSaver: keeps the scoreboards seen, for tests)
         self.result = None      # {"at", "from", "left", "right", "stale"}
         self.status = "Waiting for the end-of-game scoreboard"
         self.on_read = on_read
@@ -370,9 +434,14 @@ class PostgameReader:
         ocr = names._ocr if names.available() else None
         try:
             got = read(frame, ocr)
+            problem = check(got)
+            if problem:
+                raise ValueError(problem)
         except ValueError as e:
             self.status = f"Scoreboard on screen but not read: {e}"
             self._last = None
+            if self.saver:
+                self.saver.save(frame, error=str(e))
             return
         if got is None:
             self._last = None
@@ -384,6 +453,8 @@ class PostgameReader:
         sided = assign(got, cfg["match"], live)
         if self.result and not self.result["stale"] and all(self.result[s] == sided[s] for s in ("left", "right")):
             return
+        if self.saver:
+            self.saver.save(frame, got=got)
         self.take(sided, "the game")
 
     def take(self, sided, source):
