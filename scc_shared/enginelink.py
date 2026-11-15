@@ -3,8 +3,9 @@ GFX Engine on the network, and follows the engine's global configuration (the
 teams' names, short names, logos and colours): Global is where the teams are
 set, and the HUD never sends its own teams back.
 
-The same file is in every SCC HUD (the GFX Engine repository keeps the
-original, in hud-link/). A HUD makes one EngineLink with:
+SCC Broadcast Engine keeps one copy of this file (scc_shared/enginelink.py):
+every game HUD's <package>/enginelink.py points here, and the GFX Engine
+answers it. A HUD makes one EngineLink with:
 
     source        its name on the engine, e.g. "League HUD" (the engine's data
                   table of its fields has this name)
@@ -56,6 +57,11 @@ import urllib.request
 import uuid
 
 APP = "scc-gfx-engine"
+# The language HUDs and the engine speak. Bump it when a message changes in a
+# way the other side can't follow: a HUD on another PC with an older (or newer)
+# SCC Broadcast Engine then says so, instead of quietly sending what the
+# engine can't use. Apps from before this was added send none (0).
+PROTOCOL = 1
 PORT = 8782             # the engine's web port
 DISCOVERY_PORT = 8783   # where engines announce themselves
 
@@ -241,7 +247,7 @@ class EngineLink:
         return {"url": self.url, "name": self.name, "connected": self.connected, "ok": self.ok, "error": self.error,
                 "age": round(time.time() - self.sent_at, 1) if self.sent_at else None,
                 "found": self.found, "scanning": self.scanning, "source": self.source, "engine_id": self.engine_id,
-                "follow": bool(self.follow)}
+                "follow": bool(self.follow), "warning": getattr(self, "warning", "")}
 
     def _remember(self):
         self.save({"url": self.url, "name": self.name, "connected": self.connected, "engine_id": self.engine_id,
@@ -308,6 +314,21 @@ class EngineLink:
         self.log(f"Connected to the GFX Engine {self.name} ({url})")
         self._wake.set()
         return self.status()
+
+    def _check_protocol(self, theirs):
+        """Says (status "warning", and the log) when the engine speaks another
+        version of this link: the two PCs run different SCC Broadcast Engines."""
+        try:
+            theirs = int(theirs or 0)
+        except (TypeError, ValueError):
+            theirs = 0
+        warning = "" if theirs == PROTOCOL else (
+            f"{self.name} runs {'an older' if theirs < PROTOCOL else 'a newer'} SCC Broadcast Engine than this PC "
+            f"(link version {theirs}, here {PROTOCOL}): update both PCs to the same version")
+        if warning != getattr(self, "warning", ""):
+            self.warning = warning
+            if warning:
+                self.log(warning, "warn")
 
     def disconnect(self):
         self.connected = False
@@ -457,7 +478,7 @@ class EngineLink:
             mine = snap.get("series") or {}
             body = {"source": self.source, "game": self.game, "fields": snap.get("fields") or {},
                     "series": _scores_only(mine), "hud": snap.get("hud"),
-                    "engine": self.engine_id, "hud_id": self.hud_id}
+                    "engine": self.engine_id, "hud_id": self.hud_id, "protocol": PROTOCOL}
             if body == self._last_body and time.time() - self.sent_at < 4:
                 continue
             try:
@@ -467,6 +488,7 @@ class EngineLink:
                 if self.engine_id and reply.get("id") and reply["id"] != self.engine_id:
                     raise self._paired_error({"code": "wrong_engine"})
                 self._adopt(reply.get("id"), reply.get("name") or "")
+                self._check_protocol(reply.get("protocol", 0))
                 self.engine_global = reply.get("global")
                 self._check_follow(self.engine_global, mine)
                 if not self.ok:
@@ -535,10 +557,12 @@ def _scores_only(series):
 
 def _global_key(g):
     """What of the engine's Global configuration a HUD takes in: each team's
-    (name, short, logo, colour, series score), the tournament logo and the sponsors."""
+    (name, short, logo, colour, series score), the tournament logo, the
+    sponsors and the series length."""
     team = lambda s: tuple(str((g.get(s) or {}).get(k) or "") for k in _TEAM_KEYS)
     return (team("left"), team("right"), str(g.get("tournament_logo") or ""),
-            json.dumps([[sp.get("logo"), sp.get("secs")] for sp in g.get("sponsors") or [] if isinstance(sp, dict)]))
+            json.dumps([[sp.get("logo"), sp.get("secs")] for sp in g.get("sponsors") or [] if isinstance(sp, dict)]),
+            str(g.get("best_of") or ""))
 
 
 def _swapped(old, new):

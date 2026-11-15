@@ -59,9 +59,12 @@ python SCCBroadcastEngine.py --no-window     # no window: http://127.0.0.1:8770/
 python tools/run_tests.py                    # every test: the app's and each part's
 ```
 
-Each part's code is in `apps/<part>/`, copied from its own repository by
-`tools/sync_apps.py` (see that file for the three small changes it makes, and
-`apps/SOURCES.json` for the branch and commit each copy came from). The app
+Each part's code is in `apps/<part>/`, and **this is where it's changed**:
+since 2026-11-15 SCC Broadcast Engine is the only app, and the old app
+repositories (GFX Engine, the game HUDs, HUD Builder, Multistream) are frozen.
+Their code was first copied in by `tools/sync_apps.py` (now retired; see that
+file for the small changes it made), and `apps/SOURCES.json` records the last
+commit copied from each. Player Cam stays its own app (players install it). The app
 itself (top bar, Home, Settings, starting the parts, the updater) is in
 `sccbe/` and `web/`.
 

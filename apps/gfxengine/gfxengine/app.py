@@ -30,6 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import appearance, companion, discover, export, globalcfg, media, pack, share
+from scc_shared.enginelink import PROTOCOL as LINK_PROTOCOL
 from .assets import Assets
 from .config import DATA_DIR, WEB_DIR, Settings, safe_join
 from .data import Sources
@@ -209,7 +210,9 @@ class Engine:
                          "from": (self.stats.data or {}).get("source", ""), "at": (self.stats.data or {}).get("at", 0)}
         snap["feeds"] = {name: {"from": f["from"], "game": f["game"], "age": round(time.time() - f["at"], 1),
                                 # (a HUD on another PC must let other PCs read it for its pages to show here)
-                                "unreachable": bool(f.get("hud") and f["hud"]["remote"] and not f["hud"]["network"])}
+                                "unreachable": bool(f.get("hud") and f["hud"]["remote"] and not f["hud"]["network"]),
+                                # (another PC running a different SCC Broadcast Engine: says so on Home)
+                                "other_version": f.get("protocol", LINK_PROTOCOL) != LINK_PROTOCOL}
                          for name, f in self.feeds.items()}
         return snap
 
@@ -442,10 +445,17 @@ class Engine:
                 log(f"Turned away a second {name} from {client}: the one on {old['from']} is connected", "warn")
             raise Paired(f"This GFX Engine ({self.name()}) already has a {name} connected, from {old['from']}. "
                          f"Disconnect that one first.", "taken")
+        try:
+            protocol = int(body.get("protocol") or 0)
+        except (TypeError, ValueError):
+            protocol = 0
+        if protocol != LINK_PROTOCOL and (old or {}).get("protocol") != protocol:
+            log(f"{name} on {client} runs {'an older' if protocol < LINK_PROTOCOL else 'a newer'} version than this "
+                f"engine (link version {protocol}, here {LINK_PROTOCOL}): update SCC Broadcast Engine on both PCs", "warn")
         was_live = self.stats.live()
         self.feeds[name] = {"rows": rows, "from": client, "game": str(body.get("game") or ""), "at": time.time(),
                             "hud": self._hud_pages(name, body.get("hud"), client), "hud_id": hud_id,
-                            "look_rev": fields.get("look_rev")}
+                            "look_rev": fields.get("look_rev"), "protocol": protocol}
         if self.feeds[name]["hud"] != (old or {}).get("hud"):
             self.feeds_rev += 1
             self._add_hud_graphics(name, self.feeds[name]["hud"])
@@ -901,7 +911,8 @@ def make_handler(engine):
                 path = "/" + target
             if path == "/api/hello":
                 return self._json({"app": discover.APP, "name": engine.name(), "version": engine.updater.current,
-                                   "port": engine.settings.get()["http_port"], "id": engine.id})
+                                   "port": engine.settings.get()["http_port"], "id": engine.id,
+                                   "protocol": LINK_PROTOCOL})
             if path == "/api/state":
                 return self._send(engine.state_json())
             if path == "/api/stream":
@@ -1112,7 +1123,8 @@ def make_handler(engine):
                 elif path == "/api/ingest":
                     engine.check_paired(body.get("engine"))
                     engine.ingest(body, self.client_address[0])
-                    result = {"ok": True, "global": engine.global_config(), "id": engine.id, "name": engine.name()}
+                    result = {"ok": True, "global": engine.global_config(), "id": engine.id, "name": engine.name(),
+                              "protocol": LINK_PROTOCOL}
                 # --- on air ---
                 elif path == "/api/companion":
                     result = companion.act(engine, body)
@@ -1169,6 +1181,10 @@ def make_handler(engine):
                     if not local:
                         raise ValueError("Updates can only be installed on the engine's own PC")
                     engine.updater.install_in_background()
+                elif path == "/api/update/rollback":
+                    if not local:
+                        raise ValueError("Going back can only be done on the engine's own PC")
+                    engine.updater.rollback_in_background()
                 else:
                     return self._json({"error": "not found"}, 404)
                 self._json(result)

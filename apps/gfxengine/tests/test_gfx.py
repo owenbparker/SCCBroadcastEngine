@@ -1303,7 +1303,7 @@ class EnginePairingTests(unittest.TestCase):
 
     def _link(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("enginelink", os.path.join(ROOT, "hud-link", "enginelink.py"))
+        spec = importlib.util.spec_from_file_location("enginelink", os.path.join(ROOT, "..", "..", "scc_shared", "enginelink.py"))
         link = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(link)
         return link
@@ -1376,7 +1376,7 @@ class EnginePairingTests(unittest.TestCase):
 
     def test_huds_stay_with_their_engine(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("enginelink", os.path.join(ROOT, "hud-link", "enginelink.py"))
+        spec = importlib.util.spec_from_file_location("enginelink", os.path.join(ROOT, "..", "..", "scc_shared", "enginelink.py"))
         link = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(link)
         e1, url1 = self._engine(8797)

@@ -1,4 +1,10 @@
-r"""Brings each SCC app's code into apps/<name>/ (the package, its web folder
+r"""RETIRED (2026-11-15): apps/ is the code now. SCC Broadcast Engine is the
+only app going forward, so every change is made in apps/<name>/ in this
+repository, and the old app repositories are no longer updated. Copying from
+them again would undo work done here, so this refuses to run unless given
+--from-old-repos (kept only for bringing in a fix someone made there by hand).
+
+Brings each SCC app's code into apps/<name>/ (the package, its web folder
 and anything else it reads at run time), from the app's own repository.
 
     python tools/sync_apps.py                  every app, from the branches in SOURCES
@@ -150,9 +156,14 @@ def copy_app(name, src, commit, record):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("names", nargs="*", help="apps to bring in (default: all)")
+    parser.add_argument("--from-old-repos", action="store_true",
+                        help="really copy from the old app repositories (overwrites apps/: see the top of this file)")
     parser.add_argument("--src", action="append", default=[], metavar="NAME=FOLDER",
                         help="copy NAME from a local clone instead of GitHub (its checked-out files)")
     args = parser.parse_args()
+    if not args.from_old_repos:
+        raise SystemExit("apps/ is the code now (see the top of tools/sync_apps.py): make changes there. "
+                         "Add --from-old-repos to copy from the old repositories anyway.")
     names = args.names or list(SOURCES)
     unknown = [n for n in names if n not in SOURCES]
     if unknown:

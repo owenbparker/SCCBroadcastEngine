@@ -34,11 +34,22 @@ class Shell:
         self.settings = settings or Settings()
         self.updater = Updater()
         self.parts = P.PARTS
+        # No updating or going back while a part says a match is on (e.g. the
+        # VALORANT HUD reading one): updating restarts everything.
+        self.updater.busy = self._busy
         self.windows = None     # the GUI (sccbe/gui.py), once the window is up
         self.httpd = None
         self._engine = {"t": 0, "data": None}
         self._engine_lock = threading.Lock()
         self.ros = RunOfShow(os.path.join(DATA_DIR, "shell", "run-of-show.json"))
+
+    def _busy(self):
+        for part in self.parts:
+            up = getattr(part.app, "updater", None) if part.app is not None else None
+            reason = up._busy() if up is not None and hasattr(up, "_busy") else None
+            if reason:
+                return f"{part.title}: {reason}"
+        return None
 
     # --- parts ---------------------------------------------------------------
 

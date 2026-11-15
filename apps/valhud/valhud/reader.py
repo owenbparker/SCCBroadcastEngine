@@ -28,7 +28,7 @@ import time
 
 from . import game
 from .config import WEB_DIR
-from .log import log
+from .log import log, log_once
 
 REF_H = 1080
 # Top bar: centre of each player's portrait / health bar, left team then right.
@@ -1220,6 +1220,10 @@ class ScreenReader:
         self._spectate_thread = None
         self.ocr = None
         self.select = SelectTracker(self.send)   # agent select, when it's on screen
+        self.recorder = None   # recorder.MatchRecorder, set by the app: keeps frames for replay
+        from .tracker import Tracker
+        self.tracker = Tracker()   # the new reader, in shadow mode (tracker.py)
+        self._shadow_differs = 0.0
         self.available, self.reason = self._check()
 
     def _check(self):
@@ -1420,8 +1424,10 @@ class ScreenReader:
                         self.send(update)
                         last, sent_at = key, time.time()
                     self.fast_at = time.time()
-            except Exception:
-                pass  # the full read reports problems
+            except Exception as e:
+                # (the full read reports capture problems; this says when
+                # the death / health check itself breaks)
+                log_once("alive-loop", f"Health bar check failed: {e!r}")
             self._stop.wait(self.ALIVE_EVERY)
 
     def _count_deaths(self, players):
@@ -1547,13 +1553,62 @@ class ScreenReader:
                 self.agents[key] = agent
                 self._agent_votes[key] = {}
 
+    def _record(self, image, selecting):
+        """Hands the frame to the match recorder (if there's one), saying
+        whether agent select or a match is on it."""
+        rec = self.recorder
+        if rec is None or image is None:
+            return
+        try:
+            if selecting:
+                rec.seen("select")
+            elif in_match(Frame(image)):
+                rec.seen("match")
+            rec.frame(image)
+        except Exception as e:
+            log_once("recorder", f"Match recorder failed: {e!r}")
+
+    def _shadow(self, update):
+        """The frame's raw reading (before today's steadying) goes to the new
+        reader (tracker.py), and both are kept with the match recording: what
+        the new reader would show is compared with what the HUD showed by
+        python -m valhud.replay. Nothing here changes the HUD."""
+        import copy
+        try:
+            raw = copy.deepcopy(update)
+            self.tracker.observe(raw)
+            rec = self.recorder
+            if rec is not None:
+                rec.event("obs", raw)
+                rec.event("shadow", self.tracker.view())
+        except Exception as e:
+            log_once("shadow", f"New reader (shadow) failed: {e!r}")
+
+    def _shadow_check(self, update):
+        """Logs when the new reader's score and today's disagree for a while."""
+        s = (update.get("match") or {}).get("score")
+        mine = self.tracker.score.score
+        if not s or mine is None:
+            return
+        if (s["left"], s["right"]) != mine:
+            if not self._shadow_differs:
+                self._shadow_differs = time.time()
+            elif time.time() - self._shadow_differs > 5:
+                log_once("shadow-score", f"New reader (shadow) has the score {mine[0]}-{mine[1]}, "
+                         f"the HUD has {s['left']}-{s['right']}", "info", every=30)
+        else:
+            self._shadow_differs = 0.0
+
     def _run(self):
         last_reason = None
         while not self._stop.is_set():
             reason = None
             try:
                 image, reason = capture_valorant()
-                if image is not None and self.select.check(image, self.ocr):
+                selecting = image is not None and self.select.check(image, self.ocr)
+                self._record(image, selecting)
+                if selecting:
+                    self.tracker.agent_select()
                     if self.kda.base:   # a new game: last game's K/D/A is done with
                         from .killfeed import LiveKda
                         self.kda = LiveKda()
@@ -1576,11 +1631,13 @@ class ScreenReader:
                     pass   # (a loading screen, a menu, the end of the match: nothing to read)
                 else:
                     update = read_frame(image, self.ocr, self.agents)
+                    self._shadow(update)
                     # (this frame's own top-bar agents: a learned one only
                     # stands in where the top bar didn't show another)
                     fresh = {(t, s_): a for t, s_, a in update.get("seen_agents", [])}
                     self._learn_agents(update)
                     self._steady_score(update)
+                    self._shadow_check(update)
                     self._steady_names(update)
                     board = set()
                     if update["match"].get("scoreboard_open"):

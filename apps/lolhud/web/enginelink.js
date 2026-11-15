@@ -76,7 +76,8 @@
     $("eng-title").textContent = s.connected ? `Connected to ${s.name || s.url}` : "Not connected";
     $("eng-sub").textContent = !s.connected
       ? "Find an SCC GFX Engine on the network, then connect: this HUD's game stats and series score go to its graphics."
-      : s.ok ? `${s.url} · sending (last ${s.age == null ? "–" : s.age + " s"} ago)` : `${s.url} · ${s.error || "connecting…"}`;
+      : s.ok ? `${s.url} · sending (last ${s.age == null ? "–" : s.age + " s"} ago)` + (s.warning ? ` · ⚠ ${s.warning}` : "")
+      : `${s.url} · ${s.error || "connecting…"}`;
     $("eng-disconnect").hidden = !s.connected;
     $("eng-global").hidden = !s.url;
     $("eng-use").disabled = !s.url;

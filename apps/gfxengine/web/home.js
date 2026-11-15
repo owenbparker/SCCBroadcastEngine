@@ -421,7 +421,8 @@ App.on(s => {
       const stale = f.age > 10;
       return h("div", { class: "feed" + (stale ? " stale" : "") },
         h("div", { class: "feed-head" }, h("span", { class: "dot" }), h("b", {}, n),
-          h("span", { class: "muted small" }, `${f.game ? f.game + " · " : ""}${f.from} · ${stale ? "last heard " + Math.round(f.age) + " s ago" : "live"}`)),
+          h("span", { class: "muted small" }, `${f.game ? f.game + " · " : ""}${f.from} · ${stale ? "last heard " + Math.round(f.age) + " s ago" : "live"}`),
+          f.other_version ? h("span", { class: "small", style: "color:#e0a030", title: "That PC runs a different SCC Broadcast Engine version: update both PCs to the same one" }, "⚠ different version") : null),
         h("table", {}, h("tbody", {}, ...rows.slice(0, 60).map(r => h("tr", {},
           h("td", { title: `Copy {{${n}!${r[0]}}}`, onclick: () => copy(`{{${n}!${r[0]}}}`) }, r[0]), h("td", { title: r[1] }, r[1]))))),
         rows.length > 60 ? h("div", { class: "muted small" }, `…and ${rows.length - 60} more (Data tab)`) : null);
