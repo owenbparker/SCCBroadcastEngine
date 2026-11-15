@@ -70,3 +70,7 @@ a thread, on its usual port). The window is a pywebview window showing the
 top bar from `sccbe/app.py` (port 8770), with each part's own pages in a
 frame below it. The HUD-over-the-game windows and Multistream's chat window
 are pywebview windows of the same app.
+
+## Releases
+
+Normal releases (the ones installed apps update to) are built from the `main` branch. Work branches publish test builds (GitHub pre-releases) that installed apps never pick up.
