@@ -45,11 +45,14 @@ class Shell:
 
     def _busy(self):
         for part in self.parts:
-            up = getattr(part.app, "updater", None) if part.app is not None else None
-            reason = up._busy() if up is not None and hasattr(up, "_busy") else None
+            reason = part.busy()
             if reason:
                 return f"{part.title}: {reason}"
         return None
+
+    def _separate(self):
+        """Game HUDs as programs of their own (Settings)."""
+        return bool(self.settings.get().get("separate_huds"))
 
     # --- parts ---------------------------------------------------------------
 
@@ -60,7 +63,7 @@ class Shell:
         on = self.settings.get()["parts"]
         for part in self.parts:
             if on.get(part.key):
-                part.start(self.windows)
+                part.start(self.windows, self._separate())
 
     def set_part(self, key, on):
         part = P.BY_KEY.get(key)
@@ -68,7 +71,7 @@ class Shell:
             raise ValueError(f"No part called {key}")
         self.settings.update({"parts": {key: bool(on)}})
         if on:
-            part.start(self.windows)
+            part.start(self.windows, self._separate())
         else:
             threading.Thread(target=part.stop, daemon=True).start()
 
@@ -79,8 +82,15 @@ class Shell:
 
         def go():
             part.stop()
-            part.start(self.windows)
+            part.start(self.windows, self._separate())
         threading.Thread(target=go, daemon=True).start()
+
+    def restart_games(self):
+        """The game HUDs that are running, started again (in or out of this
+        program, as Settings now says)."""
+        for part in self.parts:
+            if part.kind == "game" and part.status in ("on", "starting", "error"):
+                self.restart_part(part.key)
 
     def setup(self, body):
         """First start (or Settings > This PC's role): what the PC does."""
@@ -100,7 +110,7 @@ class Shell:
         self.settings.update(changes)
         for part in self.parts:
             if want.get(part.key):
-                part.start(self.windows)
+                part.start(self.windows, self._separate())
             elif part.status != "off":
                 threading.Thread(target=part.stop, daemon=True).start()
 
@@ -378,7 +388,7 @@ def make_handler(shell):
                 elif path == "/api/part/restart":
                     shell.restart_part(body.get("key"))
                 elif path == "/api/settings":
-                    allowed = {"name", "background", "solid_colour", "control_pc", "control_pc_key"}
+                    allowed = {"name", "background", "solid_colour", "control_pc", "control_pc_key", "separate_huds"}
                     changes = {k: v for k, v in body.items() if k in allowed}
                     if "background" in changes and changes["background"] not in ("solid", "loop"):
                         raise ValueError("Background is solid or loop")
@@ -386,7 +396,11 @@ def make_handler(shell):
                         changes["control_pc"] = control_pc_url(changes["control_pc"])
                     if "control_pc_key" in changes:
                         changes["control_pc_key"] = re.sub(r"\D", "", str(changes["control_pc_key"] or ""))[:12]
+                    if "separate_huds" in changes:
+                        changes["separate_huds"] = bool(changes["separate_huds"])
                     shell.settings.update(changes)
+                    if "separate_huds" in changes:
+                        shell.restart_games()
                 elif path == "/api/update/check":
                     shell.updater.check()
                 elif path == "/api/update/install":

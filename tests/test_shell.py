@@ -91,7 +91,7 @@ class SettingsTests(unittest.TestCase):
         shell = Shell(config.Settings(os.path.join(DATA, "roles", "settings.json")))
         shell.windows = None
         for p in shell.parts:   # (nothing actually starts here)
-            p.start = lambda windows=None, p=p: setattr(p, "status", "on")
+            p.start = lambda windows=None, separate=False, p=p: setattr(p, "status", "on")
             p.stop = lambda p=p: setattr(p, "status", "off")
         try:
             shell.setup({"role": "hud", "parts": {"val": True}, "control_pc": "10.0.0.5"})

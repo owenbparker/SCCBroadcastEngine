@@ -101,6 +101,27 @@ def smoke_test(shell, port, out_dir):
             except Exception as e:
                 ok = False
                 results.append(f"FAIL {name} {path}: {e}")
+    # Game HUDs as programs of their own (Settings): the built app runs one with --part.
+    for key, path in (("smash", "/control"), ("val", "/control")):
+        part = next((p for p in shell.parts if p.key == key), None)
+        if part is None:
+            continue
+        part.stop()
+        part.start(None, separate=True)
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline and part.status == "starting":
+            time.sleep(0.25)
+        if part.status != "on":
+            ok = False
+            results.append(f"FAIL {part.title} as its own program: {part.status} {part.error}\n{part._log_tail()}")
+        else:
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{part.port}{path}", timeout=8) as r:
+                    results.append(f"OK   {part.title} as its own program (pid {part.proc.pid}) {path} ({len(r.read())} bytes)")
+            except Exception as e:
+                ok = False
+                results.append(f"FAIL {part.title} as its own program {path}: {e}")
+        part.stop()
     libs = ["webview", "PIL", "psd_tools", "zstandard", "openpyxl", "numpy", "cv2", "cryptography", "imageio_ffmpeg"]
     if sys.platform == "win32":
         libs += ["webview.platforms.winforms", "winrt.windows.media.ocr", "dxcam"]
@@ -127,6 +148,55 @@ def smoke_test(shell, port, out_dir):
     return ok
 
 
+def run_part(P, key, debug=False):
+    """This process is one game HUD, started by the app (see parts.py)."""
+    if key not in P.BY_KEY:
+        print(f"No part called {key}", file=sys.stderr)
+        return 2
+    part, stop = P.run_child(key)
+
+    def finish():
+        try:
+            ow = getattr(part.app, "overlay_window", None)
+            if ow is not None:
+                ow.close()
+            part.app.stop()
+        except Exception as e:
+            print(f"{part.title} didn't stop cleanly: {e!r}", file=sys.stderr)
+        sys.stderr.flush()
+        os._exit(0)
+
+    webview = None
+    if part.overlay:
+        try:
+            import webview
+        except Exception as e:
+            print(f"No window library, so no HUD-over-the-game window: {e!r}", file=sys.stderr)
+    if webview is None:
+        stop.wait()
+        finish()
+    for k in ("ALLOW_DOWNLOADS", "IGNORE_SSL_ERRORS"):
+        try:
+            webview.settings[k] = True
+        except Exception:
+            pass
+    import importlib
+    try:
+        mod = importlib.import_module(f"{part.package}.overlay_window")
+        part.app.overlay_window = mod.OverlayWindow(part.app.config, part.port)
+    except Exception as e:
+        print(f"No HUD-over-the-game window: {e!r}", file=sys.stderr)
+    # (pywebview needs a window to start; the HUD's own window opens when it's asked for)
+    webview.create_window(f"{TITLE}: {part.title}", html="<html></html>", hidden=True, width=200, height=100)
+
+    def wait_then_finish():
+        stop.wait()
+        finish()
+    webview.start(wait_then_finish, debug=debug)
+    finish()
+    return 0
+
+
 def main(argv=None):
     # A windowed .exe has no console; give print() somewhere harmless to go.
     if sys.stdout is None:
@@ -139,6 +209,7 @@ def main(argv=None):
     parser.add_argument("--debug", action="store_true", help="allow right-click > Inspect in the window")
     parser.add_argument("--no-window", action="store_true", help="run without a window")
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--part", help=argparse.SUPPRESS)   # (one game HUD as its own program: parts.run_child)
     args = parser.parse_args(argv)
 
     if args.smoke_test:
@@ -151,6 +222,8 @@ def main(argv=None):
     os.makedirs(config.DATA_DIR, exist_ok=True)
     from . import parts as P
     P.add_to_path()
+    if args.part:
+        return run_part(P, args.part, args.debug)
     from .log import log, open_file
     open_file(os.path.join(config.DATA_DIR, "shell"))
     from .app import Shell, start

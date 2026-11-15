@@ -421,10 +421,14 @@ function renderSettings() {
     const desc = PART_TEXT[p.key] || `Game HUD (port ${p.port})`;
     return `<div class="part-set"><span class="ic">${partIcon(p)}</span>
       <div class="nm"><b>${esc(p.title)}</b><span>${c ? `<span class="dot ${c}"></span>${w} · ` : ""}${esc(desc)}</span>
-      ${p.status === "error" ? `<span class="err">${esc(p.error)}</span>` : ""}</div>
+      ${p.status === "error" || (p.status === "starting" && p.error) ? `<span class="err">${esc(p.error)}</span>` : ""}
+      ${p.separate && p.restarts ? `<span class="err">Started again ${p.restarts} time${p.restarts > 1 ? "s" : ""} after stopping by itself</span>` : ""}</div>
       ${p.status === "on" || p.status === "error" ? `<button class="small" data-restart="${p.key}">Restart</button>` : ""}
       <button class="toggle${on ? " on" : ""}" data-toggle="${p.key}" aria-pressed="${on}" title="${on ? "Switch off" : "Switch on"}"></button></div>`;
   }).join("");
+  const sep = $("#separate-huds");
+  sep.classList.toggle("on", !!s.separate_huds);
+  sep.setAttribute("aria-pressed", String(!!s.separate_huds));
   const cp = $("#control-pc");
   if (document.activeElement !== cp) cp.value = s.control_pc || "";
   const ck = $("#control-pc-key");
@@ -461,6 +465,7 @@ $("#parts-list").addEventListener("click", e => {
   if (r) post("/api/part/restart", { key: r.dataset.restart });
 });
 $("#save-control-pc").onclick = () => post("/api/settings", { control_pc: $("#control-pc").value });
+$("#separate-huds").onclick = () => post("/api/settings", { separate_huds: !S.settings.separate_huds });
 $("#save-control-pc-key").onclick = () => post("/api/settings", { control_pc_key: $("#control-pc-key").value });
 $("#control-pc-key").addEventListener("keydown", e => { if (e.key === "Enter") $("#save-control-pc-key").click(); });
 $("#control-pc").addEventListener("keydown", e => { if (e.key === "Enter") $("#save-control-pc").click(); });
