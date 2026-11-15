@@ -57,6 +57,8 @@ browser on any PC can't change anything without the code either.
 New installs ask for the code from the start. Installs from before it existed
 keep working as they did until the box is ticked.
 
+See [docs/STATE.md](docs/STATE.md) for which part owns which data (the one place each thing is set).
+
 ## Your files
 
 Everything that's yours is in the `data` folder next to `SCCBroadcastEngine.exe`,
