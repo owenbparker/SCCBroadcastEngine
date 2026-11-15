@@ -146,6 +146,8 @@ class GameState:
                     "teams": [dict(t) for t in self.teams], "players": [dict(p) for p in self.players],
                     "target": dict(self.target) if self.target else None,
                     "events": [dict(e, age=round(now - e["at"], 2)) for e in self.events],
-                    "goal": dict(goal) if goal else None, "winner": self.winner, "arena": self.arena,
+                    "goal": dict(goal) if goal else None,
+                    # (the match's last goal, kept until the next match: the Gerrit 2026 design's bottom bar)
+                    "last_goal": dict(self.goal) if self.goal else None, "winner": self.winner, "arena": self.arena,
                     "ball_speed": self.ball_speed, "age": round(now - self.updated, 1) if self.updated else None,
                     "version": self.version}

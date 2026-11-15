@@ -180,16 +180,25 @@
       <option value="compact">Never (logos only)</option></select>
   </section>
   <section class="wide" data-page="editor overview">
+    <h2>HUD design</h2>
+    <label>The overlay (<code>/overlay</code>) shows</label>
+    <select id="design">
+      <option value="classic">RLCS 2026 (built in)</option>
+      <option value="gerrit2026">Gerrit 2026: three player cams a side, last goal along the bottom</option>
+      <option value="engine">The graphic from GFX Engine</option>
+    </select>
+    <p class="note">Each one is also at its own address: <code>/overlay-classic</code>, <code>/overlay-gerrit2026</code>.</p>
+  </section>
+  <section class="wide" data-page="editor overview">
     <h2>Overlay from GFX Engine</h2>
     <div class="note" id="look-status" style="margin-top:0"></div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
-      <button id="look-use"></button>
       <button id="look-check">Check the engine now</button>
       <button id="look-load">Load an exported .zip…</button>
       <button id="look-remove">Remove it</button>
     </div>
     <input type="file" id="look-file" accept=".zip" hidden>
-    <p class="note">Make it in GFX Engine: Composer, pick the graphic, then <b>Add this to a game HUD</b> (Rocket League). This HUD takes each new version from the engine it's connected to, and plays it with its own live data. The built-in overlay is always at <code>/overlay-classic</code>.</p>
+    <p class="note">Make it in GFX Engine: Composer, pick the graphic, then <b>Add this to a game HUD</b> (Rocket League). This HUD takes each new version from the engine it's connected to, and plays it with its own live data. Pick it under <b>HUD design</b>.</p>
   </section>
   <section data-page="editor">
     <h2>Show</h2>
@@ -426,19 +435,26 @@ for (const b of document.querySelectorAll("[data-copy]")) b.onclick = () => navi
 
 // --- the overlay from GFX Engine ---------------------------------------------
 function renderLook(info, cfg) {
-  const lk = info.look, use = (cfg.look || {}).use !== false;
+  const lk = info.look, design = cfg.design && cfg.design !== "classic" ? cfg.design : "";
+  const use = (cfg.look || {}).use !== false && !design;
+  // HUD design: a built-in design, or the engine's graphic (when there is one).
+  const sel = $("design"), pick = design || (lk && use ? "engine" : "classic");
+  sel.querySelector('option[value="engine"]').hidden = !lk;
+  if (document.activeElement !== sel) sel.value = pick;
   const when = lk && lk.at ? new Date(lk.at * 1000).toLocaleString() : "";
   $("look-status").innerHTML = lk
     ? `<b>${lk.name || "Graphic"}</b>${lk.rev ? ` (version ${lk.rev})` : ""} from ${lk.from || "the GFX Engine"}${when ? `, made ${when}` : ""}. `
-      + (use ? "It's the overlay now." : "Not shown: the built-in overlay is on.")
+      + (use ? "It's the overlay now." : "Not shown: pick it under HUD design.")
     : "No graphic from the GFX Engine yet: the built-in overlay shows.";
   if (info.error) $("look-status").innerHTML += `<br><span style="color:var(--bad,#ff5a5a)">Couldn't take the engine's graphic: ${info.error}</span>`;
   else if (info.engine_has) $("look-status").innerHTML += `<br>Taking "${info.engine_has.name}" from the engine…`;
-  $("look-use").hidden = !lk;
   $("look-remove").hidden = !lk;
-  $("look-use").textContent = use ? "Use the built-in overlay instead" : "Use the GFX Engine overlay";
 }
-$("look-use").onclick = () => config({ look: { use: (state.config.look || {}).use === false } });
+$("design").onchange = e => {
+  const v = e.target.value;
+  config(v === "engine" ? { design: "classic", look: { use: true } }
+    : v === "classic" ? { design: "classic", look: { use: false } } : { design: v });
+};
 $("look-check").onclick = () => post("/api/look/check", {});
 $("look-remove").onclick = () => { if (confirm("Remove the GFX Engine overlay? The built-in one shows until the engine sends it again.")) post("/api/look/remove", {}); };
 $("look-load").onclick = () => $("look-file").click();

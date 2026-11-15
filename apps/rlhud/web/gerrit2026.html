@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rocket League HUD · Gerrit 2026</title>
+<!--
+  The "Gerrit 2026" design (from owen's Figma file "VMIX GRAVEYARD", frame
+  "Slide 16:9 - 54"): a 1920x1080 browser source.
+    - three player cams down each side (blue team left, orange team right),
+      in the team's order, with a team-coloured edge on the inside;
+    - along the bottom: the match's last goal (scorer, speed in MPH, and the
+      assist), on a dark bar under a red line.
+  A player's cam is their SCC Player Cam (WebRTC, straight from their PC) or
+  the link typed beside their name (VDO.Ninja), which wins. A player without
+  a cam shows their name. Fed by /api/stream.
+-->
+<style>
+  /* DIN 2014 when this PC has it (the design's font), else Barlow (after DIN). */
+  @font-face { font-family: "Gerrit"; font-weight: 700; font-style: italic;
+               src: local("DIN 2014 Bold Italic"), local("DIN2014-BoldItalic"), url("fonts/Barlow-700-italic.woff2") format("woff2"); }
+  :root { --blue: #1ba9f5; --orange: #f26522; --red: #fd0000; --gap: #111823; --tile: #0b1017;
+          --ease: cubic-bezier(.2, .8, .2, 1); }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+  body { font: italic 700 32px "Gerrit", sans-serif; color: #fff; text-transform: uppercase; }
+  html.fit body { transform-origin: 0 0; }
+  .hide { opacity: 0 !important; }
+
+  /* --- the cams ------------------------------------------------------------- */
+  .side { position: absolute; top: 243px; width: 301px; height: 550px; transition: opacity .4s, transform .5s var(--ease); }
+  .side.l { left: 0; } .side.r { left: 1619px; }
+  .side.off.l { transform: translateX(-310px); } .side.off.r { transform: translateX(310px); }
+  .side .edge { position: absolute; top: 0; width: 10px; height: 550px; }
+  .side.l .edge { left: 291px; background: var(--blue); } .side.r .edge { left: 0; background: var(--orange); }
+  .side .gap { position: absolute; width: 291px; height: 15px; background: var(--gap); }
+  .side.l .gap { left: 0; } .side.r .gap { left: 10px; }
+  .cam { position: absolute; width: 291px; overflow: hidden; background: var(--tile); }
+  .side.l .cam { left: 0; } .side.r .cam { left: 10px; }
+  .cam.s1 { top: 0; height: 173px; } .gap.g1 { top: 173px; }
+  .cam.s2 { top: 188px; height: 172px; } .gap.g2 { top: 360px; }
+  .cam.s3 { top: 375px; height: 175px; }
+  .cam video, .cam iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: cover;
+                            opacity: 0; transition: opacity .3s; }
+  .cam video.on, .cam iframe.on { opacity: 1; }
+  /* No cam: the player's name. */
+  .cam .who { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 16px;
+              font-size: 26px; letter-spacing: .01em; white-space: nowrap; color: rgba(255,255,255,.55);
+              text-shadow: 0 0 5px rgba(0,0,0,.25); transition: opacity .3s; }
+  .cam .who span { display: inline-block; }
+  .cam.live .who { opacity: 0; }
+  .cam.demo { background: radial-gradient(circle at 50% 38%, #3a4150, #10151d 75%); }
+  .cam.demo .who { color: #fff; }
+
+  /* --- the bottom bar --------------------------------------------------------- */
+  #bottom { position: absolute; left: 0; top: 1016px; width: 1920px; height: 64px; transition: transform .5s var(--ease); }
+  #bottom.off { transform: translateY(70px); }
+  #bottom .line { position: absolute; left: 0; top: 0; width: 1920px; height: 4px; background: var(--red); }
+  #bottom .bar { position: absolute; left: 0; top: 4px; width: 1920px; height: 60px; background: url("designs/gerrit2026/bar.png") 0 0 / 1920px 60px; }
+  #goal { position: absolute; left: 0; right: 0; top: 4px; height: 60px; display: flex; align-items: center; justify-content: center;
+          transition: opacity .35s, transform .35s var(--ease); }
+  #goal.swap { opacity: 0; transform: translateY(10px); }
+  #goal .t { text-shadow: 0 0 5px rgba(0,0,0,.25); white-space: nowrap; line-height: 1; }
+  #goal img { display: block; flex: none; }
+  #goal .gi { width: 58px; height: 58px; margin-right: 4px; }
+  #goal .bi { width: 43px; height: 45px; margin: 0 4px 0 30px; }
+  #goal .ai { width: 56px; height: 56px; margin: 2px 4px 0 30px; }
+  #goal .mph { font-size: 24px; margin-left: 1px; align-self: center; padding-top: 6px; }
+  #goal .scorer, #goal .assister { max-width: 330px; overflow: hidden; }
+</style>
+</head>
+<body>
+<div class="side l" id="side0">
+  <div class="cam s1"><div class="who"><span></span></div></div><div class="gap g1"></div>
+  <div class="cam s2"><div class="who"><span></span></div></div><div class="gap g2"></div>
+  <div class="cam s3"><div class="who"><span></span></div></div><div class="edge"></div>
+</div>
+<div class="side r" id="side1">
+  <div class="cam s1"><div class="who"><span></span></div></div><div class="gap g1"></div>
+  <div class="cam s2"><div class="who"><span></span></div></div><div class="gap g2"></div>
+  <div class="cam s3"><div class="who"><span></span></div></div><div class="edge"></div>
+</div>
+<div id="bottom">
+  <div class="line"></div><div class="bar"></div>
+  <div id="goal" class="hide">
+    <img class="gi" src="designs/gerrit2026/goal.png" alt=""><span class="t scorer"></span>
+    <img class="bi" src="designs/gerrit2026/ball.png" alt=""><span class="t speed"></span><span class="t mph">MPH</span>
+    <img class="ai" src="designs/gerrit2026/assist.png" alt=""><span class="t assister"></span>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const params = new URLSearchParams(location.search);
+  if (params.has("fit")) {   // the HUD-on-game window: fill it
+    document.documentElement.classList.add("fit");
+    const fit = () => { document.body.style.transform = `scale(${innerWidth / 1920}, ${innerHeight / 1080})`; };
+    addEventListener("resize", fit); fit();
+  }
+  const KMH_TO_MPH = 0.621371;
+
+  // --- the player cams (as spectated-cam.html, one box per player) -------------
+  const ME = Math.random().toString(16).slice(2, 18);
+  const peers = {};   // cam id -> {pc, video, started}
+  const frames = {};  // link -> <iframe>
+  let registered = false;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.status); return d; }));
+  const box = (team, slot) => document.querySelector(`#side${team} .cam.s${slot}`);
+
+  function drop(id) {
+    const p = peers[id];
+    if (!p) return;
+    delete peers[id];
+    try { p.pc.close(); } catch (e) { /* closed */ }
+    p.video.remove();
+  }
+  function gathered(pc) {
+    if (pc.iceGatheringState === "complete") return Promise.resolve();
+    return new Promise(resolve => {
+      pc.addEventListener("icegatheringstatechange", () => { if (pc.iceGatheringState === "complete") resolve(); });
+      setTimeout(resolve, 2500);
+    });
+  }
+  function unhide(sdp, ip, hubHost) {
+    if (ip && /^(127\.|::1$|::ffff:127\.)/.test(ip)) ip = /^localhost$/i.test(hubHost) ? "127.0.0.1" : hubHost;
+    if (!sdp || !ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return sdp;
+    return sdp.replace(/^(a=candidate:\S+ \d+ \S+ \d+ )\S+\.local( \d+ typ host)/gm, "$1" + ip + "$2");
+  }
+  function connect(id) {
+    const video = document.createElement("video");
+    video.autoplay = video.muted = video.playsInline = true;
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    peers[id] = { pc, video, started: Date.now() };
+    pc.addTransceiver("video", { direction: "recvonly" });
+    pc.ontrack = e => { video.srcObject = e.streams[0] || new MediaStream([e.track]); video.play().catch(() => {}); };
+    pc.onconnectionstatechange = () => { if (pc.connectionState === "failed" || pc.connectionState === "closed") drop(id); };
+    pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => gathered(pc))
+      .then(() => post("/api/cam/send", { to: id, from: ME, data: { type: "offer", sdp: pc.localDescription.sdp } }))
+      .catch(() => drop(id));
+  }
+  (async function inbox() {
+    for (;;) {
+      try {
+        const r = await post("/api/cam/poll", { id: ME, wait: registered ? 20 : 0 });
+        registered = true;
+        for (const m of r.messages || []) {
+          const p = peers[m.from];
+          if (!p) continue;
+          if (m.type === "answer" && p.pc.signalingState === "have-local-offer")
+            p.pc.setRemoteDescription({ type: "answer", sdp: unhide(m.sdp, m.ip, location.hostname) }).catch(() => drop(m.from));
+          else if (m.type === "bye") drop(m.from);
+        }
+      } catch (e) { await sleep(2000); }
+    }
+  })();
+  addEventListener("pagehide", () => {
+    for (const id of Object.keys(peers)) if (navigator.sendBeacon)
+      navigator.sendBeacon("/api/cam/send", new Blob([JSON.stringify({ to: id, from: ME, data: { type: "bye" } })], { type: "text/plain" }));
+  });
+  function linkUrl(link) {
+    try {
+      const u = new URL(link);
+      if (/(^|\.)vdo\.ninja$|(^|\.)obs\.ninja$/.test(u.hostname))
+        ["cover", "cleanoutput", "noaudio"].forEach(p => { if (!u.searchParams.has(p)) u.searchParams.set(p, ""); });
+      return u.toString();
+    } catch (e) { return link; }
+  }
+  // (an element moves into its player's box only when it isn't there already: moving restarts it)
+  const place = (el, into) => { if (el.parentNode !== into) { into.insertBefore(el, into.firstChild); if (el.play) el.play().catch(() => {}); } };
+
+  let lastKey = "";
+  function renderCams(s) {
+    const cams = s.cams || {}, on = cams.on !== false;
+    const pubs = on ? cams.publishers || [] : [];
+    const links = on ? (cams.links || []).filter(l => l.link) : [];
+    const key = pubs.map(p => p.id).join(",") + "|" + registered;
+    if (key !== lastKey) {
+      lastKey = key;
+      const want = new Set(pubs.map(p => p.id));
+      for (const id of want) if (registered && !peers[id]) connect(id);
+      for (const id of Object.keys(peers)) if (!want.has(id)) drop(id);
+    }
+    for (const p of pubs) {
+      const peer = peers[p.id];
+      if (peer && peer.pc.connectionState !== "connected" && Date.now() - peer.started > 10000) { drop(p.id); lastKey = ""; }
+    }
+    const linkSet = new Set(links.map(l => l.link));
+    for (const l of Object.keys(frames)) if (!linkSet.has(l)) { frames[l].remove(); delete frames[l]; }
+    // Whose cam goes in each box: the link beside their name, else their Player Cam.
+    const shown = new Map();   // element -> box
+    for (const t of [0, 1]) {
+      const players = (s.game.players || []).filter(p => p.team === t);
+      for (let slot = 1; slot <= 3; slot++) {
+        const b = box(t, slot), p = players[slot - 1];
+        const mine = x => x.player && x.player.team === t && x.player.slot === slot;
+        const link = p && links.find(mine), pub = p && !link && pubs.find(mine);
+        let el = null;
+        if (link) {
+          if (!frames[link.link]) {
+            const f = document.createElement("iframe");
+            f.allow = "autoplay; camera; microphone";
+            f.src = linkUrl(link.link);
+            frames[link.link] = f;
+          }
+          el = frames[link.link];
+        } else if (pub && peers[pub.id]) el = peers[pub.id].video;
+        if (el) { place(el, b); shown.set(el, b); }
+        const live = !!el && (el.tagName === "IFRAME" || !!el.srcObject);
+        b.classList.toggle("live", live);
+        b.classList.toggle("demo", !el && !!s.demo && !!p);
+        const name = p ? ((s.config.names || {})[p.name] || p.name) : "";
+        const who = b.querySelector(".who span");
+        if (who.textContent !== name) { who.textContent = name; fitText(who, 260); }
+      }
+    }
+    for (const el of [...Object.values(peers).map(p => p.video), ...Object.values(frames)]) {
+      el.classList.toggle("on", shown.has(el) && (el.tagName === "IFRAME" || !!el.srcObject));
+      if (!shown.has(el) && el.parentNode) el.remove();   // (kept open, out of sight, for when they're back)
+    }
+  }
+  function fitText(el, max) {
+    el.style.fontSize = "";
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > max && size > 12) { size -= 1; el.style.fontSize = size + "px"; }
+  }
+
+  // --- the last goal ------------------------------------------------------------
+  let goalKey = null;
+  function renderGoal(s) {
+    const g = s.game.last_goal, names = s.config.names || {};
+    const nameOf = r => (r && ((names[r.name]) || r.name)) || "";
+    const key = g ? [g.at, nameOf(g.scorer), nameOf(g.assister), g.speed].join("|") : "";
+    if (key === goalKey) return;
+    const first = goalKey === null;
+    goalKey = key;
+    const fill = () => {
+      $("#goal").classList.toggle("hide", !g);
+      if (!g) return;
+      $("#goal .scorer").textContent = nameOf(g.scorer);
+      $("#goal .speed").textContent = Math.round((+g.speed || 0) * KMH_TO_MPH);
+      const a = nameOf(g.assister);
+      $("#goal .assister").textContent = a;
+      $("#goal .ai").hidden = $("#goal .assister").hidden = !a;
+    };
+    if (first) return fill();
+    $("#goal").classList.add("swap");
+    setTimeout(() => { fill(); $("#goal").classList.remove("swap"); }, 350);
+  }
+
+  function render(s) {
+    if (!s || !s.game || !s.config) return;
+    const show = s.config.show || {}, game = s.game;
+    // (off for the podium, as the classic HUD's lower parts)
+    const away = game.phase === "podium";
+    for (const t of [0, 1]) $("#side" + t).classList.toggle("off", away || show.players === false);
+    $("#bottom").classList.toggle("off", away);
+    renderCams(s);
+    renderGoal(s);
+    window.rlHud = s;   // (for checking the overlay)
+  }
+  if (params.has("still")) return;
+  const es = new EventSource("/api/stream");
+  es.onmessage = e => { try { render(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+})();
+</script>
+</body>
+</html>

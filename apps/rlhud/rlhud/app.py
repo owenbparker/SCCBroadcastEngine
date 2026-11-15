@@ -28,7 +28,10 @@ mimetypes.add_type("font/ttf", ".ttf")
 mimetypes.add_type("image/svg+xml", ".svg")
 
 PAGES = {"/": "/start", "/start": "start.html", "/control": "control.html", "/observer": "observer.html",
-         "/overlay": "overlay.html", "/overlay-classic": "overlay.html", "/spectated-cam": "spectated-cam.html"}
+         "/overlay": "overlay.html", "/overlay-classic": "overlay.html", "/spectated-cam": "spectated-cam.html",
+         "/overlay-gerrit2026": "gerrit2026.html"}
+# The built-in designs (config "design"): their page.
+DESIGNS = {"classic": "overlay.html", "gerrit2026": "gerrit2026.html"}
 CAM_PATHS = ("/api/cam/poll", "/api/cam/send", "/api/cam/list")
 SEND_EVERY = 1 / 30   # observer -> GFX PC
 
@@ -180,13 +183,13 @@ class HudApp:
 
     def overlay_state(self):
         cfg = self.config.get()
-        keep = ("left", "right", "best_of", "event", "stage", "scorebug", "names", "sponsors", "sponsor_seconds", "show")
+        keep = ("left", "right", "best_of", "event", "stage", "scorebug", "names", "sponsors", "sponsor_seconds", "show", "design")
         game = self.state.snapshot()
         cams = self.cams_state(game)
         return {"game": game, "config": {k: cfg[k] for k in keep},
                 # (the GFX Engine overlay's data, and who has a cam)
                 "fields": self._engine_snapshot(here=True)["fields"], "cams": cams,
-                "target_cam": self.target_cam(game, cams), "now": time.time(),
+                "target_cam": self.target_cam(game, cams), "now": time.time(), "demo": bool(self.demo),
                 # (the engine's Global, when connected: the teams' colours, the event)
                 "global": self._global_bits()}
 
@@ -565,7 +568,10 @@ def make_handler(app):
             if startpick.handle(self, "GET", path, DATA_DIR):
                 return
             # The overlay: the graphic from the GFX Engine when there is one (and it's on).
-            if path == "/overlay" and look.current(DATA_DIR) and (app.config.get().get("look") or {}).get("use", True):
+            design = app.config.get().get("design") or "classic"
+            if path == "/overlay" and design != "classic" and design in DESIGNS:
+                path = "/" + DESIGNS[design]   # (a picked built-in design wins over the engine's graphic)
+            elif path == "/overlay" and look.current(DATA_DIR) and (app.config.get().get("look") or {}).get("use", True):
                 try:
                     return self._send(look.page(DATA_DIR), "text/html; charset=utf-8")
                 except OSError:
