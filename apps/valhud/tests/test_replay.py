@@ -165,3 +165,22 @@ class RecorderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RawDigitsTests(unittest.TestCase):
+    def test_ocr_and_shape(self):
+        import json as _json
+        import tempfile as _tmp
+        from valhud.replay import raw_readings
+        folder = _tmp.mkdtemp()
+        with open(os.path.join(folder, "events.jsonl"), "w") as f:
+            f.write(_json.dumps({"t": 1, "kind": "obs", "data": {
+                "match": {"score": {"left": 1, "right": 1}, "score_shape": {"left": 12, "right": 11}},
+                "players": [{"team": "left", "slot": 1, "kills": 1, "deaths": 2, "assists": 3, "kda_shape": [11, 2, 3]},
+                            {"team": "left", "slot": 2, "kills": 4, "deaths": 0, "assists": 0}]}}) + "\n")
+        ocr = raw_readings(folder, "ocr")[0][1]
+        shape = raw_readings(folder, "shape")[0][1]
+        self.assertEqual(ocr["match"]["score"], {"left": 1, "right": 1})
+        self.assertEqual(shape["match"]["score"], {"left": 12, "right": 11})
+        self.assertEqual(shape["players"][0]["kills"], 11)
+        self.assertNotIn("kills", shape["players"][1])   # (no shape reading: nothing)

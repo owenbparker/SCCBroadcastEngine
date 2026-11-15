@@ -47,6 +47,28 @@ def load_readings(folder, kind="reading"):
             if k == kind and (kind != "reading" or d.get("source") in ("screen", None))]
 
 
+def raw_readings(folder, how):
+    """[(t, update)] from each frame's own reading, before any steadying:
+    "ocr" its text recognition's score, "shape" its digits by shape (glyphbank.py)."""
+    out = []
+    for t, kind, d in load_events(folder):
+        if kind != "obs":
+            continue
+        m = dict(d.get("match") or {})
+        score = m.pop("score_shape", None)
+        if how == "shape":
+            m.pop("score", None)
+            if score:
+                m["score"] = score
+            players = [dict(p, kills=p["kda_shape"][0], deaths=p["kda_shape"][1], assists=p["kda_shape"][2])
+                       if p.get("kda_shape") else {k: v for k, v in p.items() if k not in ("kills", "deaths", "assists")}
+                       for p in d.get("players") or []]
+        else:
+            players = d.get("players") or []
+        out.append((t, dict(d, match=m, players=players)))
+    return out
+
+
 def rerun(folder):
     """The new reader (tracker.py, as it is now) run again over the raw
     readings kept with the recording: [(t, update)] it would have shown."""
@@ -174,14 +196,16 @@ def score_readings(readings, key):
 
 def report(folder, agents=None, kind="reading"):
     """kind: "reading" (what the HUD showed live), "shadow" (what the new
-    reader showed live, in shadow mode) or "rerun" (the new reader as it is
-    now, run again over the recording)."""
+    reader showed live, in shadow mode), "rerun" (the new reader as it is
+    now, run again over the recording), or each frame's own raw reading:
+    "ocr" (text recognition) and "shape" (digits by shape)."""
     name = os.path.basename(folder.rstrip("/\\"))
     details = os.path.join(folder, "match-details.json")
     if not os.path.isfile(details):
         return {"recording": name, "kind": kind, "error": "no match-details.json (no answer key)"}
     key = AnswerKey.load(details, agents)
-    readings = rerun(folder) if kind == "rerun" else load_readings(folder, kind)
+    readings = (rerun(folder) if kind == "rerun" else raw_readings(folder, kind) if kind in ("ocr", "shape")
+                else load_readings(folder, kind))
     out = score_readings(readings, key)
     out["recording"], out["kind"] = name, kind
     return out
@@ -202,8 +226,8 @@ def main(argv=None):
     ap.add_argument("recordings", nargs="+")
     ap.add_argument("--agents", help="riot-agents.json (agent ids -> names), from the app's folder")
     ap.add_argument("--json", help="write the full report here")
-    ap.add_argument("--kind", action="append", choices=("reading", "shadow", "rerun"),
-                    help="what to score (default: all three, side by side)")
+    ap.add_argument("--kind", action="append", choices=("reading", "shadow", "rerun", "ocr", "shape"),
+                    help="what to score (default: reading, shadow and rerun, side by side; ocr and shape compare the raw digits)")
     a = ap.parse_args(argv)
     agents = None
     if a.agents:

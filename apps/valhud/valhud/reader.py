@@ -877,8 +877,10 @@ def read_name(frame, side, row, ocr):
     return max(seen, key=lambda t: (seen[t], len(t))) if seen else ""
 
 
-def read_frame(image, ocr=None, known_agents=None):
-    """Everything readable in one frame, as an update for game.merge()."""
+def read_frame(image, ocr=None, known_agents=None, bank=None):
+    """Everything readable in one frame, as an update for game.merge().
+    bank: a glyphbank.GlyphBank (digits by shape): it learns from the text
+    recognition's readings and adds its own (match.score_shape, kda_shape)."""
     frame = Frame(image)
     players = []
     top_agents = {}
@@ -923,6 +925,15 @@ def read_frame(image, ocr=None, known_agents=None):
             update["match"]["round"] = line["left"] + line["right"] + 1
         if "timer" in line:
             update["match"]["timer"] = line["timer"]
+    if bank is not None and side:
+        shape = {}
+        for s_ in ("left", "right"):
+            cell = frame.crop(*SCORE_BOX[s_])
+            if ocr:
+                bank.offer("score", s_, cell, (update["match"].get("score") or {}).get(s_), 170)
+            shape[s_] = bank.read("score", cell, 170)
+        if shape["left"] is not None and shape["right"] is not None and max(shape.values()) <= 30:
+            update["match"]["score_shape"] = shape
     if scoreboard_open(frame):
         board = read_scoreboard(frame, ocr) if ocr else {}
         by_slot = {(p["team"], p["slot"]): p for p in players}
@@ -947,12 +958,26 @@ def read_frame(image, ocr=None, known_agents=None):
                 for key, field in (("k", "kills"), ("d", "deaths"), ("a", "assists"), ("creds", "credits")):
                     if info.get(key) is not None:
                         p[field] = info[key]
+                if bank is not None:
+                    kda = []
+                    for key in ("k", "d", "a"):
+                        cell = row_cell(frame, side, r, key, 3)
+                        bank.offer("kda", (side, r, key), cell, info.get(key))
+                        kda.append(bank.read("kda", cell))
+                    if None not in kda:
+                        p["kda_shape"] = kda
         update["match"]["scoreboard_open"] = True
         # (a 2v2's board has its round history somewhere else: not read yet)
         history = round_history(frame) if frame.board is BOARDS[5] else None
         if history:
             update["match"]["rounds"] = history
     return update
+
+
+def _drop_shadow_fields(update):
+    (update.get("match") or {}).pop("score_shape", None)
+    for p in update.get("players") or []:
+        p.pop("kda_shape", None)
 
 
 # --- capturing the game window ----------------------------------------------
@@ -1223,6 +1248,10 @@ class ScreenReader:
         self.recorder = None   # recorder.MatchRecorder, set by the app: keeps frames for replay
         from .tracker import Tracker
         self.tracker = Tracker()   # the new reader, in shadow mode (tracker.py)
+        from .config import DATA_DIR
+        from .glyphbank import GlyphBank
+        self.bank = GlyphBank(os.path.join(DATA_DIR, "glyphs.json"))   # digits by shape (glyphbank.py)
+        self._bank_saved = time.time()
         self._shadow_differs = 0.0
         self.available, self.reason = self._check()
 
@@ -1336,7 +1365,7 @@ class ScreenReader:
         image, reason = capture_valorant()
         if image is None:
             raise ValueError(reason)
-        update = read_frame(image, self.ocr, self.agents)
+        update = read_frame(image, self.ocr, self.agents, self.bank)
         os.makedirs(folder, exist_ok=True)
         base = os.path.join(folder, time.strftime("frame-%Y%m%d-%H%M%S"))
         image.save(base + ".png")
@@ -1630,8 +1659,12 @@ class ScreenReader:
                 elif not in_match(Frame(image)):
                     pass   # (a loading screen, a menu, the end of the match: nothing to read)
                 else:
-                    update = read_frame(image, self.ocr, self.agents)
+                    update = read_frame(image, self.ocr, self.agents, self.bank)
+                    if time.time() - self._bank_saved > 60:
+                        self._bank_saved = time.time()
+                        self.bank.save()
                     self._shadow(update)
+                    _drop_shadow_fields(update)   # (the shapes' readings are the new reader's: not the HUD's yet)
                     # (this frame's own top-bar agents: a learned one only
                     # stands in where the top bar didn't show another)
                     fresh = {(t, s_): a for t, s_, a in update.get("seen_agents", [])}

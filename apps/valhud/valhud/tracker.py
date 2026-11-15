@@ -171,7 +171,7 @@ class Tracker:
                 if self._name_pending.get(key) == p["name"]:
                     self.names[key] = p["name"]
                 self._name_pending[key] = p["name"]
-        s = m.get("score")
+        s = m.get("score_shape") or m.get("score")   # (digits by shape when it's sure, else the text recognition)
         if s and s.get("left") is not None and s.get("right") is not None:
             history = None
             rounds = m.get("rounds")
