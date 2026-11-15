@@ -976,7 +976,7 @@ def make_handler(app):
                     seconds = max(1.0, min(60.0, float(body.get("seconds") or 4)))
                     app.config.update({"sponsors": sponsors, "sponsor_seconds": seconds})
                     log(f"Sponsors saved: {len(sponsors)} logo(s), {seconds:g} s each" if sponsors
-                        else "Sponsors saved: the template's own logos")
+                        else "Sponsors saved: none (no sponsor logos on the HUD)")
                 elif path == "/api/logo":
                     app.save_logo(body["side"], body.get("filename"), body["data"])
                 elif path == "/api/mode":

@@ -89,7 +89,7 @@ DEFAULTS = {
     # Which screen the "HUD on the game" window covers (0 = main screen).
     "overlay_screen": 0,
     # Sponsor logos rotating in the top right of the HUD, in order (paths
-    # like "sponsors/x.png"); empty: the template's own two. Seconds each.
+    # like "sponsors/x.png"); empty: none shown. Seconds each.
     "sponsors": [],
     "sponsor_seconds": 4,
     # Observer client: the GFX PC whose HUD to show.
