@@ -169,7 +169,11 @@ class Shell:
         if not base:
             raise ValueError("No GFX Engine: switch it on, or set the Control PC in Settings")
         data = None if body is None else json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(base + path, data=data, headers={"Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        key = self.settings.get().get("control_pc_key") or ""
+        if key:
+            headers["X-SCC-Key"] = key   # (the Control PC's engine can ask for its pairing code)
+        req = urllib.request.Request(base + path, data=data, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read().decode("utf-8") or "{}")
@@ -344,6 +348,11 @@ def make_handler(shell):
 
         def do_POST(self):
             path = urlparse(self.path).path
+            origin = self.headers.get("Origin")
+            if origin and (urlparse(origin).hostname or "").lower() not in ("127.0.0.1", "localhost", "::1"):
+                # (a web page open in a browser on this PC can't drive the app)
+                self.close_connection = True
+                return self._json({"error": "Only this PC's own pages can change SCC Broadcast Engine"}, 403)
             try:
                 body = self._body()
                 if path.startswith("/api/ros/"):
@@ -369,12 +378,14 @@ def make_handler(shell):
                 elif path == "/api/part/restart":
                     shell.restart_part(body.get("key"))
                 elif path == "/api/settings":
-                    allowed = {"name", "background", "solid_colour", "control_pc"}
+                    allowed = {"name", "background", "solid_colour", "control_pc", "control_pc_key"}
                     changes = {k: v for k, v in body.items() if k in allowed}
                     if "background" in changes and changes["background"] not in ("solid", "loop"):
                         raise ValueError("Background is solid or loop")
                     if "control_pc" in changes:
                         changes["control_pc"] = control_pc_url(changes["control_pc"])
+                    if "control_pc_key" in changes:
+                        changes["control_pc_key"] = re.sub(r"\D", "", str(changes["control_pc_key"] or ""))[:12]
                     shell.settings.update(changes)
                 elif path == "/api/update/check":
                     shell.updater.check()

@@ -44,6 +44,19 @@ the top right), and the role changed.
 - **Settings**: this PC's role, which parts run, the Control PC, the Home
   background (solid colour or the SCC BG loop), updates and folders.
 
+## Other PCs and the pairing code
+
+The engine has a 6-digit **pairing code** (Event > Outputs & Network). With
+"Ask other PCs for the pairing code" on, anything on another PC that changes
+something (a game HUD there, Bitfocus Companion, the control panel opened in a
+browser there) needs it once: a HUD asks for it on its GFX Engine page,
+Companion has a "Pairing code" field, a browser asks the first time.
+Outputs (OBS and vMix browser sources) never need it. A web page open in a
+browser on any PC can't change anything without the code either.
+
+New installs ask for the code from the start. Installs from before it existed
+keep working as they did until the box is ticked.
+
 ## Your files
 
 Everything that's yours is in the `data` folder next to `SCCBroadcastEngine.exe`,

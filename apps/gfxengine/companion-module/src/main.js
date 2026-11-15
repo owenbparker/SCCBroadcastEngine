@@ -54,6 +54,13 @@ class GfxEngineInstance extends InstanceBase {
 			{ type: 'textinput', id: 'host', label: 'GFX Engine PC address', width: 8, default: '127.0.0.1', regex: Regex.HOSTNAME },
 			{ type: 'textinput', id: 'port', label: 'Port', width: 4, default: '8782', regex: Regex.PORT },
 			{ type: 'number', id: 'poll', label: 'Check every (ms)', width: 4, default: 250, min: 100, max: 5000 },
+			{
+				type: 'textinput',
+				id: 'key',
+				label: "Pairing code (only if the engine asks for one: on the engine's PC, Outputs > Network)",
+				width: 8,
+				default: '',
+			},
 		]
 	}
 
@@ -109,11 +116,15 @@ class GfxEngineInstance extends InstanceBase {
 		try {
 			const r = await fetch(this.base() + '/api/companion', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: Object.assign(
+					{ 'Content-Type': 'application/json' },
+					this.config.key ? { 'X-SCC-Key': String(this.config.key).trim() } : {},
+				),
 				body: JSON.stringify(body),
 				signal: AbortSignal.timeout(5000),
 			})
 			const data = await r.json()
+			if (data.code === 'key_needed') this.updateStatus(InstanceStatus.BadConfig, 'Needs the pairing code')
 			if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`)
 			this.apply(data)
 		} catch (e) {

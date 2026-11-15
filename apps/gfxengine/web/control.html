@@ -388,6 +388,10 @@
       <label>Other PCs reach it on<select id="net-address"></select></label>
       <p class="muted small" id="net-address-note"></p>
       <label>This engine's name on the network<input id="net-name" placeholder="(this PC's name)"></label>
+      <label class="toggle"><input type="checkbox" id="net-require"> Ask other PCs for the pairing code before they change anything</label>
+      <div class="url-row"><span class="lbl">Pairing code</span><code id="net-key">••••••</code>
+        <button class="small" id="net-key-show">Show</button><button class="small" id="net-key-new" title="Other PCs then need the new code">New code</button></div>
+      <p class="muted small">Outputs in OBS or vMix never need it. A game HUD on another PC, Companion, or this control panel opened on another PC asks for it once.</p>
       <div class="panel-head"><h3>Bitfocus Companion</h3></div>
       <p class="muted small">Import <b>SCC-GFX-Companion-module.tgz</b> (from the engine's release on GitHub) on Companion's Modules page,
         then add an <b>SCC GFX Engine</b> connection with:</p>

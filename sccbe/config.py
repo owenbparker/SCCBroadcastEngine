@@ -49,6 +49,8 @@ DEFAULTS = {
     # A HUD PC's Control PC (its GFX Engine), e.g. "192.168.2.40" or
     # "http://192.168.2.40:8782". Control, Composer and Event open from it.
     "control_pc": "",
+    # The Control PC engine's pairing code (its Outputs & Network page), when it asks for one.
+    "control_pc_key": "",
     # Home's background: "solid" (a solid colour) or "loop" (the SCC BG loop).
     "background": "solid",
     "solid_colour": "#0c0c0e",

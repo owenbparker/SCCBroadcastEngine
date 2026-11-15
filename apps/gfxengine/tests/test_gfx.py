@@ -1426,3 +1426,107 @@ class EnginePairingTests(unittest.TestCase):
         req = urllib.request.Request(url1 + "/api/ingest", json.dumps({"source": "RL HUD", "fields": {"x": 1}}).encode(),
                                      {"Content-Type": "application/json"})
         self.assertTrue(json.loads(urllib.request.urlopen(req, timeout=5).read())["ok"])
+
+
+class PairingCodeTests(unittest.TestCase):
+    """Other PCs (and other web pages) need the engine's pairing code to change
+    anything; outputs and the engine's own PC don't."""
+
+    def test_rules(self):
+        from gfxengine.app import key_check
+        own = "127.0.0.1:8782"
+        # This PC: programs (no Origin) and its own pages may; another web page may not.
+        self.assertIsNone(key_check("127.0.0.1", None, own, "", "123456", True))
+        self.assertIsNone(key_check("127.0.0.1", "http://127.0.0.1:8782", own, "", "123456", True))
+        self.assertIsNone(key_check("127.0.0.1", "http://localhost:8788", own, "", "123456", True))
+        self.assertTrue(key_check("127.0.0.1", "https://evil.example", own, "", "123456", True))
+        self.assertIsNone(key_check("127.0.0.1", "https://evil.example", own, "123456", "123456", True))
+        # Another PC: the code when it's asked for, as before when it isn't.
+        self.assertTrue(key_check("192.168.1.30", None, "192.168.1.20:8782", "", "123456", True))
+        self.assertTrue(key_check("192.168.1.30", None, "192.168.1.20:8782", "654321", "123456", True))
+        self.assertIsNone(key_check("192.168.1.30", None, "192.168.1.20:8782", "123456", "123456", True))
+        self.assertIsNone(key_check("192.168.1.30", None, "192.168.1.20:8782", "", "123456", False))
+        self.assertIsNone(key_check("192.168.1.30", "http://192.168.1.20:8782", "192.168.1.20:8782", "", "123456", False))
+        # (a site on the internet, through a browser on the network: never without the code)
+        self.assertTrue(key_check("192.168.1.30", "https://evil.example", "192.168.1.20:8782", "", "123456", False))
+
+    def test_server(self):
+        from gfxengine.app import Engine, start
+        tmp = tempfile.mkdtemp()
+        settings = Settings(os.path.join(tmp, "settings.json"))
+        self.assertTrue(settings.get()["require_key"])   # (a new install asks for it)
+        settings.update({"http_port": 8795})
+        engine = Engine(settings, os.path.join(tmp, "workspaces"), starter=os.path.join(ROOT, "starter"),
+                        library_dir=os.path.join(tmp, "library"), legacy_dir=os.path.join(tmp, "none"))
+        engine.updater.check_in_background = lambda: None
+        start(engine)
+        self.addCleanup(engine.server.stop)
+        base = "http://127.0.0.1:8795"
+        key = settings.get()["network_key"]
+        self.assertRegex(key, r"^\d{6}$")
+
+        def post(path, body, **headers):
+            req = urllib.request.Request(base + path, json.dumps(body).encode(),
+                                         dict({"Content-Type": "application/json"}, **headers))
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    return r.status, json.loads(r.read())
+            except urllib.error.HTTPError as e:
+                return e.code, json.loads(e.read())
+
+        status, r = post("/api/ingest", {"source": "RL HUD", "fields": {}})
+        self.assertEqual(status, 200)
+        status, r = post("/api/ingest", {"source": "RL HUD", "fields": {}}, Origin="https://evil.example")
+        self.assertEqual((status, r["code"]), (401, "key_needed"))
+        status, r = post("/api/ingest", {"source": "RL HUD", "fields": {}}, Origin="https://evil.example", **{"X-SCC-Key": key})
+        self.assertEqual(status, 200)
+        # The code: shown on this PC; a new one replaces it; settings can't set it.
+        status, r = post("/api/network/key", {})
+        self.assertEqual((r["key"], r["require"]), (key, True))
+        status, r = post("/api/network/key", {"new": True})
+        self.assertNotEqual(r["key"], key)
+        self.assertEqual(settings.get()["network_key"], r["key"])
+        post("/api/settings", {"network_key": "111111", "require_key": False})
+        self.assertEqual(settings.get()["network_key"], r["key"])
+        self.assertFalse(settings.get()["require_key"])
+        # Outputs stay open.
+        with urllib.request.urlopen(urllib.request.Request(base + "/api/state", headers={"Origin": "https://x.example"}),
+                                    timeout=10) as resp:
+            self.assertNotIn(key, resp.read().decode())
+
+    def test_old_install_keeps_working(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        path = os.path.join(tmp, "settings.json")
+        with open(path, "w") as f:
+            json.dump({"name": "Stream PC"}, f)
+        self.assertFalse(Settings(path).get()["require_key"])
+
+    def test_hud_sends_the_code(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "shared_link", os.path.join(ROOT, "..", "..", "scc_shared", "enginelink.py"))
+        link = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(link)
+        seen = {}
+        real = link._opener.open
+
+        def open_(req, timeout=None):
+            seen["key"] = req.get_header("X-scc-key") if hasattr(req, "get_header") else None
+            raise OSError("offline")
+        link._opener.open = open_
+        try:
+            with self.assertRaises(OSError):
+                link._post("http://127.0.0.1:1/api/ingest", {}, 1, key="123456")
+        finally:
+            link._opener.open = real
+        self.assertEqual(seen["key"], "123456")
+        store = {}
+        hud = link.EngineLink("RL HUD", "rl", lambda: {}, lambda g, f: "", lambda: {"url": "http://x:8782"},
+                              lambda d: store.update(saved=d))
+        hud.stop()
+        hud.set_key("12 34 56")
+        self.assertEqual((hud.key, store["saved"]["key"]), ("123456", "123456"))
+        err = hud._paired_error({"code": "key_needed", "error": "x"})
+        self.assertEqual(err.code, "key_needed")
+        self.assertTrue(hud.status()["key_needed"])

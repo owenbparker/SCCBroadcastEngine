@@ -41,6 +41,13 @@ DEFAULTS = {
     "network_address": "",
     # This engine's name on the network.
     "name": "",
+    # The pairing code (6 digits, made once): other PCs that change anything
+    # (a HUD on another PC, Companion, the control panel opened there) send it.
+    "network_key": "",
+    # Other PCs need the pairing code to change anything (outputs and every
+    # other read stay open). On for new installs; off for ones that ran
+    # before it existed, so nothing stops working after an update.
+    "require_key": False,
     # This engine's own ID (made once): a game HUD pairs with it, so a HUD
     # never sends to, or takes Global Information from, another engine.
     "engine_id": "",
@@ -60,6 +67,8 @@ class Settings:
     def __init__(self, path=SETTINGS_PATH):
         self.path = path
         self.data = copy.deepcopy(DEFAULTS)
+        if not os.path.exists(path):
+            self.data["require_key"] = True   # (a new install: ask for the code from the start)
         if os.path.exists(path):
             try:
                 with open(path, encoding="utf-8") as f:

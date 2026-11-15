@@ -49,6 +49,7 @@
     <div class="eng-row"><button id="eng-scan">Scan the network</button><span class="note" id="eng-scan-note"></span></div>
     <div class="eng-list" id="eng-list"></div>
     <div class="eng-row"><input id="eng-url" placeholder="Or type its address, e.g. 192.168.1.20" spellcheck="false"><button id="eng-connect">Connect</button></div>
+    <div class="eng-row" id="eng-key-row" hidden><input id="eng-key" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="The engine's pairing code (on its PC: Outputs > Network)"><button id="eng-key-go">Use code</button></div>
     <div class="eng-global" id="eng-global" hidden>
       <button class="big" id="eng-use">Use Global Information</button>
       <p class="note" id="eng-follow-note">Takes the team names, short names and logos from the engine's Global configuration into this HUD (left and right as they are there).</p>
@@ -79,6 +80,7 @@
       : s.ok ? `${s.url} · sending (last ${s.age == null ? "–" : s.age + " s"} ago)` + (s.warning ? ` · ⚠ ${s.warning}` : "")
       : `${s.url} · ${s.error || "connecting…"}`;
     $("eng-disconnect").hidden = !s.connected;
+    $("eng-key-row").hidden = !(s.connected && s.key_needed);
     $("eng-global").hidden = !s.url;
     $("eng-use").disabled = !s.url;
     $("eng-follow-note").textContent = s.follow
@@ -117,6 +119,13 @@
   $("eng-list").addEventListener("click", e => { const b = e.target.closest("button[data-url]"); if (b) connect(b.dataset.url); });
   $("eng-connect").addEventListener("click", () => connect($("eng-url").value));
   $("eng-url").addEventListener("keydown", e => { if (e.key === "Enter") connect($("eng-url").value); });
+  async function useKey() {
+    const key = $("eng-key").value.replace(/\D/g, "");
+    if (!key) return note("Type the engine's pairing code", true);
+    try { render(await call("/api/engine/key", { key })); $("eng-key").value = ""; note("Trying the code…"); } catch (e) { note(e.message, true); }
+  }
+  $("eng-key-go").addEventListener("click", useKey);
+  $("eng-key").addEventListener("keydown", e => { if (e.key === "Enter") useKey(); });
   $("eng-disconnect").addEventListener("click", async () => { render(await call("/api/engine/disconnect")); });
   $("eng-use").addEventListener("click", async () => {
     const btn = $("eng-use");

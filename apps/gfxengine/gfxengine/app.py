@@ -12,7 +12,9 @@ Bitfocus Companion uses /api/companion (see companion.py).
 """
 
 import copy
+import hmac
 import ipaddress
+import secrets
 import json
 import mimetypes
 import os
@@ -72,6 +74,64 @@ def _is_local(ip):
     return ip in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
 
+def new_key():
+    """A fresh 6-digit pairing code."""
+    return f"{secrets.randbelow(10 ** 6):06d}"
+
+
+KEY_NEEDED = "This engine needs its pairing code (on the engine's PC: Outputs > Network)"
+
+
+def key_check(client_ip, origin, host, given, key, require):
+    """Whether a request that changes something may: None if it may, else why not.
+
+    - On this PC, from a program (a HUD, Companion, no Origin) or from a page
+      this PC serves (the control panel, a HUD's page): yes.
+    - On this PC, from some other web page (a site open in a browser here): only
+      with the code, so a web page can't drive the engine.
+    - From another PC: with the code when require_key is on; as before when off.
+    """
+    if key and given and hmac.compare_digest(str(given).strip().encode(), str(key).encode()):
+        return None
+    if _is_local(client_ip):
+        if not origin or _own_origin(origin, host):
+            return None
+        return KEY_NEEDED
+    if not require:
+        if origin and origin != "null" and not _own_origin(origin, host) and not _lan_origin(origin):
+            return KEY_NEEDED   # (a web page on the internet, through a browser on the network)
+        return None
+    return KEY_NEEDED
+
+
+def _origin_host(origin):
+    try:
+        return (urlparse(origin).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _own_origin(origin, host):
+    """A page served by this PC (any of its apps' ports) or by this engine."""
+    o = _origin_host(origin)
+    if not o:
+        return False
+    if o in ("localhost", "127.0.0.1", "::1"):
+        return True
+    if host and o == (host.rsplit(":", 1)[0] if not host.startswith("[") else host[1:host.find("]")]).lower():
+        return True
+    return o in discover.own_addresses()
+
+
+def _lan_origin(origin):
+    o = _origin_host(origin)
+    try:
+        ip = ipaddress.ip_address(o)
+    except ValueError:
+        return o.endswith(".local") or "." not in o   # (a PC's name on the network)
+    return ip.is_private
+
+
 class Engine:
     def __init__(self, settings=None, workspaces_dir=None, starter=None, library_dir=None, legacy_dir=None):
         from . import config
@@ -89,6 +149,8 @@ class Engine:
         # Data sent by game HUDs ("League HUD" -> its fields), kept while the engine runs.
         self.feeds = {}
         self.feeds_rev = 0
+        if not self.settings.get().get("network_key"):
+            self.settings.update({"network_key": new_key()})
         if not self.settings.get().get("engine_id") or self.settings.get().get("engine_id_pc") != socket.gethostname():
             self.settings.update({"engine_id": uuid.uuid4().hex[:16], "engine_id_pc": socket.gethostname()})
         self.id = self.settings.get()["engine_id"]
@@ -222,7 +284,7 @@ class Engine:
         project = self.ws.snapshot()
         return {
             "app": {"name": self.name(), "version": self.updater.current, "port": s["http_port"],
-                    "network": s["allow_network"],
+                    "network": s["allow_network"], "require_key": bool(s.get("require_key")),
                     # (where other PCs reach it: the one network chosen, or every one)
                     "addresses": [s["network_address"]] if s.get("network_address") else discover.own_addresses(),
                     "all_addresses": discover.own_addresses(), "network_address": s.get("network_address") or "",
@@ -805,6 +867,12 @@ def make_handler(engine):
         def _allowed(self):
             return _is_local(self.client_address[0]) or engine.settings.get()["allow_network"]
 
+        def _key_problem(self):
+            s = engine.settings.get()
+            given = self.headers.get("X-SCC-Key") or (parse_qs(urlparse(self.path).query).get("key") or [""])[0]
+            return key_check(self.client_address[0], self.headers.get("Origin"), self.headers.get("Host"),
+                             given, s.get("network_key"), s.get("require_key"))
+
         def _send(self, body, ctype="application/json", status=200, headers=None):
             if isinstance(body, str):
                 body = body.encode("utf-8")
@@ -887,7 +955,7 @@ def make_handler(engine):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Filename")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Filename, X-SCC-Key")
             self.send_header("Content-Length", "0")
             self.end_headers()
 
@@ -1019,6 +1087,10 @@ def make_handler(engine):
         def do_POST(self):
             if not self._allowed():
                 return self._json({"error": "This engine doesn't allow other PCs (Outputs > Network)"}, 403)
+            problem = self._key_problem()
+            if problem:
+                self.close_connection = True   # (its body isn't read)
+                return self._json({"error": problem, "code": "key_needed"}, 401)
             path = urlparse(self.path).path
             if appearance.handle(self, "POST", path, DATA_DIR):
                 return
@@ -1077,7 +1149,7 @@ def make_handler(engine):
                     blob = share.build(ws, engine.assets, ids)
                     names = {c["id"]: c["name"] for c in ws.get()["compositions"]}
                     name = names.get(ids[0], "graphic") if len(ids) == 1 else ws.get()["name"]
-                    got = share.send(blob, str(body.get("url") or ""), name)
+                    got = share.send(blob, str(body.get("url") or ""), name, body.get("key") or "")
                     log(f"Sent {len(got.get('comps') or [])} graphic(s) to {body.get('url')}")
                     result = {"comps": [c.get("name") for c in got.get("comps") or []]}
                 elif path == "/api/hud-look":
@@ -1163,10 +1235,24 @@ def make_handler(engine):
                         raise ValueError("Settings can only be changed on the engine's own PC")
                     if body.get("network_address"):
                         ipaddress.IPv4Address(str(body["network_address"]))   # (ValueError: not an address)
+                    body = {k: v for k, v in body.items() if k != "network_key"}
                     engine.settings.update(body)
                     if "network_address" in body and engine.server:
                         engine.server.rebind(engine.settings.get()["network_address"] or "")
                     engine.changed()
+                elif path == "/api/network/key":
+                    # The pairing code (only to this PC, or a PC that already has it).
+                    s = engine.settings.get()
+                    given = self.headers.get("X-SCC-Key") or ""
+                    if not local and not (given and hmac.compare_digest(given.strip().encode(), s["network_key"].encode())):
+                        raise ValueError("The pairing code is shown on the engine's own PC")
+                    if body.get("new"):
+                        if not local:
+                            raise ValueError("A new pairing code can only be made on the engine's own PC")
+                        engine.settings.update({"network_key": new_key()})
+                        log("Made a new pairing code: other PCs need the new one")
+                    s = engine.settings.get()
+                    return self._json({"key": s["network_key"], "require": bool(s.get("require_key"))})
                 elif path == "/api/camera-looks":
                     looks = body.get("looks")
                     if not isinstance(looks, list) or len(json.dumps(looks)) > 512 * 1024:
@@ -1192,6 +1278,8 @@ def make_handler(engine):
                 self._json({"error": f"Missing or unknown: {e}"}, 400)
             except Paired as e:
                 self._json({"error": str(e), "code": e.code, "id": engine.id}, 409)
+            except share.KeyNeeded as e:
+                self._json({"error": str(e), "code": "key_needed"}, 400)
             except (ValueError, TypeError, OSError) as e:
                 self._json({"error": str(e)}, 400)
 
