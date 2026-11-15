@@ -57,6 +57,11 @@ DEFAULTS = {
     # The overlay made in the GFX Engine (Composer > Add to a HUD): shown at
     # /overlay when it's here and "use" is on (/overlay-classic is the built-in one).
     "look": {"use": True},
+    # The built-in design at /overlay: "classic" (after the RLCS 2026 broadcast)
+    # or "gerrit2026" (Gerrit 2026: three player cams a side and the last goal
+    # along the bottom). A picked built-in design other than classic wins over
+    # the GFX Engine overlay.
+    "design": "classic",
     # The SCC GFX Engine this HUD sends its game and series to (see rlhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},
 }

@@ -124,6 +124,9 @@ class GameTests(unittest.TestCase):
         self.assertEqual(g.snapshot(now=110)["events"], [])     # gone after a few seconds
         g.apply("GoalScored", {"GoalSpeed": 2500, "Scorer": {"Name": "DRALII", "TeamNum": 0}}, now=120)
         self.assertEqual(g.snapshot(now=121)["phase"], "goal")
+        # The last goal stays (Gerrit 2026's bottom bar) after the goal itself has gone, until a new match.
+        self.assertIsNone(g.snapshot(now=140)["goal"])
+        self.assertEqual(g.snapshot(now=140)["last_goal"]["scorer"]["name"], "DRALII")
         g.apply("GoalReplayStart", {}, now=123)
         self.assertEqual(g.snapshot(now=123)["phase"], "replay")
         g.apply("GoalReplayEnd", {}, now=128)
@@ -160,10 +163,21 @@ class ServerTests(unittest.TestCase):
                     return json.loads(urllib.request.urlopen(req, timeout=5).read())
 
                 for path in ("/start", "/control", "/observer", "/overlay", "/overlay-classic", "/spectated-cam", "/look-live.js",
-                             "/update.js", "/enginelink.js", "/fonts/Saira-ExtraBoldItalic.ttf"):
+                             "/update.js", "/enginelink.js", "/fonts/Saira-ExtraBoldItalic.ttf", "/overlay-gerrit2026",
+                             "/fonts/Barlow-700-italic.woff2", "/designs/gerrit2026/bar.png", "/designs/gerrit2026/goal.png",
+                             "/designs/gerrit2026/assist.png", "/designs/gerrit2026/ball.png"):
                     with urllib.request.urlopen(base + path, timeout=5) as r:
                         self.assertEqual(r.status, 200, path)
                         r.read()
+                # The HUD design: Gerrit 2026 at /overlay once picked (and the classic one back).
+                page = lambda p: urllib.request.urlopen(base + p, timeout=5).read().decode()
+                self.assertNotIn("Gerrit 2026", page("/overlay"))
+                post("/api/config", {"design": "gerrit2026"})
+                self.assertIn("Gerrit 2026", page("/overlay"))
+                self.assertIn("Gerrit 2026", page("/overlay-gerrit2026"))
+                self.assertNotIn("Gerrit 2026", page("/overlay-classic"))
+                post("/api/config", {"design": "classic"})
+                self.assertNotIn("Gerrit 2026", page("/overlay"))
                 # An observer PC sends the game.
                 post("/api/ingest", {"messages": [["UpdateState", UPDATE["Data"]]]})
                 state = json.loads(urllib.request.urlopen(base + "/api/state", timeout=5).read())
