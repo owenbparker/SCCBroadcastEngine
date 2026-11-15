@@ -63,8 +63,13 @@ class Frame:
 
     def __init__(self, image):
         # A capture of just the top of the window says how tall the whole was.
-        full = image.info.get("full_height", image.height) if hasattr(image, "info") else image.height
+        info = image.info if hasattr(image, "info") else {}
+        full = info.get("full_height", image.height)
         self.image = image.convert("RGB")
+        # The game's picture inside black bars (a 16:10 or 4:3 screen showing
+        # 16:9): the layout is found inside them.
+        self.top, bottom = (0, 0) if "full_height" in info else letterbox(self.image)
+        full -= self.top + bottom
         self.k = full / REF_H
         self.cx = self.image.width / 2
 
@@ -72,7 +77,7 @@ class Frame:
         return round(self.cx + (x - 960) * self.k)
 
     def y(self, y):
-        return round(y * self.k)
+        return round(self.top + y * self.k)
 
     def crop(self, x0, y0, x1, y1, size=None):
         """A region given in 1080p coordinates, resized back to 1080p scale
@@ -86,6 +91,25 @@ class Frame:
 def _np():
     import numpy
     return numpy
+
+
+def letterbox(image):
+    """(top, bottom): the black bars above and below a 16:9 picture on a
+    taller screen (16:10, 4:3), in pixels; (0, 0) for none. The bars are
+    where a 16:9 picture would leave them, and must be black there (a dark
+    scene can make the black run further, never shorter)."""
+    np = _np()
+    w, h = image.size
+    inner = round(w * 9 / 16)
+    if h - inner < max(8, h * 0.02):
+        return 0, 0
+    top = (h - inner) // 2
+    bottom = h - inner - top
+    step = max(1, w // 240)
+    g = np.asarray(image.convert("L"))[:, ::step]
+    if (g[:max(1, top - 1)] <= 8).all() and (g[h - max(1, bottom - 1):] <= 8).all():
+        return top, bottom
+    return 0, 0
 
 
 # --- agents and weapons -----------------------------------------------------
@@ -1269,6 +1293,7 @@ class ScreenReader:
 
     def info(self):
         return {"available": self.available, "enabled": self.enabled, "status": self.status if self.available else self.reason,
+                "detail": getattr(self, "detail", "") if self.enabled else "",
                 "spectate": self.spectate, "spectate_status": self.spectate_status if self.available else self.reason,
                 "age": round(time.time() - self.read_at, 1) if self.read_at else None}
 
@@ -1628,6 +1653,28 @@ class ScreenReader:
         else:
             self._shadow_differs = 0.0
 
+    def _describe(self, frame, update):
+        """One plain line on what the reader sees now (Live data shows it)."""
+        m = update.get("match") or {}
+        bits = ["Top bar found" + (f" (the game's picture is inside black bars, {frame.top} px)" if frame.top else "")]
+        s, shape = m.get("score"), m.get("score_shape")
+        if s:
+            bits.append(f"score {s['left']}-{s['right']}" + (
+                "" if not shape else " (digit shapes agree)" if shape == s
+                else f" (digit shapes say {shape['left']}-{shape['right']})"))
+        elif shape:
+            bits.append(f"score {shape['left']}-{shape['right']} by digit shapes only")
+        else:
+            bits.append("score not read")
+        if m.get("scoreboard_open"):
+            rows = [p for p in update.get("players") or [] if p.get("kills") is not None or p.get("kda_shape")]
+            bits.append(f"Tab scoreboard open ({len(rows)} of {len(update.get('players') or [])} rows' K/D/A read)")
+        else:
+            bits.append("Tab scoreboard closed")
+        known = [f"{name} {len(self.bank.known(kind))}/10" for kind, name in (("score", "score"), ("kda", "K/D/A"))]
+        bits.append("digits learned: " + ", ".join(known))
+        return "; ".join(bits) + "."
+
     def _run(self):
         last_reason = None
         while not self._stop.is_set():
@@ -1654,15 +1701,19 @@ class ScreenReader:
                     # Neither agent select nor the match's top bar: a screen
                     # the reader doesn't know (kept, a few, for tuning it).
                     self._keep_frame(image, "unknown")
-                if image is None or self.select.active:
-                    pass   # (agent select is sent by the tracker: no match to read)
+                if image is None:
+                    self.detail = ""
+                elif self.select.active:
+                    self.detail = "Agent select on screen."   # (sent by the agent select tracker: no match to read)
                 elif not in_match(Frame(image)):
-                    pass   # (a loading screen, a menu, the end of the match: nothing to read)
+                    # (a loading screen, a menu, the end of the match: nothing to read)
+                    self.detail = "No match on screen (a menu, loading, or the match is over): waiting for the top bar."
                 else:
                     update = read_frame(image, self.ocr, self.agents, self.bank)
                     if time.time() - self._bank_saved > 60:
                         self._bank_saved = time.time()
                         self.bank.save()
+                    self.detail = self._describe(Frame(image), update)
                     self._shadow(update)
                     _drop_shadow_fields(update)   # (the shapes' readings are the new reader's: not the HUD's yet)
                     # (this frame's own top-bar agents: a learned one only

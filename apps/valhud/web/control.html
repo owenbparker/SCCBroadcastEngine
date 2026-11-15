@@ -640,7 +640,7 @@ function apply(s) {
   $("reader").textContent = rd.enabled ? "Reading VALORANT — click to stop" : "Read VALORANT on this PC";
   $("reader").disabled = !rd.available;
   $("reader-status").textContent = !rd.available ? rd.status
-    : rd.enabled ? `${rd.status}${rd.age != null ? ` (last read ${rd.age}s ago)` : ""}. Keep the top bar visible; open the Tab scoreboard (e.g. in the buy phase) to read names, credits, weapons, ults and K/D/A.`
+    : rd.enabled ? `${rd.status}${rd.age != null ? ` (last read ${rd.age}s ago)` : ""}. ${rd.detail ? rd.detail + " " : ""}Keep the top bar visible; open the Tab scoreboard (e.g. in the buy phase) to read names, credits, weapons, ults and K/D/A.`
     : "Off. Turn on when VALORANT (spectating) runs on this PC.";
   const riot = app.riot || {};
   $("riot-status").textContent = riot.received != null && riot.received < 30
