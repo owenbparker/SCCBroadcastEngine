@@ -369,6 +369,8 @@ def make_handler(shell):
                     shell.updater.check()
                 elif path == "/api/update/install":
                     shell.updater.install_in_background()
+                elif path == "/api/update/rollback":
+                    shell.updater.rollback_in_background()
                 elif path == "/api/open-folder":
                     open_folder(DATA_DIR if body.get("which") != "app" else APP_DIR)
                 else:

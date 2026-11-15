@@ -441,6 +441,12 @@ function renderSettings() {
   ib.hidden = !(up.available && up.can_install) && !["downloading", "installing"].includes(up.status);
   ib.disabled = ["downloading", "installing"].includes(up.status);
   ib.textContent = up.status === "downloading" ? `Downloading ${up.progress}%` : up.status === "installing" ? "Installing…" : `Install ${up.latest}`;
+  if (up.busy && up.available) ib.title = `${up.busy}: update once it's over`;
+  const back = $("#u-back");
+  back.hidden = !(up.previous && up.can_install) || ib.disabled;
+  back.textContent = `↩ Go back to ${up.previous || ""}`;
+  back.dataset.version = up.previous || "";
+  if (up.channel === "test") $("#u-version").textContent += " (test builds)";
   $("#f-app").textContent = S.app.app_dir;
   $("#f-data").textContent = S.app.data_dir;
 }
@@ -457,6 +463,10 @@ $("#solid-colour").addEventListener("change", e => post("/api/settings", { solid
 $("#home-name").addEventListener("change", e => post("/api/settings", { name: e.target.value }));
 $("#u-check").onclick = () => post("/api/update/check", {});
 $("#u-install").onclick = () => post("/api/update/install", {});
+$("#u-back").onclick = () => {
+  if (confirm(`Go back to ${$("#u-back").dataset.version}?\n\nThis puts back the version you had before the last update. Everything closes and reopens (about 15 seconds): graphics and HUDs go blank in OBS until it's back. Your data is kept.`))
+    post("/api/update/rollback", {});
+};
 $("#chip-update").addEventListener("click", () => setTimeout(() => go("settings/updates")));
 $("#open-data").onclick = () => post("/api/open-folder", { which: "data" });
 $("#open-app").onclick = () => post("/api/open-folder", { which: "app" });
