@@ -11,7 +11,7 @@ from .capture import Capture, make_dpi_aware
 from .demo import ScreenshotDemo
 from .log import log
 from .names import NameReader, best_match
-from .postgame import PostgameReader
+from .postgame import PostgameReader, ScoreboardSaver
 
 
 class Hub:
@@ -62,7 +62,12 @@ class Scanner:
         self.game = ScreenshotDemo()
         self.debounce = detect.HudDebounce()
         self.names = NameReader()
-        self.postgame = PostgameReader()
+        if demo:
+            self.postgame = PostgameReader()
+        else:
+            import os
+            from .config import DATA_DIR
+            self.postgame = PostgameReader(saver=ScoreboardSaver(os.path.join(DATA_DIR, "scoreboards")))
         self.frame = None
         self.status = "Starting"
         self.raw = "off"
