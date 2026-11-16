@@ -416,11 +416,12 @@ $("#update-back").addEventListener("click", e => {
     const textColours = comp.layers.some(l => /\{\{\s*Global!Text (primary|secondary)\s*\}\}/i.test(l.color || ""));
     const pics = comp.layers.some(l => /\{\{\s*Stats!.*(headshot|champion)\}\}/i.test(l.src || ""));
     const uses = re => comp.layers.some(l => re.test((l.text || "") + (l.src || "") + (l.show || "")));
+    const bugLoop = uses(/\{\{\s*Global!Bug loop\s*\}\}/i);
     const spot = uses(/\{\{\s*Spotlight!/i), h2h = uses(/\{\{\s*Head to head!/i), past = uses(/\{\{\s*Results!/i);
     // (Player stats has its own setting: its picture is the MVP's)
     const picsPage = comp.layers.some(l => /\{\{\s*Stats!MVP (headshot|champion)\}\}/i.test(l.src || "")) ? "player" : "team";
-    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent, past) : null, spot ? spotlightField(s) : null, h2h ? h2hField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null, textColours ? textColoursField(s) : null].filter(Boolean);
-    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage, textColours, spot, h2h, past,
+    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent, past) : null, spot ? spotlightField(s) : null, bugLoop ? bugLoopField(s) : null, h2h ? h2hField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null, textColours ? textColoursField(s) : null].filter(Boolean);
+    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage, textColours, spot, h2h, past, bugLoop,
       Object.keys(s.data.feeds || {}), (s.data.tables.Global || []).map(r => r[0]),
       comp.hud ? JSON.stringify(s.data.feeds[comp.hud.split("/")[0]] && s.data.feeds[comp.hud.split("/")[0]].unreachable) : ""]);
     if (!force && box.dataset.sig === sig) {
@@ -444,7 +445,7 @@ $("#update-back").addEventListener("click", e => {
     const same = box.dataset.comp === comp.id;
     box.dataset.comp = comp.id;
     if (!fields.length) {
-      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || mvp || caster || pics || textColours || spot || h2h || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
+      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || mvp || caster || pics || textColours || spot || h2h || bugLoop || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
       return;
     }
     keepScroll(box, () => { box.replaceChildren(...fields.map(l => {
@@ -620,6 +621,17 @@ $("#update-back").addEventListener("click", e => {
     markSize(el, s);
     return el;
   }
+  // The Back in bug's background: the live background loop, or the design's own picture (Global's).
+  function bugLoopField(s) {
+    const el = h("div", { class: "field bug-loop-field" },
+      h("label", {}, "Background", h("span", { class: "kind" }, "global")),
+      h("div", { class: "seg", "data-k": "bug-loop" },
+        h("button", { "data-v": "1", onclick: () => api("/api/global", { global: { bug_loop: true } }) }, "BG loop"),
+        h("button", { "data-v": "", onclick: () => api("/api/global", { global: { bug_loop: false } }) }, "Design's picture")),
+      h("div", { class: "resolved" }, "Behind VS and the tabs. The boxes behind the logos take each team's colour from Global."));
+    markSize(el, s);
+    return el;
+  }
   // The Head to Head board's two players: each team's top player by the game's stats, or one picked.
   function h2hField(s) {
     const set = (side, v) => api("/api/global", { global: { h2h: { [side]: v } } });
@@ -691,6 +703,8 @@ $("#update-back").addEventListener("click", e => {
       const res = Object.fromEntries((s.data.tables.Results || []).slice(1));
       el.querySelector("[data-k=roster-note]").textContent += ` ${res.Count || 0} past result${res.Count === "1" ? "" : "s"} for ${res.Team || "this team"} on the Tournament page (the latest 4 show).`;
     }
+    for (const b of el.querySelectorAll("[data-k=bug-loop] button"))
+      b.classList.toggle("on", (s.global.bug_loop !== false ? "1" : "") === b.dataset.v);
     const sp = Object.fromEntries((s.data.tables.Spotlight || []).slice(1));
     const players = side => { const S = side === "left" ? "Left" : "Right", out = [];
       for (let n = 1; n <= 10 && (`${S} player ${n}` in sp); n++) out.push([n, sp[`${S} player ${n}`]]);

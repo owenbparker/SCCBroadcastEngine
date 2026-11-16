@@ -1762,6 +1762,10 @@ class NewPackGraphicsTests(unittest.TestCase):
         self.assertIn("{{Run of show!Now text}}", text("Footer"))
         self.assertIn("{{countdown:Run of show!Next map at}}", text("Footer"))
         self.assertIn("{{Global!Left logo}}", text("Back in bug"))
+        bug = {l["name"]: l for l in comps["Back in bug"]["layers"]}
+        self.assertEqual((bug["Left colour"]["fill"], bug["Right colour"]["fill"]), ("{{Global!Left color}}", "{{Global!Right color}}"))
+        self.assertEqual(bug["Background loop"]["show"], "{{Global!Bug loop}}")
+        self.assertTrue(os.path.isfile(os.path.join(ROOT, "starter", bug["Background loop"]["mask"])))
         self.assertIn("{{clock}}", text("Back soon bug"))
         self.assertIn("{{Spotlight!Headshot}}", text("Head chicklet"))
         self.assertEqual(len([l for l in comps["Caster 3x lower third"]["layers"] if l.get("field", "").startswith("Caster")]), 6)
