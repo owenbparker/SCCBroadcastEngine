@@ -63,7 +63,8 @@ DEFAULTS = {
     # along the bottom) or "newgerrit" (NEW GERRIT: the HUD, and around a goal
     # the cams, the replay stinger and the replay lower third). A picked
     # built-in design other than classic wins over the GFX Engine overlay.
-    "design": "classic",
+    # NEW GERRIT is the default (owen, 2026-11-16); a design already picked stays.
+    "design": "newgerrit",
     # NEW GERRIT's replay stinger, played as the game's replay starts. By
     # default the connected GFX Engine's "Replay stinger" (else the built-in
     # SCC one); "src" is your own instead (uploaded, an optional override),
