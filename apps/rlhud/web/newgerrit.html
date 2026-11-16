@@ -90,11 +90,11 @@
   .foot .code.l { left: 0; } .foot .code.r { left: 370px; }
   .foot .bg { position: absolute; left: 75px; top: 0; width: 298px; height: 23px; background: var(--panel); }
   .pips { position: absolute; left: 82px; top: 5px; width: 284px; height: 13px; display: flex; justify-content: center; gap: 5px; }
-  /* The series: no colour until a game is won (blue fills from the left,
-     orange from the right); the middle one (the decider) is picked out dark. */
-  .pips i { flex: 0 1 53px; height: 13px; background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.16);
-            transition: background .4s, box-shadow .4s; }
-  .pips i.mid { background: var(--pip); box-shadow: inset 0 0 0 1.5px #fff; }
+  /* The series: plain grey boxes until a game is won (blue fills from the left,
+     orange from the right); only the middle one (the decider) is dark navy with
+     a white edge, as in the design. No animation. */
+  .pips i { flex: 0 1 53px; height: 13px; background: var(--pip); transition: background .4s, box-shadow .4s; }
+  .pips i.mid { background: var(--deep); box-shadow: inset 0 0 0 1.5px #fff; }
   .pips i.l { background: var(--blue); box-shadow: inset 0 0 0 2px rgba(255,255,255,.18); }
   .pips i.r { background: var(--orange); box-shadow: inset 0 0 0 2px rgba(255,255,255,.18); }
 
