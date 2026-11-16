@@ -350,7 +350,7 @@ const Ros = (() => {
   document.addEventListener("keydown", e => { if (e.key === "Escape" && !modal.hidden) closeBox(); });
 
   function exportFile(ids) {
-    location.href = "/api/ros/export?ids=" + encodeURIComponent(ids.join(","));
+    location.href = BASE + "/api/ros/export?ids=" + encodeURIComponent(ids.join(","));
   }
 
   const segCount = t => t.blocks.reduce((n, b) => n + b.segments.length, 0);

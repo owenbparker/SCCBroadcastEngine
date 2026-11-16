@@ -310,3 +310,9 @@ button.danger { background: rgba(255,55,95,.12); color: #ff8aa3; }
 .bar.icons .t:not(.on) .d.g, .bar.icons .t:not(.on) .d.r, .bar.icons .t:not(.on) .d.y { margin-left: 4px; }
 .chip.ws b { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .bar .right { flex: none; }
+
+/* In a browser on the network (http://<pc>:8782/control): that PC's Control,
+   run of show and engine pages; the app's own settings stay in its window. */
+.remote [data-go="home"], .remote [data-go="stream"], .remote [data-menu="games"],
+.remote #chip-settings, .remote #chip-update,
+.remote #menu-build a[href="#builder"], .remote #menu-system a[href="#settings"] { display: none !important; }

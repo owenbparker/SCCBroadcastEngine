@@ -50,15 +50,41 @@ const ROLES = [
 ];
 const STATUS = { on: ["g", "Running"], starting: ["y", "Starting…"], stopping: ["y", "Stopping…"], error: ["r", "Didn't start"], off: ["", "Off"] };
 
+// Opened in a browser through the GFX Engine's port (http://<pc>:8782/sccbe/,
+// where http://<pc>:8782/control now leads): the same top bar, Control with its
+// run of show and the engine's pages, on that PC's engine. This PC's settings,
+// game HUDs, HUD Builder and Multistream stay in the app's own window.
+const BASE = location.pathname.startsWith("/sccbe/") ? "/sccbe" : "";
+const REMOTE = !!BASE;
+const REMOTE_ROUTES = /^(engine(\/|$)|ros$)/;
+const KEY_STORE = "scc-pairing-code";   // (the engine's own pages keep the code here too)
+let pairing = new URLSearchParams(location.search).get("key") || "";
+if (REMOTE) document.documentElement.classList.add("remote");
+
 let S = null;              // the latest /api/state
 let route = "home";
 const frames = {};         // part key -> iframe
 let monFrames = null;      // Home's Preview / Program monitors
 let navSeq = 0;            // goes up each time the top bar (or the address) changes page
 
-async function api(path, body) {
-  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+function pairingCode() {
+  if (pairing) return pairing.replace(/\D/g, "");
+  try { return (localStorage.getItem(KEY_STORE) || "").replace(/\D/g, ""); } catch (e) { return ""; }
+}
+async function api(path, body, again) {
+  const headers = { "Content-Type": "application/json" };
+  if (REMOTE && pairingCode()) headers["X-SCC-Key"] = pairingCode();
+  const r = await fetch(BASE + path, body === undefined ? {} : { method: "POST", headers, body: JSON.stringify(body) });
   const data = await r.json();
+  if (REMOTE && r.status === 401 && data.code === "key_needed" && !again) {
+    // (the engine on that PC wants its pairing code from other PCs)
+    const code = (prompt("This engine needs its pairing code.\nOn the engine's PC: System > Outputs & Network.") || "").replace(/\D/g, "");
+    if (code) {
+      pairing = "";
+      try { localStorage.setItem(KEY_STORE, code); } catch (e) { pairing = code; }
+      return api(path, body, true);
+    }
+  }
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 }
@@ -97,6 +123,11 @@ function go(r) { if (location.hash !== "#" + r) location.hash = r; else show(); 
 addEventListener("hashchange", show);
 function show() {
   route = location.hash.slice(1) || "home";
+  if (REMOTE && !REMOTE_ROUTES.test(route)) {
+    // (http://<pc>:8782/control#composer and the like land here as #composer)
+    route = "engine/" + (/^[a-z]+$/.test(route) && route !== "home" ? route : "control");
+    history.replaceState(null, "", "#" + route);
+  }
   navSeq++;
   try { localStorage.setItem("sccbe-route", route); } catch (e) { /* private window */ }
   closeMenus();
@@ -159,7 +190,8 @@ function showEngine(tab) {
   }
   if (!e.remote && p.status !== "on") return showOff(p);
   // (the Control PC's pairing code, so its control panel doesn't ask for it on this PC)
-  const key = e.remote && S.settings.control_pc_key ? `?key=${encodeURIComponent(S.settings.control_pc_key)}` : "";
+  const code = REMOTE ? pairing : e.remote && S.settings.control_pc_key;
+  const key = code ? `?key=${encodeURIComponent(code)}` : "";
   showFrame("engine", `${e.base}/control${key}#${tab}`);
 }
 
@@ -207,11 +239,11 @@ function renderBar() {
   const anyGame = games.find(g => g.status === "on");
   $("#d-games").className = "d" + (anyGame ? " g" : games.some(g => g.status === "error") ? " r" : "");
   const st = part("stream");
-  $("#d-stream").className = "d" + (st.status === "on" ? " g" : st.status === "error" ? " r" : "");
+  if (st) $("#d-stream").className = "d" + (st.status === "on" ? " g" : st.status === "error" ? " r" : "");
 
   const e = S.engine, chip = $("#chip-engine");
   const [cls, word] = !e.base ? ["", "off"] : e.ok ? (e.program && e.program.length ? ["g", "on air"] : ["g", e.remote ? "Control PC" : "ready"])
-    : part("engine").status === "starting" ? ["y", "starting"] : ["r", e.remote ? "can't reach" : "not running"];
+    : (part("engine") || {}).status === "starting" ? ["y", "starting"] : ["r", e.remote ? "can't reach" : "not running"];
   chip.querySelector(".dot").className = "dot " + cls;
   chip.querySelector("b").textContent = word;
   chip.title = e.base ? `The GFX Engine at ${e.base}` : "No GFX Engine on this PC";
@@ -224,7 +256,7 @@ function renderBar() {
 
   renderGamesMenu(games);
   const b = part("builder");
-  $("#st-builder").innerHTML = statusHtml(b);
+  if (b) $("#st-builder").innerHTML = statusHtml(b);
 }
 
 function statusHtml(p) {
@@ -244,7 +276,7 @@ function renderGamesMenu(games) {
 let rosOn = false;
 function rosPanel(on) {
   // (only when the engine's Control page is what's showing)
-  on = on && !!S.engine.base && (S.engine.remote || part("engine").status === "on");
+  on = on && !!S.engine.base && (S.engine.remote || (part("engine") || {}).status === "on");
   if (on === rosOn) return;
   rosOn = on;
   $("#ros-panel").hidden = !on;
@@ -568,7 +600,12 @@ $("#setup-go").onclick = () => {
 // --- start ------------------------------------------------------------------------
 
 paintIcons();
-try { const saved = localStorage.getItem("sccbe-route"); if (!location.hash && saved) history.replaceState(null, "", "#" + saved); } catch (e) { /* private window */ }
+try { const saved = localStorage.getItem("sccbe-route"); if (!REMOTE && !location.hash && saved) history.replaceState(null, "", "#" + saved); } catch (e) { /* private window */ }
+if (REMOTE) {
+  $(".brand").href = "#engine/control";
+  document.title = "SCC Broadcast Engine · Control";
+}
 route = location.hash.slice(1) || "home";
+if (REMOTE && !REMOTE_ROUTES.test(route)) show();
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 2000);
