@@ -1623,3 +1623,38 @@ class PairingCodeTests(unittest.TestCase):
         err = hud._paired_error({"code": "key_needed", "error": "x"})
         self.assertEqual(err.code, "key_needed")
         self.assertTrue(hud.status()["key_needed"])
+
+
+class OpponentLineupTests(unittest.TestCase):
+    def test_opponent_lineup_shows_the_other_team(self):
+        from gfxengine.app import Engine
+        tmp = tempfile.mkdtemp()
+        try:
+            engine = Engine(Settings(os.path.join(tmp, "settings.json")), os.path.join(tmp, "workspaces"),
+                            starter=os.path.join(ROOT, "starter"), library_dir=os.path.join(tmp, "library"),
+                            legacy_dir=os.path.join(tmp, "none"))
+            if not engine.ws:
+                engine.create_workspace("Test")
+            names = [c["name"] for c in engine.ws.data["compositions"]]
+            for n in range(1, 6):
+                self.assertIn(f"Opponent lineup ({n})", names)
+            opp = next(c for c in engine.ws.data["compositions"] if c["name"] == "Opponent lineup (5)")
+            mine = next(c for c in engine.ws.data["compositions"] if c["name"] == "Player graphic (5)")
+            text = json.dumps(opp)
+            self.assertNotIn("Roster!", text)
+            self.assertIn("{{Opponent!Player 5 headshot}}", text)
+            self.assertEqual(len(opp["layers"]), len(mine["layers"]))      # (the same design)
+            engine.save_teams([
+                {"name": "Home", "game": "", "players": [{"name": "Owen", "ign": "o", "country": "ca", "photo": "library/teams/players/o.png"}]},
+                {"name": "Away", "game": "", "players": [{"name": "Zed", "ign": "z", "country": "", "photo": "library/teams/players/z.png"}]}])
+            engine.set_global({"left": {"name": "Home"}, "right": {"name": "Away"}, "roster": "left"})
+            t = engine.data_snapshot()["tables"]
+            roster, other = dict(t["Roster"][1:]), dict(t["Opponent"][1:])
+            self.assertEqual((roster["Team"], roster["Player 1"]), ("Home", "Owen"))
+            self.assertEqual((other["Team"], other["Side"], other["Player 1"], other["Player 1 headshot"]),
+                             ("Away", "right", "Zed", "library/teams/players/z.png"))
+            engine.set_global({"roster": "right"})
+            t = engine.data_snapshot()["tables"]
+            self.assertEqual((dict(t["Roster"][1:])["Team"], dict(t["Opponent"][1:])["Team"]), ("Away", "Home"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

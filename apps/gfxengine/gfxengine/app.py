@@ -53,6 +53,16 @@ for ext, kind in ((".ttf", "font/ttf"), (".otf", "font/otf"), (".woff", "font/wo
 
 PAGES = {"/": "/control", "/control": "control.html", "/output": "output.html"}
 
+# SCC Broadcast Engine's own pages (its top bar and run of show), for a browser
+# on the network: /sccbe/... on this port is passed on to the app on this PC
+# (SCCBE_SHELL, set by the app). Opened in a browser, /control goes there.
+SHELL_PREFIX = "/sccbe"
+_HOST_RE = re.compile(r"^[A-Za-z0-9.\-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$")
+
+
+def shell_url():
+    return os.environ.get("SCCBE_SHELL") or ""
+
 
 # How long a HUD keeps its place on the engine after it last sent (another
 # copy of the same HUD is turned away meanwhile).
@@ -263,8 +273,11 @@ class Engine:
         snap["tables"]["Standings"] = standings.rows(g["standings"], self.teams.find, g["event"])
         side = g["roster"]
         stats_names = dict(r[:2] for r in snap["tables"]["Stats"][1:] if len(r) >= 2)
-        snap["tables"]["Roster"] = roster_rows(self.teams.find(g[side]["name"], g[side]["game"]), side,
-                                               [stats_names.get(f"{side.title()} player {i}", "") for i in range(1, 6)])
+        # "Roster" is the team the player graphics show; "Opponent" is the other
+        # team in Global, for the Opponent lineup graphics.
+        for table, s_ in (("Roster", side), ("Opponent", "right" if side == "left" else "left")):
+            snap["tables"][table] = roster_rows(self.teams.find(g[s_]["name"], g[s_]["game"]), s_,
+                                                [stats_names.get(f"{s_.title()} player {i}", "") for i in range(1, 6)])
         for name, feed in self.feeds.items():
             snap["tables"][name] = feed["rows"]
         snap["tables"]["HUDs"] = self.hud_rows()
@@ -1075,11 +1088,61 @@ def make_handler(engine):
         def do_HEAD(self):
             self.do_GET()
 
+        def _shell(self, path, body=None):
+            """Pass /sccbe/... on to SCC Broadcast Engine's own pages on this PC.
+            They answer as for a browser on another PC: only Control's run of
+            show, workspaces and tournaments, never the app's settings."""
+            import urllib.error
+            import urllib.request
+            base = shell_url()
+            if not base:
+                return self._json({"error": "Only in SCC Broadcast Engine"}, 404)
+            host = (self.headers.get("Host") or "").strip()
+            if not _HOST_RE.match(host):
+                host = f"127.0.0.1:{engine.settings.get()['http_port']}"
+            rest = path[len(SHELL_PREFIX):] or "/"
+            query = urlparse(self.path).query
+            headers = {"X-SCCBE-Remote": "http://" + host}
+            if body is not None:
+                headers["Content-Type"] = "application/json"
+            req = urllib.request.Request(base + rest + ("?" + query if query else ""), data=body, headers=headers,
+                                         method="POST" if body is not None else "GET")
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    status, got, blob = r.status, r.headers, r.read()
+            except urllib.error.HTTPError as e:
+                status, got, blob = e.code, e.headers, e.read()
+            except (urllib.error.URLError, OSError) as e:
+                return self._json({"error": f"SCC Broadcast Engine's pages aren't answering ({getattr(e, 'reason', e)})"}, 502)
+            extra = {}
+            if got.get("Content-Disposition"):
+                extra["Content-Disposition"] = got["Content-Disposition"]
+            return self._send(blob, got.get("Content-Type") or "application/octet-stream", status, extra)
+
         def do_GET(self):
             if not self._allowed():
                 return self._json({"error": "This engine doesn't allow other PCs (Outputs > Network)"}, 403)
             url = urlparse(self.path)
             path, q = url.path, parse_qs(url.query)
+            if path == SHELL_PREFIX:
+                self.send_response(302)
+                self.send_header("Location", SHELL_PREFIX + "/")
+                self.send_header("Content-Length", "0")
+                return self.end_headers()
+            if path.startswith(SHELL_PREFIX + "/"):
+                return self._shell(path)
+            if path == "/control" and shell_url() and "classic" not in q:
+                # In SCC Broadcast Engine: opened in a browser tab (not in the
+                # app's window, where it's a frame), Control goes to the app's
+                # top bar and run of show around it, as in the app. The #tab
+                # and ?key= carry over; ?classic=1 keeps the old panel. (Decided
+                # in the page: browsers only say "frame or tab" to https sites.)
+                with open(os.path.join(WEB_DIR, "control.html"), encoding="utf-8") as f:
+                    page = f.read()
+                go = ("<script>if(window.top===window){var k=new URLSearchParams(location.search).get('key');"
+                      f"location.replace('{SHELL_PREFIX}/'+(k?'?key='+encodeURIComponent(k):'')"
+                      "+(location.hash||'#engine/control'))}</script>")
+                return self._send(page.replace("<head>", "<head>" + go, 1), "text/html; charset=utf-8")
             if appearance.handle(self, "GET", path, DATA_DIR):
                 return
             if path in PAGES:
@@ -1207,6 +1270,11 @@ def make_handler(engine):
                 self.close_connection = True   # (its body isn't read)
                 return self._json({"error": problem, "code": "key_needed"}, 401)
             path = urlparse(self.path).path
+            if path.startswith(SHELL_PREFIX + "/"):
+                n = int(self.headers.get("Content-Length") or 0)
+                if n > 4 << 20:
+                    return self._json({"error": "Too big"}, 413)
+                return self._shell(path, self.rfile.read(n) if n else b"{}")
             if appearance.handle(self, "POST", path, DATA_DIR):
                 return
             q = parse_qs(urlparse(self.path).query)

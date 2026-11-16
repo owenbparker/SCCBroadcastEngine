@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+import urllib.error
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -166,6 +167,42 @@ class EverythingTogetherTests(unittest.TestCase):
     def test_engine_pages_follow_the_address_tab(self):
         status, body = get("http://127.0.0.1:8782/control.js")
         self.assertIn(b'addEventListener("hashchange"', body)
+
+    def test_browser_control_gets_the_app_pages(self):
+        # http://<pc>:8782/control in a browser tab: the app's top bar and run of
+        # show (the engine page sends the tab there; in a frame it stays).
+        _, body = get("http://127.0.0.1:8782/control")
+        self.assertIn(b"location.replace('/sccbe/'", body)
+        _, body = get("http://127.0.0.1:8782/control?classic=1")
+        self.assertNotIn(b"/sccbe/", body)
+        status, body = get("http://127.0.0.1:8782/sccbe/")
+        self.assertIn(b"app.js", body)
+        # As a browser on another PC sees it: the engine at the address it used,
+        # none of this PC's settings.
+        req = urllib.request.Request("http://127.0.0.1:8782/sccbe/api/state", headers={"Host": "pc.local:8782"})
+        self.shell._engine["data"] = None
+        with urllib.request.urlopen(req, timeout=8) as r:
+            s = json.loads(r.read())
+        self.assertTrue(s["remote"])
+        self.assertEqual(s["engine"]["base"], "http://pc.local:8782")
+        self.assertNotIn("control_pc_key", s["settings"])
+        self.assertNotIn("app_dir", s["app"])
+        _, body = get("http://127.0.0.1:8782/sccbe/api/ros")
+        self.assertIn("templates", json.loads(body))
+        for path in ("/sccbe/api/log",):
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                get("http://127.0.0.1:8782" + path)
+            self.assertEqual(e.exception.code, 403)
+        for path in ("/sccbe/api/settings", "/sccbe/api/part", "/sccbe/api/update/install", "/sccbe/api/open-folder"):
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                post("http://127.0.0.1:8782" + path, {"name": "x"})
+            self.assertEqual(e.exception.code, 403, path)
+        self.assertEqual(self.shell.settings.get()["name"], "Test")
+        # The run of show is the same one the app's window shows.
+        r = post("http://127.0.0.1:8782/sccbe/api/ros/auto", {"on": False})
+        self.assertFalse(r["auto"])
+        self.assertFalse(self.shell.ros.data["auto"])
+        post(f"http://127.0.0.1:{self.port}/api/ros/auto", {"on": True})
 
     def test_switch_a_part_off_and_on(self):
         state = post(f"http://127.0.0.1:{self.port}/api/part", {"key": "ow", "on": False})

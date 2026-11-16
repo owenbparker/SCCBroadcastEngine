@@ -141,6 +141,21 @@ main { position: fixed; inset: 0; z-index: 1; }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .cols > div { display: flex; flex-direction: column; gap: 18px; }
 .card > p.mut { font-size: 13px; margin: -4px 0 10px; }
+/* footnotes under a card's rows and buttons */
+.card > .note, .card > p.mut.note { font-size: 12px; line-height: 1.5; margin: 12px 0 0; }
+.card > .li + .note { margin-top: 10px; }
+.card .li > span:first-child { flex: none; }
+.card .li > input:not([type=color]) { flex: 0 1 220px; min-width: 0; }
+.card > .row { margin-top: 14px; }
+.card > .row + .row { margin-top: 10px; }
+.card > h3 + .li { padding-top: 4px; }
+/* Check now: bounces when pressed, then says what it found */
+.u-check { min-width: 120px; transition: background .2s, color .2s; }
+.u-check.bounce { animation: u-bounce .55s cubic-bezier(.3,1.6,.5,1); }
+.u-check.none { background: rgba(48,209,88,.18); color: #7ee2a0; }
+.u-check.err { background: rgba(255,159,10,.18); color: #ffc46b; }
+@keyframes u-bounce { 0% { transform: scale(1); } 25% { transform: scale(.86); } 55% { transform: scale(1.08) translateY(-3px); } 80% { transform: scale(.97); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .u-check.bounce { animation: none; } }
 .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .role { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; text-align: left; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.05); border: 1.5px solid transparent; }
 .role:hover { background: rgba(255,255,255,.09); }
@@ -159,9 +174,9 @@ main { position: fixed; inset: 0; z-index: 1; }
 .part-set .nm span { font-size: 12px; color: var(--mut); display: flex; gap: 6px; align-items: center; }
 .part-set .nm span.err { color: #ff9f0a; display: block; }
 .part-set button.small { padding: 5px 10px; font-size: 12px; }
-.seg { display: flex; gap: 2px; background: rgba(0,0,0,.3); border-radius: 999px; padding: 3px; }
-.seg button { background: none; padding: 6px 12px; font-size: 12.5px; }
-.seg button.on { background: rgba(255,255,255,.92); color: #000; font-weight: 600; }
+.segbtns { display: inline-flex; flex: none; gap: 2px; background: rgba(0,0,0,.3); border-radius: 999px; padding: 3px; }
+.segbtns button { background: none; padding: 6px 14px; font-size: 12.5px; line-height: 1.2; white-space: nowrap; }
+.segbtns button.on { background: rgba(255,255,255,.92); color: #000; font-weight: 600; }
 
 /* first start */
 .setup { max-width: 980px; margin: 2vh auto 30px; padding: 34px 40px; }
@@ -335,3 +350,9 @@ body.frameless .bar { right: 150px; }
 body.maxed #wedges { display: none; }
 body.winmoving iframe { pointer-events: none; }
 body.winmoving, body.winmoving * { user-select: none; }
+
+/* In a browser on the network (http://<pc>:8782/control): that PC's Control,
+   run of show and engine pages; the app's own settings stay in its window. */
+.remote [data-go="home"], .remote [data-go="stream"], .remote [data-menu="games"],
+.remote #chip-settings, .remote #chip-update,
+.remote #menu-build a[href="#builder"], .remote #menu-system a[href="#settings"] { display: none !important; }

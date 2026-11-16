@@ -10,4 +10,16 @@ html.sccbe .sccbe-split span { width: 64px; height: 5px; border-radius: 3px; bac
 html.sccbe .sccbe-split:hover span, html.sccbe .sccbe-split.drag span { background: rgba(255,255,255,.55); width: 110px; }
 html.sccbe .monitors.sccbe-small .takebar { padding-top: 22px; gap: 4px; }
 html.sccbe .monitors.sccbe-small .takebar .stinger-delay { display: none; }
-html.sccbe .monitors.sccbe-small #page-control button.take, html.sccbe .monitors.sccbe-small button.take { height: 46px !important; font-size: 17px !important; }
+html.sccbe #page-control .monitors.sccbe-small button.take { height: 46px !important; font-size: 17px !important; }
+/* The take bar is held to the monitors' height (sccbe-embed.js): the
+   transitions list gives way and scrolls, the buttons keep their size. */
+html.sccbe .monitors .takebar { min-height: 0; overflow: hidden; justify-content: flex-start; }
+html.sccbe .monitors .takebar > * { flex: none; }
+html.sccbe .monitors .takebar .tr-chips { flex: 0 1 auto; min-height: 0; max-height: none; }
+html.sccbe .monitors .takebar .tr-chips > * { flex: none; }
+html.sccbe .monitors .takebar .tr-chips:only-child, html.sccbe .monitors:not(.sccbe-small) .takebar { justify-content: center; }
+html.sccbe .monitors.sccbe-tiny .takebar { padding-top: 0; }
+html.sccbe .monitors.sccbe-tiny .tr-chips button { padding: 3px 8px !important; font-size: 12px !important; }
+html.sccbe #page-control .monitors.sccbe-tiny button.take { height: 36px !important; font-size: 15px !important; border-radius: 10px !important; }
+html.sccbe #page-control .monitors.sccbe-tiny button.cut { height: 28px !important; }
+html.sccbe .monitors.sccbe-tiny #pgm-clear { padding: 2px 6px; font-size: 12px; height: auto; }

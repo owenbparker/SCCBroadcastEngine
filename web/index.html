@@ -152,28 +152,35 @@
             <p class="mut">With no GFX Engine on this PC, Control, Composer and Event open the Control PC's. Its engine needs "Let other PCs connect" on (Outputs &amp; Network).</p>
             <div class="row"><input id="control-pc" placeholder="e.g. 192.168.2.40" spellcheck="false"><button id="save-control-pc">Save</button></div>
             <div class="row"><input id="control-pc-key" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="Its pairing code, if it asks (Outputs &amp; Network there)"><button id="save-control-pc-key">Save</button></div>
-            <div class="mut small" id="control-pc-status"></div>
+            <p class="mut small note" id="control-pc-status"></p>
           </div>
           <div class="card glass2">
             <h3>Appearance</h3>
             <div class="li"><span>Background</span>
-              <span class="seg" id="bg-seg"><button data-bg="solid">Solid colour</button><button data-bg="loop">BG loop</button></span></div>
+              <span class="segbtns" id="bg-seg"><button data-bg="solid">Solid colour</button><button data-bg="loop">BG loop</button></span></div>
             <div class="li"><span>Solid colour</span><input type="color" id="solid-colour"></div>
             <div class="li"><span>Name on Home</span><input id="home-name" placeholder="SCC" maxlength="40"></div>
-            <p class="mut small">Each part's own look (Studio Black, Graphite, Daylight, Liquid Glass) is still in its Appearance page.</p>
+            <p class="mut small note">Each part's own look (Studio Black, Graphite, Daylight, Liquid Glass) is still in its Appearance page.</p>
           </div>
           <div class="card glass2" id="updates">
             <h3>Updates</h3>
             <div class="li"><span>Version</span><span class="v" id="u-version"></span></div>
             <div class="li"><span>Latest</span><span class="v" id="u-latest"></span></div>
-            <div class="row"><button id="u-check">Check now</button><button class="k" id="u-install" hidden>Install update</button><button id="u-back" hidden title="Put back the version you had before the last update"></button></div>
-            <p class="mut small">One update for everything: the engine, every game HUD, HUD Builder and Multistream. Your graphics and settings stay.</p>
+            <div class="row"><button id="u-check" class="u-check">Check now</button><button class="k" id="u-install" hidden>Install update</button><button id="u-back" hidden title="Put back the version you had before the last update"></button></div>
+            <p class="mut small note">One update for everything: the engine, every game HUD, HUD Builder and Multistream. Your graphics and settings stay.</p>
           </div>
           <div class="card glass2">
             <h3>Folders</h3>
             <div class="li"><span>Installed in</span><span class="v mono" id="f-app"></span></div>
             <div class="li"><span>Your data</span><span class="v mono" id="f-data"></span></div>
             <div class="row"><button id="open-data">Open data folder</button><button id="open-app">Open install folder</button></div>
+          </div>
+          <div class="card glass2">
+            <h3>Data from the old apps</h3>
+            <p class="mut small">Teams, workspaces and settings from the GFX Engine and game HUDs you had installed on their own (like C:\SCC GFX Engine) are brought in when the app starts. It only adds: nothing here is replaced, and the old folders aren't changed.</p>
+            <div id="imp-list" class="small"></div>
+            <div class="row"><input id="imp-folder" placeholder="Another folder (optional), e.g. D:\SCC GFX Engine" style="flex:1;min-width:0"><button id="imp-go">Import</button></div>
+            <p class="mut small" id="imp-result"></p>
           </div>
         </div>
       </div>
