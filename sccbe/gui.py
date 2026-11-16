@@ -17,6 +17,8 @@ import time
 import urllib.request
 import webbrowser
 
+from .winframe import WindowApi
+
 TITLE = "SCC Broadcast Engine"
 
 
@@ -267,8 +269,12 @@ def main(argv=None):
             except Exception:
                 pass
         windows = Windows(shell)
+        # No Windows title bar: the page draws its own window buttons (sccbe/winframe.py).
+        frame = WindowApi(min_size=(1100, 680))
         windows.main = webview.create_window(f"{TITLE} {shell.updater.current}", url, width=1600, height=940,
-                                             min_size=(1100, 680), background_color="#0c0c0e", text_select=True)
+                                             min_size=(1100, 680), background_color="#0c0c0e", text_select=True,
+                                             frameless=True, easy_drag=False, js_api=frame)
+        frame._attach(windows.main)
         windows.main.events.closed += windows.on_main_closed
         if own:
             shell.windows = windows

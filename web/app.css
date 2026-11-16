@@ -174,7 +174,7 @@ main { position: fixed; inset: 0; z-index: 1; }
 .setup .row.end { margin-top: 26px; }
 
 @media (max-width: 1500px) {
-  .brand span { display: none; }
+  .brand span, .brand .vtag { display: none; }
   .home { grid-template-columns: 1fr 380px; }
   .also { grid-template-columns: repeat(3, 1fr); }
   #chip-match { display: none; }
@@ -310,3 +310,28 @@ button.danger { background: rgba(255,55,95,.12); color: #ff8aa3; }
 .bar.icons .t:not(.on) .d.g, .bar.icons .t:not(.on) .d.r, .bar.icons .t:not(.on) .d.y { margin-left: 4px; }
 .chip.ws b { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .bar .right { flex: none; }
+.bar.tight .chip.ws b, .bar.tight #chip-match, .bar.tight #chip-engine span:not(.dot) { display: none; }
+
+/* the window: no Windows title bar, so the window buttons sit in their own
+   glass capsule right of the top bar; the bar's empty space drags the window */
+.vtag { font-style: normal; font-size: 11px; font-weight: 600; color: var(--mut); background: rgba(255,255,255,.07); padding: 2px 7px; border-radius: 999px; margin-left: -2px; }
+.bar.compact .vtag { display: none; }
+body.frameless .bar { right: 150px; }
+.wincaps { position: fixed; z-index: 12; top: 10px; right: 12px; height: var(--bar-h); width: 128px; display: flex; align-items: center; justify-content: space-around; padding: 0 8px; }
+.wincaps .wb { width: 32px; height: 32px; border-radius: 50%; padding: 0; background: rgba(255,255,255,.08); color: #e5e5ea; display: grid; place-items: center; }
+.wincaps .wb:hover { background: rgba(255,255,255,.16); }
+.wincaps .wb.x:hover { background: var(--red); color: #fff; }
+.wincaps svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
+.wincaps .rs, body.maxed .wincaps .mx { display: none; } body.maxed .wincaps .rs { display: block; }
+#wedges i { position: fixed; z-index: 40; }
+#wedges [data-e=n] { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+#wedges [data-e=s] { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+#wedges [data-e=e] { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+#wedges [data-e=w] { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+#wedges [data-e=ne] { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+#wedges [data-e=sw] { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+#wedges [data-e=nw] { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+#wedges [data-e=se] { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+body.maxed #wedges { display: none; }
+body.winmoving iframe { pointer-events: none; }
+body.winmoving, body.winmoving * { user-select: none; }
