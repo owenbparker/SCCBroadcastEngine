@@ -297,7 +297,8 @@ class Shell:
     def _imported(self):
         from . import migrate
         try:
-            return migrate.last(DATA_DIR)
+            from . import backup
+            return {**migrate.last(DATA_DIR), "backups": backup.listing(DATA_DIR)["backups"][:10]}
         except Exception:
             return {}
 
@@ -499,7 +500,8 @@ def make_handler(shell):
                     result = shell.import_old(str(body.get("folder") or ""))
                     return self._json({**shell.state(), "imported": result})
                 elif path == "/api/open-folder":
-                    open_folder(DATA_DIR if body.get("which") != "app" else APP_DIR)
+                    which = body.get("which")
+                    open_folder(APP_DIR if which == "app" else os.path.join(DATA_DIR, "_backups") if which == "backups" else DATA_DIR)
                 else:
                     return self._json({"error": "not found"}, 404)
                 self._json(shell.state())

@@ -230,8 +230,15 @@ def main(argv=None):
     open_file(os.path.join(config.DATA_DIR, "shell"))
     if not args.smoke_test and not already_running(args.port or config.Settings(
             os.path.join(config.DATA_DIR, "shell", "settings.json")).get()["http_port"]):
+        from . import backup, migrate
+        from .version import VERSION
+        if VERSION != "dev":
+            try:
+                # Before the parts start (and upgrade their files): a copy of the data as it was.
+                backup.on_start(config.DATA_DIR, VERSION)
+            except Exception as e:
+                log(f"Couldn't back up the data folder: {e!r}", "error")
         # The old GFX Engine / HUDs' data (teams, workspaces, ...), before any part starts.
-        from . import migrate
         try:
             migrate.run(config.DATA_DIR)
         except Exception as e:
