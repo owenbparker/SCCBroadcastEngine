@@ -32252,7 +32252,7 @@
    "layer": 0,
    "layers": [
     {
-     "id": "lc4b93f66",
+     "id": "l795fcbde",
      "name": "Background (design)",
      "type": "image",
      "x": 1492,
@@ -32281,7 +32281,7 @@
      "loop": true
     },
     {
-     "id": "l135463ae",
+     "id": "l859be735",
      "name": "Background loop base",
      "type": "rect",
      "x": 1492,
@@ -32317,7 +32317,7 @@
      "rotation": 0,
      "visible": true,
      "blend": "screen",
-     "id": "lc6affec5",
+     "id": "l0dc28078",
      "name": "Background loop",
      "type": "video",
      "x": 1492,
@@ -32345,10 +32345,11 @@
      "brightness": "{{Global!BG loop brightness}}",
      "speed": "{{Global!BG loop speed}}",
      "mask": "assets/Back in bug/loop-mask.png",
-     "show": "{{Global!Bug loop}}"
+     "show": "{{Global!Bug loop}}",
+     "zoom": "{{Global!Bug loop zoom}}"
     },
     {
-     "id": "lc42f6c0c",
+     "id": "ld2e8156a",
      "name": "Left colour",
      "type": "rect",
      "x": 1494,
@@ -32378,7 +32379,7 @@
      "strokeWidth": 0
     },
     {
-     "id": "l01a82af7",
+     "id": "l554cb0dc",
      "name": "Right colour",
      "type": "rect",
      "x": 1747,
@@ -32408,7 +32409,7 @@
      "strokeWidth": 0
     },
     {
-     "id": "l85a040a2",
+     "id": "l89d7ce4a",
      "name": "Left logo",
      "type": "image",
      "x": 1514,
@@ -32437,7 +32438,7 @@
      "loop": true
     },
     {
-     "id": "l5422e702",
+     "id": "le20c1876",
      "name": "Right logo",
      "type": "image",
      "x": 1767,
@@ -32466,7 +32467,7 @@
      "loop": true
     },
     {
-     "id": "l47e91022",
+     "id": "lb384d7a5",
      "name": "VS",
      "type": "text",
      "x": 1612,
@@ -32505,7 +32506,7 @@
      "scroll": 0
     },
     {
-     "id": "l5c6101e7",
+     "id": "l6632b2f7",
      "name": "Title",
      "type": "text",
      "x": 1500,
@@ -32544,7 +32545,7 @@
      "scroll": 0
     },
     {
-     "id": "lb3e3eee8",
+     "id": "l6bcb6fb8",
      "name": "Clock",
      "type": "text",
      "x": 1760,
@@ -36894,7 +36895,8 @@
   ],
   "Back in bug": [
    "ca846dc1c9bd2923",
-   "79d0f9e6f7fa40af"
+   "79d0f9e6f7fa40af",
+   "ce7882e9eb49c29b"
   ],
   "Back soon bug": [
    "17f7976a384ec935"

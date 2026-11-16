@@ -622,13 +622,19 @@ $("#update-back").addEventListener("click", e => {
     return el;
   }
   // The Back in bug's background: the live background loop, or the design's own picture (Global's).
+  const zoomSave = debounce(v => api("/api/global", { global: { bug_loop_zoom: v } }), 120);
   function bugLoopField(s) {
     const el = h("div", { class: "field bug-loop-field" },
       h("label", {}, "Background", h("span", { class: "kind" }, "global")),
       h("div", { class: "seg", "data-k": "bug-loop" },
         h("button", { "data-v": "1", onclick: () => api("/api/global", { global: { bug_loop: true } }) }, "BG loop"),
         h("button", { "data-v": "", onclick: () => api("/api/global", { global: { bug_loop: false } }) }, "Design's picture")),
-      h("div", { class: "resolved" }, "Behind VS and the tabs. The boxes behind the logos take each team's colour from Global."));
+      h("div", { class: "row-gap bug-zoom" }, h("span", { class: "muted small" }, "Zoom"),
+        h("input", { type: "range", min: 100, max: 400, step: 5, "data-k": "bug-zoom", value: s.global.bug_loop_zoom || 100,
+          oninput: e => { el.querySelector("[data-k=bug-zoom-v]").textContent = e.target.value + "%"; zoomSave(+e.target.value); } }),
+        h("span", { class: "small", "data-k": "bug-zoom-v" }, (s.global.bug_loop_zoom || 100) + "%"),
+        h("button", { class: "ghost small", title: "Back to 100%", onclick: () => { zoomSave(100); } }, "Reset")),
+      h("div", { class: "resolved" }, "Behind VS and the tabs. Zoom makes the loop bigger. The boxes behind the logos take each team's colour from Global."));
     markSize(el, s);
     return el;
   }
@@ -705,6 +711,8 @@ $("#update-back").addEventListener("click", e => {
     }
     for (const b of el.querySelectorAll("[data-k=bug-loop] button"))
       b.classList.toggle("on", (s.global.bug_loop !== false ? "1" : "") === b.dataset.v);
+    const bz = el.querySelector("[data-k=bug-zoom]");
+    if (bz && document.activeElement !== bz) { bz.value = s.global.bug_loop_zoom || 100; el.querySelector("[data-k=bug-zoom-v]").textContent = bz.value + "%"; }
     const sp = Object.fromEntries((s.data.tables.Spotlight || []).slice(1));
     const players = side => { const S = side === "left" ? "Left" : "Right", out = [];
       for (let n = 1; n <= 10 && (`${S} player ${n}` in sp); n++) out.push([n, sp[`${S} player ${n}`]]);
