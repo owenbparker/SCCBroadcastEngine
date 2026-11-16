@@ -557,7 +557,24 @@ $("#control-pc").addEventListener("keydown", e => { if (e.key === "Enter") $("#s
 for (const b of document.querySelectorAll("#bg-seg button")) b.onclick = () => post("/api/settings", { background: b.dataset.bg });
 $("#solid-colour").addEventListener("change", e => post("/api/settings", { solid_colour: e.target.value }));
 $("#home-name").addEventListener("change", e => post("/api/settings", { name: e.target.value }));
-$("#u-check").onclick = () => post("/api/update/check", {});
+let uCheckTimer = 0;
+$("#u-check").onclick = async () => {
+  const b = $("#u-check");
+  clearTimeout(uCheckTimer);
+  b.classList.remove("bounce", "none", "err");
+  void b.offsetWidth;  // restart the bounce on every click
+  b.classList.add("bounce");
+  b.disabled = true;
+  b.textContent = "Checking…";
+  await post("/api/update/check", {});
+  const up = S.update;
+  b.disabled = false;
+  if (up.check_error) { b.textContent = "Couldn't check"; b.classList.add("err"); }
+  else if (up.available) b.textContent = "Check now";
+  else { b.textContent = "No update available"; b.classList.add("none"); }
+  uCheckTimer = setTimeout(() => { b.textContent = "Check now"; b.classList.remove("none", "err"); }, 4000);
+};
+$("#u-check").addEventListener("animationend", e => e.currentTarget.classList.remove("bounce"));
 $("#u-install").onclick = () => post("/api/update/install", {});
 $("#u-back").onclick = () => {
   if (confirm(`Go back to ${$("#u-back").dataset.version}?\n\nThis puts back the version you had before the last update. Everything closes and reopens (about 15 seconds): graphics and HUDs go blank in OBS until it's back. Your data is kept.`))
