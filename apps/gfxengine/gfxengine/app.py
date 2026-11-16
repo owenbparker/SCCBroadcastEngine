@@ -263,8 +263,11 @@ class Engine:
         snap["tables"]["Standings"] = standings.rows(g["standings"], self.teams.find, g["event"])
         side = g["roster"]
         stats_names = dict(r[:2] for r in snap["tables"]["Stats"][1:] if len(r) >= 2)
-        snap["tables"]["Roster"] = roster_rows(self.teams.find(g[side]["name"], g[side]["game"]), side,
-                                               [stats_names.get(f"{side.title()} player {i}", "") for i in range(1, 6)])
+        # "Roster" is the team the player graphics show; "Opponent" is the other
+        # team in Global, for the Opponent lineup graphics.
+        for table, s_ in (("Roster", side), ("Opponent", "right" if side == "left" else "left")):
+            snap["tables"][table] = roster_rows(self.teams.find(g[s_]["name"], g[s_]["game"]), s_,
+                                                [stats_names.get(f"{s_.title()} player {i}", "") for i in range(1, 6)])
         for name, feed in self.feeds.items():
             snap["tables"][name] = feed["rows"]
         snap["tables"]["HUDs"] = self.hud_rows()

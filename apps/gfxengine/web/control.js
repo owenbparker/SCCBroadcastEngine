@@ -409,13 +409,14 @@ $("#update-back").addEventListener("click", e => {
     const standing = comp.layers.some(l => /\{\{\s*Standings!/i.test(l.show || ""));
     const clock = comp.layers.some(l => /\{\{\s*clock\s*\}\}/i.test(l.text || ""));
     const timer = comp.layers.some(l => /\{\{\s*timer\s*\}\}/i.test(l.text || ""));
-    const roster = comp.layers.some(l => /\{\{\s*Roster!/i.test((l.text || "") + (l.src || "")));
+    const roster = comp.layers.some(l => /\{\{\s*(Roster|Opponent)!/i.test((l.text || "") + (l.src || "")));
+    const opponent = comp.layers.some(l => /\{\{\s*Opponent!/i.test((l.text || "") + (l.src || "")));
     const mvp = comp.layers.some(l => /\{\{\s*Stats!MVP/i.test((l.text || "") + (l.src || "")));
     const caster = comp.layers.some(l => /Global!Caster/i.test(l.move || ""));
     const pics = comp.layers.some(l => /\{\{\s*Stats!.*(headshot|champion)\}\}/i.test(l.src || ""));
     // (Player stats has its own setting: its picture is the MVP's)
     const picsPage = comp.layers.some(l => /\{\{\s*Stats!MVP (headshot|champion)\}\}/i.test(l.src || "")) ? "player" : "team";
-    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null].filter(Boolean);
+    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null].filter(Boolean);
     const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage,
       Object.keys(s.data.feeds || {}), (s.data.tables.Global || []).map(r => r[0]),
       comp.hud ? JSON.stringify(s.data.feeds[comp.hud.split("/")[0]] && s.data.feeds[comp.hud.split("/")[0]].unreachable) : ""]);
@@ -524,9 +525,10 @@ $("#update-back").addEventListener("click", e => {
     return el;
   }
   // The player graphics: whose players (the left or right team's roster, from the Teams tab).
-  function rosterField(s) {
-    const el = h("div", { class: "field roster-field" },
-      h("label", {}, "Players from", h("span", { class: "kind" }, "teams")),
+  // An Opponent lineup graphic shows the other team from the one picked here.
+  function rosterField(s, opponent) {
+    const el = h("div", { class: "field roster-field", "data-opponent": opponent ? "1" : "" },
+      h("label", {}, opponent ? "Opponent of" : "Players from", h("span", { class: "kind" }, "teams")),
       h("select", { "data-k": "roster", onchange: e => api("/api/global", { global: { roster: e.target.value } }) },
         h("option", { value: "left" }), h("option", { value: "right" })),
       h("div", { class: "resolved", "data-k": "roster-note" }));
@@ -633,10 +635,11 @@ $("#update-back").addEventListener("click", e => {
       const label = side => { const t = s.global[side]; return `${side === "left" ? "Left" : "Right"} team: ${t.name || "(none)"}${t.game ? ` (${t.game})` : ""}`; };
       ro.options[0].textContent = label("left"); ro.options[1].textContent = label("right");
       if (document.activeElement !== ro) ro.value = s.global.roster || "left";
-      const rows = Object.fromEntries((s.data.tables.Roster || []).slice(1));
-      el.querySelector("[data-k=roster-note]").textContent = rows.Team
+      const opp = !!el.dataset.opponent;
+      const rows = Object.fromEntries((s.data.tables[opp ? "Opponent" : "Roster"] || []).slice(1));
+      el.querySelector("[data-k=roster-note]").textContent = (opp ? `Shows the ${rows.Side === "left" ? "left" : "right"} team${rows.Team ? ` (${rows.Team})` : ""}. ` : "") + (rows.Team
         ? `${rows.Players} player${rows.Players === "1" ? "" : "s"} on ${rows.Team}'s roster in the Teams tab.`
-        : "That team isn't in the Teams tab, so the names come from the game's stats.";
+        : "That team isn't in the Teams tab, so the names come from the game's stats.");
     }
     const cs = s.global.caster || { count: 1, primary: "#c2bdff", secondary: "#001a1a" };
     for (const [k, v] of [["caster-count", String(cs.count)], ["caster-primary", cs.primary], ["caster-secondary", cs.secondary],
