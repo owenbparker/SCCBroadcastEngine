@@ -18,6 +18,7 @@ DATA_DIR = (os.path.join(os.environ["SCCBE_DATA"], "rlhud") if os.environ.get("S
 WEB_DIR = os.path.join(RESOURCE_DIR, "web")
 LOGO_DIR = os.path.join(DATA_DIR, "logos")         # uploaded team logos (served as logos/...)
 SPONSOR_DIR = os.path.join(DATA_DIR, "sponsors")   # uploaded sponsor logos (served as sponsors/...)
+STINGER_DIR = os.path.join(DATA_DIR, "stingers")   # the uploaded replay stinger (served as stingers/...)
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 
 DEFAULTS = {
@@ -57,11 +58,16 @@ DEFAULTS = {
     # The overlay made in the GFX Engine (Composer > Add to a HUD): shown at
     # /overlay when it's here and "use" is on (/overlay-classic is the built-in one).
     "look": {"use": True},
-    # The built-in design at /overlay: "classic" (after the RLCS 2026 broadcast)
-    # or "gerrit2026" (Gerrit 2026: three player cams a side and the last goal
-    # along the bottom). A picked built-in design other than classic wins over
-    # the GFX Engine overlay.
+    # The built-in design at /overlay: "classic" (after the RLCS 2026 broadcast),
+    # "gerrit2026" (Gerrit 2026: three player cams a side and the last goal
+    # along the bottom) or "newgerrit" (NEW GERRIT: the HUD, and around a goal
+    # the cams, the replay stinger and the replay lower third). A picked
+    # built-in design other than classic wins over the GFX Engine overlay.
     "design": "classic",
+    # NEW GERRIT's replay stinger: a video (WebM with transparency, or MP4)
+    # played as the game's replay starts; "cut" is when it covers the picture
+    # (ms; None = halfway), where the HUD swaps to the replay graphics.
+    "replay_stinger": {"src": "", "name": "", "cut": None, "on": True},
     # The SCC GFX Engine this HUD sends its game and series to (see rlhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},
 }
@@ -113,7 +119,7 @@ def web_file(rel):
     (sponsors/...), else the web folder. Paths that climb out are refused."""
     rel = rel.replace("\\", "/").lstrip("/")
     base = WEB_DIR
-    for prefix, folder in (("logos/", LOGO_DIR), ("sponsors/", SPONSOR_DIR)):
+    for prefix, folder in (("logos/", LOGO_DIR), ("sponsors/", SPONSOR_DIR), ("stingers/", STINGER_DIR)):
         if rel.startswith(prefix):
             base, rel = folder, rel[len(prefix):]
     path = os.path.normpath(os.path.join(base, rel))
