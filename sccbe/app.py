@@ -97,6 +97,19 @@ class Shell:
             part.start(self.windows, self._separate())
         threading.Thread(target=go, daemon=True).start()
 
+    def import_old(self, folder=""):
+        """Settings > Folders: brings in the old GFX Engine / HUDs' data again
+        (or from folder). The parts that use it stop while it's copied."""
+        from . import migrate
+        on = [p for p in self.parts if p.status in ("on", "starting")]
+        for p in on:
+            p.stop()
+        try:
+            return migrate.run(DATA_DIR, [folder] if folder else (), again=True)
+        finally:
+            for p in on:
+                p.start(self.windows, self._separate())
+
     def restart_games(self):
         """The game HUDs that are running, started again (in or out of this
         program, as Settings now says)."""
@@ -278,7 +291,15 @@ class Shell:
                 "settings": self.settings.get(),
                 "parts": [p.info() for p in self.parts],
                 "engine": self.engine_summary(),
-                "update": self.updater.info()}
+                "update": self.updater.info(),
+                "imported": self._imported()}
+
+    def _imported(self):
+        from . import migrate
+        try:
+            return migrate.last(DATA_DIR)
+        except Exception:
+            return {}
 
 
 def open_folder(path):
@@ -434,6 +455,9 @@ def make_handler(shell):
                     shell.updater.install_in_background()
                 elif path == "/api/update/rollback":
                     shell.updater.rollback_in_background()
+                elif path == "/api/import-old":
+                    result = shell.import_old(str(body.get("folder") or ""))
+                    return self._json({**shell.state(), "imported": result})
                 elif path == "/api/open-folder":
                     open_folder(DATA_DIR if body.get("which") != "app" else APP_DIR)
                 else:
