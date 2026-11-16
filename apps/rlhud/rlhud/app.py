@@ -16,7 +16,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from . import appearance, look, statsapi, startpick
 from .cams import CamHub, cam_links
-from .config import DATA_DIR, LOGO_DIR, SPONSOR_DIR, STINGER_DIR, WEB_DIR, web_file
+from .config import DATA_DIR, LOGO_DIR, SPONSOR_DIR, WEB_DIR, web_file
+from .replaystinger import ReplayStinger
 from hudbuilder import embed as hud_builder
 from .demo import DemoMatch
 from .enginelink import EngineLink, save_logo_bytes, save_sponsors
@@ -65,6 +66,8 @@ class HudApp:
         self.cams = CamHub()   # player webcams (SCC Player Cam, Rocket League mode)
         # The overlay made in the GFX Engine's Composer ("Add to a HUD").
         self.look = look.LookSync(DATA_DIR, self.engine, self.changed)
+        # NEW GERRIT's replay stinger: your own, else the engine's "Replay stinger", else the built-in one.
+        self.stinger = ReplayStinger(self.config, self.engine, self.changed)
         if demo:
             self.set_demo(True)
 
@@ -179,16 +182,15 @@ class HudApp:
 
     def snapshot(self):
         game = self.state.snapshot()
-        return {"game": game, "config": self.config.get(), "app": self.info(), "logos": logos(),
+        return {"game": game, "config": self.config.get(), "app": self.info(), "logos": logos(), "stinger": self.stinger.info(),
                 "cams": dict(self.cams_state(game), connected=self.cams.all_cams(self.cam_players(game)))}
 
     def overlay_state(self):
         cfg = self.config.get()
-        keep = ("left", "right", "best_of", "event", "stage", "scorebug", "names", "sponsors", "sponsor_seconds", "show", "design",
-                "replay_stinger")
+        keep = ("left", "right", "best_of", "event", "stage", "scorebug", "names", "sponsors", "sponsor_seconds", "show", "design")
         game = self.state.snapshot()
         cams = self.cams_state(game)
-        return {"game": game, "config": {k: cfg[k] for k in keep},
+        return {"game": game, "config": dict({k: cfg[k] for k in keep}, replay_stinger=self.stinger.current()),
                 # (the GFX Engine overlay's data, and who has a cam)
                 "fields": self._engine_snapshot(here=True)["fields"], "cams": cams,
                 "target_cam": self.target_cam(game, cams), "now": time.time(), "demo": bool(self.demo),
@@ -466,40 +468,6 @@ def save_upload(folder, prefix, name, data_url):
     return prefix + stem + ext
 
 
-STINGER_TYPES = {"webm": ".webm", "mp4": ".mp4"}
-STINGER_MAX = 200 * 1024 * 1024
-
-
-def save_stinger(name, data_url):
-    """NEW GERRIT's replay stinger: a WebM (with transparency) or MP4, saved to
-    stingers/. Returns (path for the overlay, when it covers the picture in ms or None)."""
-    m = re.fullmatch(r"data:([\w/.+-]*);base64,(.+)", data_url or "", re.S)
-    ext = os.path.splitext(name or "")[1].lower().lstrip(".")
-    kind = {"video/webm": "webm", "video/mp4": "mp4"}.get(m.group(1).lower() if m else "", ext)
-    if not m or kind not in STINGER_TYPES:
-        raise ValueError("Send the stinger as a WebM (with transparency) or an MP4. Export a .mov as WebM "
-                         "(VP9 with alpha) from After Effects, Premiere or Shutter Encoder.")
-    data = base64.b64decode(m.group(2))
-    if len(data) > STINGER_MAX:
-        raise ValueError("That stinger is over 200 MB: export it smaller")
-    stem = re.sub(r"[^A-Za-z0-9 _.-]+", "", os.path.splitext(os.path.basename(name or "stinger"))[0]).strip() or "stinger"
-    os.makedirs(STINGER_DIR, exist_ok=True)
-    path = os.path.join(STINGER_DIR, stem + STINGER_TYPES[kind])
-    with open(path, "wb") as f:
-        f.write(data)
-    return "stingers/" + stem + STINGER_TYPES[kind], stinger_cut_ms(path)
-
-
-def stinger_cut_ms(path):
-    """When the stinger covers the whole picture (ms), as the GFX Engine works it
-    out for its stingers; None when that can't be read here (the overlay then uses halfway)."""
-    try:
-        from gfxengine.media import stinger_cut
-        return stinger_cut(path)
-    except Exception:
-        return None
-
-
 def lan_ip():
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -672,6 +640,16 @@ def make_handler(app):
             # Observer PCs send the game here over the network.
             if not local and not (path == "/api/ingest" and app.config.get().get("allow_network")):
                 return self._json({"error": "settings can only be changed on the HUD's own PC"}, 403)
+            if path == "/api/stinger/upload":
+                # NEW GERRIT's replay stinger, your own: the file itself (?name=...), MOV / WebM / MP4.
+                try:
+                    name = (parse_qs(urlparse(self.path).query).get("name") or ["stinger"])[0]
+                    reply = app.stinger.save_upload(name, self.rfile, int(self.headers.get("Content-Length") or 0))
+                    self.close_connection = True
+                    return self._json(dict(app.snapshot(), upload=reply))
+                except (ValueError, OSError) as e:
+                    self.close_connection = True
+                    return self._json({"error": str(e)}, 400)
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
                 if path == "/api/ingest":
@@ -718,18 +696,8 @@ def make_handler(app):
                     sponsor = save_upload(SPONSOR_DIR, "sponsors/", body.get("name"), body.get("data"))
                     app.config.update({"sponsors": app.config.get()["sponsors"] + [sponsor]})
                     app.changed()
-                elif path == "/api/stinger":
-                    # NEW GERRIT's replay stinger.
-                    src, cut = save_stinger(body.get("name"), body.get("data"))
-                    app.config.update({"replay_stinger": {"src": src, "name": os.path.basename(body.get("name") or src),
-                                                          "cut": cut, "on": True}})
-                    log(f"Replay stinger is now {os.path.basename(src)}"
-                        + (f" (the replay graphics swap in under it at {cut} ms)" if cut is not None else ""))
-                    app.changed()
                 elif path == "/api/stinger/remove":
-                    app.config.update({"replay_stinger": {"src": "", "name": "", "cut": None}})
-                    log("Replay stinger removed: the replay graphics come in without one")
-                    app.changed()
+                    app.stinger.use_engine()
                 elif path == "/api/stinger/preview":
                     app.preview = {"at": time.time(), "team": 1 if body.get("team") == 1 else 0}
                     app.changed()

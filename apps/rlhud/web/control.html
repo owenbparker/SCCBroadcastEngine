@@ -194,12 +194,14 @@
       <p class="note" style="margin-top:0">A goal: the player cams fly in down both sides. The game's replay starts: the replay stinger plays, and under it the HUD's lower parts go and the replay lower third comes in. The replay ends: the cams and lower third leave, then the HUD comes back.</p>
       <div class="note" id="ng-stinger"></div>
       <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
-        <button id="ng-load">Choose the replay stinger…</button>
-        <button id="ng-remove">Remove it</button>
+        <button id="ng-load">Use my own stinger instead…</button>
+        <button id="ng-remove">Back to the GFX Engine's</button>
       </div>
-      <input type="file" id="ng-file" accept="video/webm,video/mp4,.webm,.mp4" hidden>
-      <label>Swap to the replay graphics at (ms into the stinger; empty = halfway)</label>
-      <input id="ng-cut" type="number" min="0" step="10" style="max-width:160px">
+      <input type="file" id="ng-file" accept="video/*,.mov,.webm,.mp4" hidden>
+      <div id="ng-cut-box">
+        <label>Swap to the replay graphics at (ms into the stinger; empty = halfway)</label>
+        <input id="ng-cut" type="number" min="0" step="10" style="max-width:160px">
+      </div>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
         <button id="ng-preview0">Preview a blue goal and replay</button>
         <button id="ng-preview1">Preview an orange goal and replay</button>
@@ -422,7 +424,7 @@ function apply(s) {
   $("https-box").hidden = !app.https_url;
   if (app.https_url) $("url-https").textContent = app.https_url + "/overlay";
   renderLook(app.look || {}, cfg);
-  renderNewGerrit(cfg);
+  renderNewGerrit(cfg, s.stinger);
   renderCams(s.cams || {}, cfg, g);
   if (document.activeElement !== $("network")) $("network").checked = app.network;
   const ow = app.overlay_window;
@@ -475,21 +477,33 @@ $("design").onchange = e => {
 };
 $("look-check").onclick = () => post("/api/look/check", {});
 // NEW GERRIT's replay stinger.
-function renderNewGerrit(cfg) {
+function renderNewGerrit(cfg, info) {
   $("ng-box").hidden = cfg.design !== "newgerrit";
-  const st = cfg.replay_stinger || {};
-  $("ng-stinger").innerHTML = st.src ? `Replay stinger: <b></b>` : "No replay stinger yet: the replay graphics come in without one.";
-  if (st.src) $("ng-stinger").querySelector("b").textContent = st.name || st.src;
-  $("ng-remove").hidden = !st.src;
-  setIfIdle($("ng-cut"), st.cut == null ? "" : st.cut);
+  info = info || {};
+  const own = info.from === "upload", el = $("ng-stinger");
+  const swap = info.cut != null ? ` It swaps to the replay graphics at ${info.cut} ms.` : "";
+  const says = {
+    upload: "Your own replay stinger plays: ",
+    engine: "The GFX Engine's replay stinger plays: ",
+    builtin: info.engine_connected ? "The GFX Engine has no \"Replay stinger\", so the built-in SCC one plays: "
+                                   : "The built-in SCC replay stinger plays (connect the GFX Engine to use its \"Replay stinger\"): ",
+  }[info.from];
+  el.textContent = says ? says : "No replay stinger: the replay graphics come in without one.";
+  if (says) { const b = document.createElement("b"); b.textContent = info.name || info.src; el.append(b, "." + swap); }
+  if (info.converting) el.append(document.createElement("br"), `Converting ${info.converting} so the overlay can play it…`);
+  if (info.error) { const s = document.createElement("span"); s.style.color = "var(--bad,#ff5a5a)"; s.textContent = info.error; el.append(document.createElement("br"), s); }
+  $("ng-remove").hidden = !own;
+  $("ng-cut-box").hidden = !own;
+  setIfIdle($("ng-cut"), (cfg.replay_stinger || {}).cut == null ? "" : cfg.replay_stinger.cut);
 }
 $("ng-load").onclick = () => $("ng-file").click();
 $("ng-file").onchange = async e => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
-  $("ng-stinger").textContent = `Loading ${f.name}…`;
-  await post("/api/stinger", { name: f.name, data: await readFile(f) });
-  if (state) renderNewGerrit(state.config);
+  $("ng-stinger").textContent = `Sending ${f.name}…`;
+  const r = await fetch("/api/stinger/upload?name=" + encodeURIComponent(f.name), { method: "POST", body: f });
+  const data = await r.json().catch(() => ({ error: "The HUD didn't answer" }));
+  if (data.error) alert(data.error); else apply(data);
 };
 $("ng-remove").onclick = () => post("/api/stinger/remove", {});
 $("ng-cut").onchange = e => config({ replay_stinger: { cut: e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0) } });

@@ -1205,6 +1205,9 @@ def make_handler(engine):
                 return self._json(companion.state(engine))
             if path == "/api/assets":
                 return self._json({"assets": engine.assets.list(), "rev": engine.assets_rev})
+            if path == "/api/transitions":
+                # (just the transitions: game HUDs take the "Replay stinger" from here)
+                return self._json({"transitions": engine.ws.snapshot().get("transitions") or [], "id": engine.id})
             if path == "/api/log":
                 return self._json({"lines": since(int((q.get("after") or ["0"])[0]))})
             if path == "/api/engines":
