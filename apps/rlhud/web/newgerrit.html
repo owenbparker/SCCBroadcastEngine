@@ -90,11 +90,13 @@
   .foot .code.l { left: 0; } .foot .code.r { left: 370px; }
   .foot .bg { position: absolute; left: 75px; top: 0; width: 298px; height: 23px; background: var(--panel); }
   .pips { position: absolute; left: 82px; top: 5px; width: 284px; height: 13px; display: flex; justify-content: center; gap: 5px; }
-  .pips i { flex: 0 1 53px; height: 13px; background: var(--pip); box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+  /* The series: no colour until a game is won (blue fills from the left,
+     orange from the right); the middle one (the decider) is picked out dark. */
+  .pips i { flex: 0 1 53px; height: 13px; background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.16);
             transition: background .4s, box-shadow .4s; }
-  .pips i.l { background: var(--blue); } .pips i.r { background: var(--orange); }
-  .pips i.now { background: transparent; box-shadow: inset 0 0 0 1.5px #fff; animation: now 2.4s ease-in-out infinite; }
-  @keyframes now { 50% { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.45); } }
+  .pips i.mid { background: var(--pip); box-shadow: inset 0 0 0 1.5px #fff; }
+  .pips i.l { background: var(--blue); box-shadow: inset 0 0 0 2px rgba(255,255,255,.18); }
+  .pips i.r { background: var(--orange); box-shadow: inset 0 0 0 2px rgba(255,255,255,.18); }
 
   /* The name plates: out from behind the middle. GOAL takes the scoring side's plate. */
   .plate { position: absolute; top: 46px; width: 248px; height: 78px; overflow: hidden; }
@@ -473,9 +475,11 @@
       if (!(view.goalSide === i && view.mode === "goal" && shown[i] !== null)) setScore(side, i, (g.teams[i] || {}).score || 0);
     }
     $(".clock .t").textContent = clock(g.clock || 0, g.overtime);
-    const n = Math.max(1, Number(c.best_of) || 1), lw = Number((c.left || {}).wins) || 0, rw = Number((c.right || {}).wins) || 0;
+    const n = Math.max(1, Number(c.best_of) || 1);
+    const lw = Math.max(0, Math.min(n, Number((c.left || {}).wins) || 0)), rw = Math.max(0, Math.min(n - lw, Number((c.right || {}).wins) || 0));
     let pips = "";
-    for (let k = 0; k < n; k++) pips += `<i class="${k < lw ? "l" : k >= n - rw ? "r" : k === lw ? "now" : ""}"></i>`;
+    for (let k = 0; k < n; k++)
+      pips += `<i class="${k < lw ? "l" : k >= n - rw ? "r" : n % 2 && k === (n - 1) / 2 ? "mid" : ""}"></i>`;
     if ($(".pips").innerHTML !== pips) $(".pips").innerHTML = pips;
     $("#bug").classList.toggle("off", view.away);
     $("#bug").classList.toggle("replay", view.mode === "replay");
