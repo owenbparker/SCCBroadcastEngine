@@ -202,9 +202,11 @@ class Workspace:
                 self.data["default_transition"] = clean[0]["id"]
             self.changed()
 
-    def set_global(self, g):
+    def set_global(self, g, tournaments=None):
         with self.lock:
             self.data["global"] = g
+            if tournaments is not None:
+                self.data["tournaments"] = tournaments
             self.changed()
 
     def set_picture(self, name):

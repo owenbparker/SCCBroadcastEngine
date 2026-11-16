@@ -29,6 +29,18 @@ mimetypes.add_type("image/svg+xml", ".svg")
 mimetypes.add_type("video/webm", ".webm")
 
 
+
+def tournament_of(state, base):
+    """The open tournament (for the top bar's tournament chip): its name and logo's address."""
+    t = state.get("tournaments") or {}
+    cur = next((x for x in t.get("tournaments") or [] if x.get("id") == t.get("active")), None)
+    if not cur:
+        return None
+    logo = cur.get("logo") or ""
+    if logo and not logo.startswith(("http:", "https:", "data:")):
+        logo = base + "/" + logo.lstrip("/")
+    return {"id": cur["id"], "name": cur.get("name") or "", "logo": logo, "count": len(t.get("tournaments") or [])}
+
 class Shell:
     def __init__(self, settings=None):
         self.settings = settings or Settings()
@@ -163,6 +175,7 @@ class Shell:
                            schedule=[m for m in sched.get("matches") or [] if isinstance(m, dict)],
                            graphics=[{"id": c.get("id"), "name": c.get("name")} for c in (s.get("project") or {}).get("compositions", [])],
                            workspace=(s.get("workspace") or {}).get("name", ""),
+                           tournament=tournament_of(s, base),
                            match={"event": g.get("event") or "", "stage": g.get("stage") or "",
                                   "best_of": g.get("best_of") or 0, "left": team("left"), "right": team("right")},
                            program=[names.get(i, i) for i in (live.get("program") or {}).get("on", [])],
@@ -347,6 +360,11 @@ def make_handler(shell):
                     return self._json(shell.engine_call("/api/workspaces"))
                 except ValueError as e:
                     return self._json({"error": str(e)}, 400)
+            if path == "/api/engine/tournaments":
+                try:
+                    return self._json(shell.engine_call("/api/tournaments"))
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 400)
             if path in ("/", "/index.html"):
                 path = "/index.html"
             f = web_file(path)
@@ -372,6 +390,15 @@ def make_handler(shell):
                     with shell._engine_lock:
                         shell._engine["data"] = None
                     return self._json(shell.engine_call("/api/workspaces"))
+                if path == "/api/engine/tournament":
+                    # The tournament dropdown: open a saved one, or start a new one.
+                    if body.get("new") is not None:
+                        out = shell.engine_call("/api/tournaments/new", {"name": body.get("new"), "copy": bool(body.get("copy"))})
+                    else:
+                        out = shell.engine_call("/api/tournaments/open", {"id": body.get("id")})
+                    with shell._engine_lock:
+                        shell._engine["data"] = None
+                    return self._json(out)
                 if path == "/api/engine/cue":
                     # A graphic of the run of show onto Preview (by its name).
                     e = shell.engine_summary()

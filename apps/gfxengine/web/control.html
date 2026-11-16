@@ -174,6 +174,19 @@
     <h2>Tournament</h2>
     <span class="muted">The standings and bracket graphics show these. Enter the scores and the winners go through.</span>
   </div>
+    <section class="panel pad tn-saved" id="tn-saved">
+      <div id="tn-logo" class="tn-logo" title="Click or drop this tournament's logo">Logo</div>
+      <div class="tn-saved-main">
+        <div class="tn-saved-row">
+          <label class="tn-field">Tournament <select id="tn-pick"></select></label>
+          <label class="tn-field">Name <input id="tn-rename" maxlength="80"></label>
+          <button id="tn-new">New tournament</button>
+          <button class="ghost" id="tn-dup" title="A new tournament with this one's teams, brackets, standings and logo">Duplicate</button>
+          <button class="ghost" id="tn-del">Delete</button>
+        </div>
+        <p class="muted small">Each tournament keeps its own brackets, standings, schedule, logo and event name. Picking one here (or from the tournament menu at the top of Control) changes what the graphics show.</p>
+      </div>
+    </section>
     <section class="g-tournament">
       <div class="tourney">
         <div class="tn-part panel pad" id="st-part">

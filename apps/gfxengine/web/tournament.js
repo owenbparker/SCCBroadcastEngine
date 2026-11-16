@@ -452,11 +452,75 @@
   }
   let stTeamsSig = "";
 
+  // --- the saved tournaments: pick, rename, logo, new, duplicate, delete -------------------
+  const tnInfo = () => (App.state && App.state.tournaments) || { active: "", tournaments: [] };
+  const tnCur = () => tnInfo().tournaments.find(x => x.id === tnInfo().active);
+  let tnActive = null;      // the open one when the brackets were last shown
+  async function tnDo(path, body, msg) {
+    try { const r = await api(path, body); if (msg) toast(msg); return r; } catch (e) { toast(e.message, true); }
+  }
+  $("#tn-pick").addEventListener("change", e => tnDo("/api/tournaments/open", { id: e.target.value }));
+  const rename = debounce(() => {
+    const name = $("#tn-rename").value.trim(), cur = tnCur();
+    if (name && cur && name !== cur.name) tnDo("/api/tournaments/rename", { id: cur.id, name });
+  }, 600);
+  $("#tn-rename").addEventListener("input", rename);
+  $("#tn-new").addEventListener("click", async () => {
+    let name = "New tournament", n = 2;
+    while (tnInfo().tournaments.some(x => x.name === name)) name = `New tournament ${n++}`;
+    if (await tnDo("/api/tournaments/new", { name }, "New tournament: give it a name and a logo")) {
+      setTimeout(() => { const i = $("#tn-rename"); i.focus(); i.select(); }, 300);
+    }
+  });
+  $("#tn-dup").addEventListener("click", () => {
+    const cur = tnCur();
+    if (cur) tnDo("/api/tournaments/new", { name: cur.name + " copy", copy: true }, "Duplicated");
+  });
+  $("#tn-del").addEventListener("click", () => {
+    const cur = tnCur();
+    if (cur && confirm(`Delete the tournament "${cur.name}"? Its brackets, standings and schedule go with it.`))
+      tnDo("/api/tournaments/delete", { id: cur.id }, "Tournament deleted");
+  });
+  (function logoDrop() {
+    const el = $("#tn-logo");
+    const input = h("input", { type: "file", accept: "image/*", hidden: true,
+      onchange: e => { const f = e.target.files[0]; e.target.value = ""; if (f) up(f); } });
+    el.after(input);
+    const up = async f => { const cur = tnCur(); if (cur) { await postFile(`/api/tournaments/logo?id=${encodeURIComponent(cur.id)}`, f); toast("Tournament logo saved"); } };
+    el.addEventListener("click", () => input.click());
+    el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("over"); });
+    el.addEventListener("dragleave", () => el.classList.remove("over"));
+    el.addEventListener("drop", e => { e.preventDefault(); e.stopPropagation(); el.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) up(f); });
+  })();
+  function renderSaved() {
+    const info = tnInfo(), cur = tnCur(), sel = $("#tn-pick");
+    const sig = JSON.stringify(info.tournaments.map(x => [x.id, x.name]));
+    if (sel.dataset.sig !== sig) {
+      sel.dataset.sig = sig;
+      sel.replaceChildren(...info.tournaments.map(x => h("option", { value: x.id }, x.name)));
+    }
+    if (document.activeElement !== sel) sel.value = info.active;
+    const name = $("#tn-rename");
+    if (document.activeElement !== name && cur) name.value = cur.name;
+    const logo = cur ? pic(cur.logo) : "";
+    $("#tn-logo").classList.toggle("has", !!logo);
+    $("#tn-logo").style.backgroundImage = logo ? `url("${logo}")` : "";
+    $("#tn-del").disabled = info.tournaments.length < 2;
+    if (tnActive !== null && tnActive !== info.active) {
+      // (another tournament: its brackets and standings replace what was being edited here)
+      pending = stPending = false;
+      t = st = null;
+      if (App.tab === "tournament") { renderTournament(true); renderStandings(true); }
+    }
+    tnActive = info.active;
+  }
+
   // --- in step with the engine ----------------------------------------------------------
   let lastTeams = "";
   App.on(s => {
     renderNames();
     if (App.tab === "global") renderTicker();
+    renderSaved();
     if (App.tab === "tournament") { renderTournament(false); renderStandings(false); }
     const sig = JSON.stringify(s.teams);
     if (App.tab === "teams" && sig !== lastTeams) {

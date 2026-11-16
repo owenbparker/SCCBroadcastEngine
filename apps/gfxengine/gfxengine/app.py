@@ -42,7 +42,7 @@ from .media import Jobs, ffmpeg_path, stinger_cut
 from .project import Workspace, blank_comp, blank_layer, new_id
 from .stats import GAMES, Stats, read as read_stats, rows as stats_rows
 from .teams import Teams, ign_key, player_named, roster_rows
-from . import schedule, standings, tournament
+from . import schedule, standings, tournament, tournaments
 from .updater import Updater, clean_up_old_update
 from .workspaces import Workspaces
 
@@ -207,6 +207,7 @@ class Engine:
             if self.settings.get().get("workspace") != wid:
                 self.settings.update({"workspace": wid})
             self.workspace_id = wid
+            self._ensure_tournaments()
         self.assets_rev += 1
         threading.Thread(target=sources.refresh, daemon=True).start()
         log(f"Opened the workspace {ws.get()['name']}")
@@ -245,6 +246,7 @@ class Engine:
         snap = self.sources.snapshot()
         g = self.global_config()
         snap["tables"]["Global"] = globalcfg.rows(g)
+        snap["tables"]["Global"].append(["Tournament name", tournaments.active_name(self.ws.snapshot().get("tournaments"))])
         snap["tables"]["Sponsors"] = globalcfg.sponsor_rows(g)
         try:
             snap["tables"]["Stats"] = self.stats.rows(
@@ -294,6 +296,8 @@ class Engine:
             "rev": self.ws.rev, "assets_rev": self.assets_rev,
             "project": project, "live": self.live.get(), "data": self.data_snapshot(),
             "global": globalcfg.clean(project.get("global")),
+            "tournaments": tournaments.summary(tournaments.clean(copy.deepcopy(project.get("tournaments")),
+                                                                 globalcfg.clean(project.get("global")))),
             "teams": self.teams.list(),
             "games": list(GAMES.values()),   # (the games there are HUDs for)
             "camera_looks": s.get("camera_looks") or [],
@@ -347,20 +351,129 @@ class Engine:
     # --- global configuration, and the game HUDs ----------------------------
 
     def set_global(self, changes):
-        old = self.global_config()
-        g = json.loads(json.dumps(old))
-        for k, v in (changes or {}).items():
-            if k == "pictures" and isinstance(v, dict) and not ({"left", "right"} & set(v)):
-                for page, sides in v.items():   # ({"team": {"left": "champion"}}: just that one)
-                    if isinstance(sides, dict):
-                        g[k].setdefault(page, {}).update(sides)
-            elif k in ("left", "right", "bgloop", "caster", "pictures") and isinstance(v, dict):
-                g[k].update(v)
+        with self.ws.lock:
+            old = self.global_config()
+            g = json.loads(json.dumps(old))
+            for k, v in (changes or {}).items():
+                if k == "pictures" and isinstance(v, dict) and not ({"left", "right"} & set(v)):
+                    for page, sides in v.items():   # ({"team": {"left": "champion"}}: just that one)
+                        if isinstance(sides, dict):
+                            g[k].setdefault(page, {}).update(sides)
+                elif k in ("left", "right", "bgloop", "caster", "pictures") and isinstance(v, dict):
+                    g[k].update(v)
+                else:
+                    g[k] = v
+            g = globalcfg.sponsors_changed(old, globalcfg.clean(g))
+            # (the open tournament keeps its own copy of its brackets, standings...)
+            t = self._tournaments()
+            self.ws.set_global(g, t if tournaments.sync(t, g) else None)
+            return g
+
+    # --- the saved tournaments (see tournaments.py) ---------------------------
+
+    def _tournaments(self):
+        return tournaments.clean(copy.deepcopy(self.ws.snapshot().get("tournaments")), self.global_config())
+
+    def _ensure_tournaments(self):
+        """A workspace from before tournaments: its brackets and standings become its first one."""
+        with self.ws.lock:
+            if not isinstance(self.ws.snapshot().get("tournaments"), dict):
+                t = self._tournaments()
+                self.ws.set_global(self.global_config(), t)
+                log(f"Saved this workspace's brackets and standings as the tournament {t['list'][0]['name']}")
+
+    def tournaments_info(self):
+        return tournaments.summary(self._tournaments())
+
+    def open_tournament(self, tid, t=None):
+        """Puts a saved tournament's brackets, standings, schedule, logo and
+        event into Global (the graphics show it); the one open before keeps its own."""
+        with self.ws.lock:
+            t = t or self._tournaments()
+            x = tournaments.find(t, tid)
+            if not x:
+                raise KeyError("No such tournament")
+            g = self.global_config()
+            tournaments.sync(t, g)
+            t["active"] = tid
+            g.update(copy.deepcopy(x["data"]))
+            self.ws.set_global(globalcfg.clean(g), t)
+        log(f"Opened the tournament {x['name']}")
+        return self.tournaments_info()
+
+    def new_tournament(self, name, copy_current=False):
+        """A new tournament (blank, or a copy of the open one's brackets,
+        standings and logo), opened."""
+        with self.ws.lock:
+            t = self._tournaments()
+            tournaments.sync(t, self.global_config())
+            data = copy.deepcopy(tournaments.active(t)["data"]) if copy_current else tournaments.blank_data()
+            data["event"] = (name or "").strip()[:80] or "New tournament"
+            x = tournaments.add(t, name, data)
+            return self.open_tournament(x["id"], t)
+
+    def rename_tournament(self, tid, name):
+        name = (name or "").strip()[:80]
+        if not name:
+            raise ValueError("Give the tournament a name")
+        with self.ws.lock:
+            t = self._tournaments()
+            x = tournaments.find(t, tid)
+            if not x:
+                raise KeyError("No such tournament")
+            linked = x["data"]["event"] == x["name"]   # (the event was its name: it follows)
+            x["name"] = name
+            if linked:
+                x["data"]["event"] = name
+            if tid == t["active"]:
+                g = self.global_config()
+                if linked:
+                    g["event"] = name
+                self.ws.set_global(g, t)
             else:
-                g[k] = v
-        g = globalcfg.sponsors_changed(old, globalcfg.clean(g))
-        self.ws.set_global(g)
-        return g
+                self.ws.set_global(self.global_config(), t)
+        return self.tournaments_info()
+
+    def delete_tournament(self, tid):
+        with self.ws.lock:
+            t = self._tournaments()
+            if not tournaments.find(t, tid):
+                raise KeyError("No such tournament")
+            if len(t["list"]) == 1:
+                raise ValueError("This is the only tournament: make another one before deleting it")
+            if tid == t["active"]:
+                nxt = max((x for x in t["list"] if x["id"] != tid), key=lambda x: x["updated"])
+                self.open_tournament(nxt["id"], t)
+                t = self._tournaments()
+            t["list"] = [x for x in t["list"] if x["id"] != tid]
+            self.ws.set_global(self.global_config(), t)
+        return self.tournaments_info()
+
+    def tournament_logo(self, tid, filename, blob):
+        """A saved tournament's logo (the open one's is Global's tournament logo)."""
+        with self.ws.lock:
+            t = self._tournaments()
+            if not tournaments.find(t, tid):
+                raise KeyError("No such tournament")
+            if tid == t["active"]:
+                self.save_global_logo("tournament", filename, blob)
+                return self.tournaments_info()
+        ext = os.path.splitext(filename or "")[1].lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif"):
+            raise ValueError("The logo must be a PNG, JPG, WEBP, SVG or GIF")
+        base = re.sub(r"[^\w\- ]+", "_", os.path.splitext(os.path.basename(filename))[0]) or "tournament"
+        rel, path = self.ws.unique_asset(base + ext, "logos")
+        with open(path, "wb") as f:
+            f.write(blob)
+        self.assets_rev += 1
+        with self.ws.lock:
+            t = self._tournaments()
+            x = tournaments.find(t, tid)
+            if x:
+                x["data"]["tournament_logo"] = rel
+                x["updated"] = time.time()
+                self.ws.set_global(self.global_config(), t)
+        return self.tournaments_info()
 
     def timer(self, action, secs=None, down=None):
         """Starts, stops, resets or sets the timer ({{timer}}); secs can be "m:ss"."""
@@ -1001,6 +1114,8 @@ def make_handler(engine):
                 return self._json({"engines": engine.beacon.engines()})
             if path == "/api/workspaces":
                 return self._json(engine.workspaces_info())
+            if path == "/api/tournaments":
+                return self._json(engine.tournaments_info())
             if path.startswith("/api/workspace-picture/"):
                 full = engine.workspaces.picture(unquote(path.rsplit("/", 1)[1]))
                 return self._file(full) if full else self._json({"error": "not found"}, 404)
@@ -1115,6 +1230,11 @@ def make_handler(engine):
                         return self._json({"photo": engine.save_team_photo((q.get("player") or [""])[0], name, blob)})
                     logo = engine.save_team_logo((q.get("team") or [""])[0], name, blob, (q.get("game") or [""])[0])
                     return self._json({"logo": logo, "teams": engine.teams.list()})
+                if path == "/api/tournaments/logo":
+                    if length > 30 << 20:
+                        raise ValueError("That file is too big (30 MB at most)")
+                    name = unquote(self.headers.get("X-Filename") or (q.get("name") or [""])[0])
+                    return self._json(engine.tournament_logo((q.get("id") or [""])[0], name, self.rfile.read(length)))
                 if path in ("/api/workspaces/picture", "/api/global/logo"):
                     # (the picture's bytes are the body)
                     name = unquote(self.headers.get("X-Filename") or (q.get("name") or [""])[0])
@@ -1176,6 +1296,15 @@ def make_handler(engine):
                     engine.delete_workspace(body["id"])
                 elif path == "/api/pack/import":
                     result = {"added": engine.import_pack(body.get("ids"))}
+                # --- the saved tournaments ---
+                elif path == "/api/tournaments/open":
+                    result = engine.open_tournament(body.get("id"))
+                elif path == "/api/tournaments/new":
+                    result = engine.new_tournament(body.get("name", ""), bool(body.get("copy")))
+                elif path == "/api/tournaments/rename":
+                    result = engine.rename_tournament(body.get("id"), body.get("name", ""))
+                elif path == "/api/tournaments/delete":
+                    result = engine.delete_tournament(body.get("id"))
                 # --- global configuration, game HUDs ---
                 elif path == "/api/global":
                     result = {"global": engine.set_global(body.get("global") or {})}
