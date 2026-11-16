@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from . import appearance, look, statsapi, startpick
 from .cams import CamHub, cam_links
-from .config import DATA_DIR, LOGO_DIR, SPONSOR_DIR, WEB_DIR, web_file
+from .config import DATA_DIR, LOGO_DIR, SPONSOR_DIR, STINGER_DIR, WEB_DIR, web_file
 from hudbuilder import embed as hud_builder
 from .demo import DemoMatch
 from .enginelink import EngineLink, save_logo_bytes, save_sponsors
@@ -29,9 +29,9 @@ mimetypes.add_type("image/svg+xml", ".svg")
 
 PAGES = {"/": "/start", "/start": "start.html", "/control": "control.html", "/observer": "observer.html",
          "/overlay": "overlay.html", "/overlay-classic": "overlay.html", "/spectated-cam": "spectated-cam.html",
-         "/overlay-gerrit2026": "gerrit2026.html"}
+         "/overlay-gerrit2026": "gerrit2026.html", "/overlay-newgerrit": "newgerrit.html"}
 # The built-in designs (config "design"): their page.
-DESIGNS = {"classic": "overlay.html", "gerrit2026": "gerrit2026.html"}
+DESIGNS = {"classic": "overlay.html", "gerrit2026": "gerrit2026.html", "newgerrit": "newgerrit.html"}
 CAM_PATHS = ("/api/cam/poll", "/api/cam/send", "/api/cam/list")
 SEND_EVERY = 1 / 30   # observer -> GFX PC
 
@@ -46,6 +46,7 @@ class HudApp:
         self.role = None          # "gfx", "observer" or None (the start screen)
         self.overlay_window = None
         self.demo = None
+        self.preview = None         # NEW GERRIT: {"at", "team"}, the control panel's "Preview goal and replay"
         self.last_source = None
         self.ingest_at = 0.0
         cfg = config.get()
@@ -183,13 +184,16 @@ class HudApp:
 
     def overlay_state(self):
         cfg = self.config.get()
-        keep = ("left", "right", "best_of", "event", "stage", "scorebug", "names", "sponsors", "sponsor_seconds", "show", "design")
+        keep = ("left", "right", "best_of", "event", "stage", "scorebug", "names", "sponsors", "sponsor_seconds", "show", "design",
+                "replay_stinger")
         game = self.state.snapshot()
         cams = self.cams_state(game)
         return {"game": game, "config": {k: cfg[k] for k in keep},
                 # (the GFX Engine overlay's data, and who has a cam)
                 "fields": self._engine_snapshot(here=True)["fields"], "cams": cams,
                 "target_cam": self.target_cam(game, cams), "now": time.time(), "demo": bool(self.demo),
+                # (NEW GERRIT: the control panel's "Preview goal and replay")
+                "preview": self.preview,
                 # (the engine's Global, when connected: the teams' colours, the event)
                 "global": self._global_bits()}
 
@@ -462,6 +466,40 @@ def save_upload(folder, prefix, name, data_url):
     return prefix + stem + ext
 
 
+STINGER_TYPES = {"webm": ".webm", "mp4": ".mp4"}
+STINGER_MAX = 200 * 1024 * 1024
+
+
+def save_stinger(name, data_url):
+    """NEW GERRIT's replay stinger: a WebM (with transparency) or MP4, saved to
+    stingers/. Returns (path for the overlay, when it covers the picture in ms or None)."""
+    m = re.fullmatch(r"data:([\w/.+-]*);base64,(.+)", data_url or "", re.S)
+    ext = os.path.splitext(name or "")[1].lower().lstrip(".")
+    kind = {"video/webm": "webm", "video/mp4": "mp4"}.get(m.group(1).lower() if m else "", ext)
+    if not m or kind not in STINGER_TYPES:
+        raise ValueError("Send the stinger as a WebM (with transparency) or an MP4. Export a .mov as WebM "
+                         "(VP9 with alpha) from After Effects, Premiere or Shutter Encoder.")
+    data = base64.b64decode(m.group(2))
+    if len(data) > STINGER_MAX:
+        raise ValueError("That stinger is over 200 MB: export it smaller")
+    stem = re.sub(r"[^A-Za-z0-9 _.-]+", "", os.path.splitext(os.path.basename(name or "stinger"))[0]).strip() or "stinger"
+    os.makedirs(STINGER_DIR, exist_ok=True)
+    path = os.path.join(STINGER_DIR, stem + STINGER_TYPES[kind])
+    with open(path, "wb") as f:
+        f.write(data)
+    return "stingers/" + stem + STINGER_TYPES[kind], stinger_cut_ms(path)
+
+
+def stinger_cut_ms(path):
+    """When the stinger covers the whole picture (ms), as the GFX Engine works it
+    out for its stingers; None when that can't be read here (the overlay then uses halfway)."""
+    try:
+        from gfxengine.media import stinger_cut
+        return stinger_cut(path)
+    except Exception:
+        return None
+
+
 def lan_ip():
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -679,6 +717,21 @@ def make_handler(app):
                 elif path == "/api/sponsor":
                     sponsor = save_upload(SPONSOR_DIR, "sponsors/", body.get("name"), body.get("data"))
                     app.config.update({"sponsors": app.config.get()["sponsors"] + [sponsor]})
+                    app.changed()
+                elif path == "/api/stinger":
+                    # NEW GERRIT's replay stinger.
+                    src, cut = save_stinger(body.get("name"), body.get("data"))
+                    app.config.update({"replay_stinger": {"src": src, "name": os.path.basename(body.get("name") or src),
+                                                          "cut": cut, "on": True}})
+                    log(f"Replay stinger is now {os.path.basename(src)}"
+                        + (f" (the replay graphics swap in under it at {cut} ms)" if cut is not None else ""))
+                    app.changed()
+                elif path == "/api/stinger/remove":
+                    app.config.update({"replay_stinger": {"src": "", "name": "", "cut": None}})
+                    log("Replay stinger removed: the replay graphics come in without one")
+                    app.changed()
+                elif path == "/api/stinger/preview":
+                    app.preview = {"at": time.time(), "team": 1 if body.get("team") == 1 else 0}
                     app.changed()
                 elif path == "/api/look/check":
                     app.look.check_now()

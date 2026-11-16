@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rocket League HUD · NEW GERRIT</title>
+<!--
+  The "NEW GERRIT" design (from owen's "Rocket League HUD.psd" and
+  "SCC RL REPLAY.psd"): a 1920x1080 browser source.
+  In play (the HUD):
+    - the top bar: team names, logos, scores, clock, series pips, and the
+      event scrolling along its header;
+    - each team's players with their boost (top left / top right), sponsors
+      under the blue team;
+    - the spectated player: their cam, name and stats (bottom left), and
+      their boost dial (bottom right).
+  Around a goal (the replay):
+    - a goal is scored: three player cams a side fly in at once, and the
+      scoring team's plate on the top bar turns into GOAL;
+    - the game's replay starts: the replay stinger (uploaded in the control
+      panel) plays, and under it the HUD's lower parts go and the replay
+      lower third (scorer, speed, assist) flies in; the clock shows REPLAY;
+    - the replay ends: the cams and the lower third leave (no stinger), and
+      the HUD's lower parts come back.
+  Fed by /api/stream.
+-->
+<style>
+  /* DIN 2014 when this PC has it (the design's font), else Barlow. Rubik is bundled. */
+  @font-face { font-family: "NGDin"; font-weight: 700; font-style: italic;
+               src: local("DIN 2014 Bold Italic"), local("DIN2014-BoldItalic"), url("fonts/Barlow-700-italic.woff2") format("woff2"); }
+  @font-face { font-family: "NGDin"; font-weight: 800; font-style: italic;
+               src: local("DIN 2014 ExtraBold Italic"), local("DIN2014-ExtraBoldItalic"), url("fonts/Barlow-700-italic.woff2") format("woff2"); }
+  @font-face { font-family: "NGDin"; font-weight: 400; font-style: italic;
+               src: local("DIN 2014 Italic"), local("DIN2014-Italic"), url("fonts/Barlow-700-italic.woff2") format("woff2"); }
+  @font-face { font-family: "NGRubik"; font-weight: 600; src: url("fonts/Rubik-600.woff2") format("woff2"); }
+  @font-face { font-family: "NGRubik"; font-weight: 700; src: url("fonts/Rubik-700.woff2") format("woff2"); }
+  @font-face { font-family: "NGRubik"; font-weight: 600; font-style: italic; src: url("fonts/Rubik-600-italic.woff2") format("woff2"); }
+  :root { --blue: #1ba9f5; --orange: #f26522; --red: #fd0000; --gold: #ffc42c;
+          --panel: #111823; --deep: #0a0e14; --head: #171d26; --pip: #42454a;
+          --ease: cubic-bezier(.2, .8, .2, 1); --back: cubic-bezier(.6, 0, .8, .2); --pop: cubic-bezier(.3, 1.5, .5, 1); }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+  body { font: italic 700 24px "NGDin", sans-serif; color: #fff; text-transform: uppercase; }
+  html.fit body { transform-origin: 0 0; }
+  .abs, .abs * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  /* Under the stinger: things go and come at once. */
+  body.cut *, body.cut *::before, body.cut *::after { transition: none !important; }
+  /* The design's soft white edge on coloured boxes. */
+  .rim { box-shadow: inset 0 0 0 4px rgba(255, 255, 255, .22); }
+
+  /* === the top bar ========================================================== */
+  #bug { position: absolute; left: 0; top: 0; width: 1920px; height: 150px; }
+  #bug .head { position: absolute; left: 736px; top: 13px; width: 448px; height: 36px; overflow: hidden;
+               background: linear-gradient(180deg, #1c232e, var(--head)); transition: transform .45s var(--ease) .25s, opacity .3s .25s; }
+  #bug .ticker { position: absolute; top: 0; left: 0; height: 36px; display: flex; align-items: center; white-space: nowrap;
+                 font: italic 800 14px "NGDin"; letter-spacing: .15em; will-change: transform; }
+  #bug .ticker span { padding-right: .9em; }
+  #bug .ticker.still { left: 50%; transform: translateX(-50%); }
+  #bug .ticker.run { animation: tick var(--tick, 20s) linear infinite; }
+  @keyframes tick { from { transform: translateX(0); } to { transform: translateX(var(--tick-w, -50%)); } }
+  #bug .head::before, #bug .head::after { content: ""; position: absolute; top: 0; bottom: 0; width: 22px; z-index: 1; }
+  #bug .head::before { left: 0; background: linear-gradient(90deg, var(--head), transparent); }
+  #bug .head::after { right: 0; background: linear-gradient(270deg, var(--head), transparent); }
+
+  #bug .core { position: absolute; left: 736px; top: 46px; width: 448px; height: 98px; background: var(--deep);
+               clip-path: inset(0 0 0 0); transition: clip-path .5s var(--ease); }
+  .lbox { position: absolute; top: 0; width: 78px; height: 78px; display: grid; place-items: center; }
+  .lbox.l { left: 0; } .lbox.r { left: 370px; }
+  .lbox img { max-width: 52px; max-height: 44px; object-fit: contain; transition: transform .4s var(--pop); }
+  .lbox .noimg { font: 700 22px "NGRubik"; }
+  .score { position: absolute; top: 0; width: 78px; height: 78px; overflow: hidden; }
+  .score.l { left: 75px; background: var(--blue); } .score.r { left: 295px; background: var(--orange); }
+  .score b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 54px/1 "NGRubik"; font-style: normal; padding-bottom: 2px; }
+  .score b.old { animation: numOut .45s var(--back) forwards; }
+  .score b.new { animation: numIn .55s var(--ease) both; }
+  @keyframes numOut { to { transform: translateY(-80px); opacity: 0; } }
+  @keyframes numIn { from { transform: translateY(80px); } }
+  .score::after { content: ""; position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .score.flash::after { animation: flash .7s ease-out; }
+  @keyframes flash { 0% { opacity: .95; } 100% { opacity: 0; } }
+  .clock { position: absolute; left: 150px; top: 0; width: 148px; height: 78px; overflow: hidden; }
+  .clock .t { position: absolute; inset: 0; display: grid; place-items: center; font: 700 40px/1 "NGRubik"; font-style: normal;
+              transition: transform .4s var(--ease) .15s, opacity .3s .15s; }
+  .clock .rp { position: absolute; inset: 0; background: #f4f5f7; color: #0a0e14; display: flex; align-items: center; justify-content: center; gap: 10px;
+               font: 700 28px/1 "NGRubik"; font-style: normal; letter-spacing: .02em; clip-path: inset(0 0 100% 0); transition: clip-path .4s var(--ease); }
+  .clock .rp i { width: 10px; height: 10px; border-radius: 50%; background: var(--red); animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+  #bug.replay .clock .rp { clip-path: inset(0 0 0 0); }
+  #bug.replay .clock .t { transform: translateY(40px); opacity: 0; transition-delay: 0s; }
+  .foot { position: absolute; left: 0; top: 75px; width: 448px; height: 23px; }
+  .foot .code { position: absolute; top: 0; width: 78px; height: 23px; display: grid; place-items: center; font: 600 14px/1 "NGRubik"; font-style: normal;
+                background: linear-gradient(180deg, #1c232e, var(--head)); }
+  .foot .code.l { left: 0; } .foot .code.r { left: 370px; }
+  .foot .bg { position: absolute; left: 75px; top: 0; width: 298px; height: 23px; background: var(--panel); }
+  .pips { position: absolute; left: 82px; top: 5px; width: 284px; height: 13px; display: flex; justify-content: center; gap: 5px; }
+  .pips i { flex: 0 1 53px; height: 13px; background: var(--pip); box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+            transition: background .4s, box-shadow .4s; }
+  .pips i.l { background: var(--blue); } .pips i.r { background: var(--orange); }
+  .pips i.now { background: transparent; box-shadow: inset 0 0 0 1.5px #fff; animation: now 2.4s ease-in-out infinite; }
+  @keyframes now { 50% { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.45); } }
+
+  /* The name plates: out from behind the middle. GOAL takes the scoring side's plate. */
+  .plate { position: absolute; top: 46px; width: 248px; height: 78px; overflow: hidden; }
+  .plate.l { left: 491px; } .plate.r { left: 1182px; }
+  .plate .fill { position: absolute; inset: 0; transition: transform .5s var(--ease) .3s; }
+  .plate.l .fill { background: var(--blue); } .plate.r .fill { background: var(--orange); }
+  .plate .nm { position: absolute; inset: 0 14px; display: flex; align-items: center; justify-content: center; white-space: nowrap;
+               font: 600 24px/1 "NGRubik"; font-style: normal; transition: transform .35s var(--ease), opacity .3s; }
+  .plate .nm span { display: inline-block; }
+  .plate .gl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 14px;
+               transform: scaleX(0); transition: transform .35s var(--back); }
+  .plate.l .gl { transform-origin: right; } .plate.r .gl { transform-origin: left; }
+  .plate .gl .wash { position: absolute; inset: 0; background: #fff; transition: background .45s ease .55s; }
+  .plate .gl img { position: relative; max-width: 54px; max-height: 50px; object-fit: contain; }
+  .plate .gl b { position: relative; font: 700 46px/1 "NGRubik"; font-style: normal; letter-spacing: .03em; color: #0a0e14; transition: color .45s ease .55s; }
+  .plate .gl .shine { position: absolute; top: -10px; bottom: -10px; width: 60px; left: -80px;
+                      background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform: skewX(-18deg); }
+  .plate.goal .nm { opacity: 0; }
+  .plate.l.goal .nm { transform: translateX(-60px); } .plate.r.goal .nm { transform: translateX(60px); }
+  .plate.goal .gl { transform: scaleX(1); transition: transform .4s var(--ease) .12s; }
+  .plate.goal .gl .wash { background: var(--deep); }
+  .plate.goal .gl b { color: #fff; animation: goalpop .5s var(--pop) .3s both; }
+  .plate.goal .gl img { animation: goalpop .5s var(--pop) .22s both; }
+  .plate.goal .gl .shine { animation: shine 1.8s ease-in-out 1s infinite; }
+  @keyframes goalpop { from { transform: scale(1.6); opacity: 0; } }
+  @keyframes shine { 0% { left: -80px; } 55%, 100% { left: 290px; } }
+  .plate.l.goal .gl b { color: var(--c-l, #fff); } .plate.r.goal .gl b { color: var(--c-r, #fff); }
+
+  /* Coming on / going off. */
+  #bug.off .core { clip-path: inset(0 50% 0 50%); transition-delay: .25s; }
+  #bug.off .plate.l .fill { transform: translateX(100%); transition-delay: 0s; }
+  #bug.off .plate.r .fill { transform: translateX(-100%); transition-delay: 0s; }
+  #bug.off .head { transform: translateY(40px); opacity: 0; transition-delay: 0s; }
+
+  /* === the players ========================================================== */
+  .team { position: absolute; top: 17px; width: 302px; height: 160px; }
+  .team.l { left: 0; } .team.r { left: 1618px; }
+  .row { position: absolute; left: 0; width: 302px; height: 41px; transition: transform .45s var(--ease); }
+  .row .bg { position: absolute; top: 0; width: 300px; height: 36px; background: var(--panel); transition: background .3s; }
+  .team.l .row .bg { left: 0; } .team.r .row .bg { left: 2px; }
+  .row .nm { position: absolute; top: 4px; font: italic 700 24px/28px "NGDin"; white-space: nowrap; transition: opacity .2s; }
+  .team.l .nm { left: 10px; } .team.r .nm { right: 9px; }
+  .row .bv { position: absolute; top: 4px; font: italic 700 24px/28px "NGDin"; width: 44px; transition: opacity .2s; }
+  .team.l .bv { left: 248px; text-align: right; } .team.r .bv { left: 11px; text-align: left; }
+  .row .bst { position: absolute; top: 34px; left: 0; width: 302px; height: 7px; overflow: hidden; }
+  .team.l .bst { background: color-mix(in srgb, var(--blue), #000 62%); }
+  .team.r .bst { background: color-mix(in srgb, var(--orange), #000 62%); }
+  .row .bst i { position: absolute; top: 0; bottom: 0; width: 0; transition: width .15s linear; }
+  .team.l .bst i { left: 0; background: var(--blue); } .team.r .bst i { right: 0; background: var(--orange); }
+  .team.l .row.target .bg { background: linear-gradient(90deg, var(--panel) 30%, color-mix(in srgb, var(--blue), var(--panel) 35%)); }
+  .team.r .row.target .bg { background: linear-gradient(270deg, var(--panel) 30%, color-mix(in srgb, var(--orange), var(--panel) 35%)); }
+  .row.dead .nm, .row.dead .bv { opacity: .4; }
+  .team.l.away .row { transform: translateX(-320px); } .team.r.away .row { transform: translateX(320px); }
+  .team .row:nth-child(2) { transition-delay: .06s; } .team .row:nth-child(3) { transition-delay: .12s; }
+  .team.away .row:nth-child(1) { transition-delay: .12s; } .team.away .row:nth-child(3) { transition-delay: 0s; }
+
+  #sponsor { position: absolute; left: 0; top: 157px; width: 300px; height: 80px; overflow: hidden; transition: transform .45s var(--ease) .18s; }
+  #sponsor .bg { position: absolute; left: 0; top: 0; width: 296px; height: 80px; background: url("designs/newgerrit/sponsor-bg.jpg") 0 0 / 296px 80px; }
+  #sponsor .edge { position: absolute; left: 296px; top: 0; width: 4px; height: 80px; background: var(--gold); }
+  #sponsor img { position: absolute; left: 22px; top: 10px; width: 252px; height: 60px; object-fit: contain; transition: opacity .4s; }
+  #sponsor.away { transform: translateX(-320px); transition-delay: 0s; }
+
+  /* === the spectated player ================================================ */
+  #target { position: absolute; left: 0; top: 860px; width: 961px; height: 220px; overflow: hidden; }
+  #target .cam { position: absolute; left: 0; top: 9px; width: 301px; height: 172px; transition: transform .45s var(--ease); }
+  #target .cam .line { position: absolute; left: 0; top: 0; width: 301px; height: 4px; background: var(--tc, var(--orange)); transition: background .3s; }
+  #target .cam .box { position: absolute; left: 0; top: 2px; width: 301px; height: 170px; overflow: hidden; background: #000; }
+  #target.nocam .cam { transform: translateY(175px); }
+  #target .low { position: absolute; left: 0; top: 180px; width: 961px; height: 40px; transition: transform .45s var(--ease) .08s; }
+  #target .plate2 { position: absolute; left: 0; top: 0; width: 301px; height: 40px; overflow: hidden; background: var(--tc, var(--orange)); transition: background .3s; }
+  #target .plate2 .wipe { position: absolute; inset: 0; background: #fff; transform: scaleX(0); transform-origin: left; }
+  #target .plate2.swap .wipe { animation: wipe .5s var(--ease); }
+  @keyframes wipe { 0% { transform: scaleX(0); transform-origin: left; } 45% { transform: scaleX(1); transform-origin: left; }
+                    55% { transform: scaleX(1); transform-origin: right; } 100% { transform: scaleX(0); transform-origin: right; } }
+  #target .plate2 img { position: absolute; left: 14px; top: 8px; width: 24px; height: 24px; object-fit: contain; }
+  #target .plate2 .who { position: absolute; right: 10px; top: 7px; max-width: 240px; white-space: nowrap; font: italic 700 24px/28px "NGDin"; }
+  #target .stats { position: absolute; left: 301px; top: 0; width: 660px; height: 40px; background: var(--panel); }
+  #target .stats div { position: absolute; top: 8px; white-space: nowrap; }
+  #target .stats b { font: italic 600 24px/24px "NGRubik"; transition: opacity .2s; }
+  #target .stats small { font: italic 400 14px "NGDin"; margin-left: 6px; }
+  #target.away .cam { transform: translateY(230px); }
+  #target.away .low { transform: translateY(50px); transition-delay: 0s; }
+
+  /* The boost dial (bottom right). */
+  #dial { position: absolute; left: 1626px; top: 842px; width: 219px; height: 219px; transition: transform .45s var(--pop), opacity .3s; }
+  #dial svg { width: 219px; height: 219px; overflow: visible; }
+  #dial .val { position: absolute; inset: 0; display: grid; place-items: center; font: 600 65px/1 "NGRubik"; font-style: normal; padding-bottom: 2px; }
+  #dial.away { transform: scale(.4); opacity: 0; transition: transform .35s var(--back), opacity .3s .05s; }
+
+  /* === the replay: cams down each side ======================================= */
+  .side { position: absolute; top: 241px; width: 301px; height: 553px; pointer-events: none; }
+  .side.l { left: 0; } .side.r { left: 1619px; }
+  .side .edge { position: absolute; top: 0; width: 10px; height: 553px; transform: scaleY(0); transition: transform .35s var(--ease); }
+  .side.l .edge { left: 291px; background: var(--blue); } .side.r .edge { left: 0; background: var(--orange); }
+  .side .tile { position: absolute; width: 291px; transition: transform .5s var(--ease); }
+  .side.l .tile { left: 0; transform: translateX(-310px); } .side.r .tile { left: 10px; transform: translateX(310px); }
+  .tile.s1 { top: 0; height: 175px; } .tile.s2 { top: 188px; height: 175px; } .tile.s3 { top: 375px; height: 178px; }
+  .tile .gap { position: absolute; left: 0; bottom: -13px; width: 291px; height: 13px; background: var(--panel); }
+  .tile.s3 .gap { display: none; }
+  .tile .box { position: absolute; inset: 0; overflow: hidden; background: #0b1017; }
+  .tile .who { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 16px;
+               font: italic 700 28px "NGDin"; white-space: nowrap; color: rgba(255,255,255,.55); transition: opacity .3s; }
+  .tile.live .who { opacity: 0; }
+  .tile.demo .box { background: radial-gradient(circle at 50% 38%, #3a4150, #10151d 75%); }
+  .tile.demo .who { color: #fff; }
+  .side.on .edge { transform: scaleY(1); }
+  .side.on .tile { transform: translateX(0); }
+  .side.on .tile.s1 { transition-delay: .08s; } .side.on .tile.s2 { transition-delay: .16s; } .side.on .tile.s3 { transition-delay: .24s; }
+  .side:not(.on) .tile { transition: transform .4s var(--back); }
+  .side:not(.on) .tile.s3 { transition-delay: 0s; } .side:not(.on) .tile.s2 { transition-delay: .06s; } .side:not(.on) .tile.s1 { transition-delay: .12s; }
+  .side:not(.on) .edge { transition: transform .3s var(--back) .3s; }
+  video.cv, iframe.cv { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: cover; opacity: 0; transition: opacity .3s; }
+  video.cv.on, iframe.cv.on { opacity: 1; }
+
+  /* === the replay lower third ================================================ */
+  #lower { position: absolute; left: 0; top: 1016px; width: 1920px; height: 64px; overflow: hidden; pointer-events: none; }
+  #lower .line { position: absolute; left: 0; top: 0; width: 1920px; height: 4px; background: var(--red); transform: scaleX(0); transition: transform .35s var(--ease); }
+  #lower .bar { position: absolute; left: 0; top: 4px; width: 1920px; height: 60px; background: url("designs/gerrit2026/bar.png") 0 0 / 1920px 60px;
+                transform: translateY(64px); transition: transform .45s var(--ease) .12s; }
+  #lower .items { position: absolute; left: 0; right: 0; top: 4px; height: 60px; display: flex; align-items: center; justify-content: center; }
+  #lower .it { display: flex; align-items: center; transform: translateY(40px); opacity: 0; transition: transform .45s var(--ease), opacity .3s; }
+  #lower .t { font: italic 700 32px/1 "NGDin"; white-space: nowrap; text-shadow: 0 0 5px rgba(0,0,0,.25); }
+  #lower img { display: block; flex: none; }
+  #lower .gi { width: 58px; height: 58px; margin-right: 4px; }
+  #lower .bi { width: 43px; height: 45px; margin: 0 4px 0 30px; }
+  #lower .ai { width: 56px; height: 56px; margin: 2px 4px 0 30px; }
+  #lower .mph { font-size: 24px; margin-left: 1px; padding-top: 6px; }
+  #lower .scorer, #lower .assister { max-width: 330px; overflow: hidden; }
+  #lower.on .line { transform: scaleX(1); }
+  #lower.on .bar { transform: translateY(0); }
+  #lower.on .it { transform: translateY(0); opacity: 1; }
+  #lower.on .it.a { transition-delay: .35s; } #lower.on .it.b { transition-delay: .45s; } #lower.on .it.c { transition-delay: .55s; }
+  #lower:not(.on) .bar { transition: transform .35s var(--back); }
+  #lower:not(.on) .line { transition: transform .3s var(--back) .25s; }
+  #lower:not(.on) .it { transition: opacity .2s; }
+
+  /* === the replay stinger ================================================== */
+  #stinger { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; z-index: 50; opacity: 0; pointer-events: none; }
+  #stinger.on { opacity: 1; }
+</style>
+</head>
+<body>
+<!-- The replay's cams (under the HUD's top bar). -->
+<div class="side l" id="side0">
+  <div class="tile s1"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
+  <div class="tile s2"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
+  <div class="tile s3"><div class="box"><div class="who"><span></span></div></div></div>
+  <div class="edge"></div>
+</div>
+<div class="side r" id="side1">
+  <div class="tile s1"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
+  <div class="tile s2"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
+  <div class="tile s3"><div class="box"><div class="who"><span></span></div></div></div>
+  <div class="edge"></div>
+</div>
+
+<div id="bug" class="off">
+  <div class="head"><div class="ticker still"></div></div>
+  <div class="plate l"><div class="fill rim"></div><div class="nm"><span></span></div>
+    <div class="gl"><div class="wash"></div><img alt=""><b>GOAL</b><div class="shine"></div></div></div>
+  <div class="plate r"><div class="fill rim"></div><div class="nm"><span></span></div>
+    <div class="gl"><div class="wash"></div><img alt=""><b>GOAL</b><div class="shine"></div></div></div>
+  <div class="core">
+    <div class="lbox l"><img alt=""><div class="noimg"></div></div>
+    <div class="score l rim"><b>0</b></div>
+    <div class="clock"><div class="t">05:00</div><div class="rp"><i></i>REPLAY</div></div>
+    <div class="score r rim"><b>0</b></div>
+    <div class="lbox r"><img alt=""><div class="noimg"></div></div>
+    <div class="foot"><div class="code l"></div><div class="bg"></div><div class="pips"></div><div class="code r"></div></div>
+  </div>
+</div>
+
+<div class="team l away" id="team0"></div>
+<div class="team r away" id="team1"></div>
+<div id="sponsor" class="away" hidden><div class="bg"></div><div class="edge"></div><img alt=""></div>
+
+<div id="target" class="away nocam">
+  <div class="cam"><div class="line"></div><div class="box"></div></div>
+  <div class="low">
+    <div class="plate2"><div class="wipe"></div><img alt=""><div class="who"></div></div>
+    <div class="stats"></div>
+  </div>
+</div>
+<div id="dial" class="away"><svg viewBox="-109.5 -109.5 219 219"></svg><div class="val">0</div></div>
+
+<div id="lower">
+  <div class="line"></div><div class="bar"></div>
+  <div class="items">
+    <div class="it a"><img class="gi" src="designs/gerrit2026/goal.png" alt=""><span class="t scorer"></span></div>
+    <div class="it b"><img class="bi" src="designs/gerrit2026/ball.png" alt=""><span class="t speed"></span><span class="t mph">MPH</span></div>
+    <div class="it c"><img class="ai" src="designs/gerrit2026/assist.png" alt=""><span class="t assister"></span></div>
+  </div>
+</div>
+
+<video id="stinger" playsinline preload="auto"></video>
+
+<script>
+(function () {
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const params = new URLSearchParams(location.search);
+  if (params.has("fit")) {   // the HUD-on-game window: fill it
+    document.documentElement.classList.add("fit");
+    const fit = () => { document.body.style.transform = `scale(${innerWidth / 1920}, ${innerHeight / 1080})`; };
+    addEventListener("resize", fit); fit();
+  }
+  const KMH_TO_MPH = 0.621371;
+  const STATS = [["goals", 53], ["shots", 172], ["assists", 293], ["saves", 424], ["demos", 544]];
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let S = null;   // the last state from the HUD
+  const cfg = () => S.config, nameOf = r => (r && ((cfg().names || {})[r.name] || r.name)) || "";
+  function fitText(el, max, min) {
+    el.style.fontSize = "";
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > max && size > (min || 11)) { size -= 1; el.style.fontSize = size + "px"; }
+  }
+  const setText = (el, text, max) => { if (el.textContent !== text) { el.textContent = text; if (max) fitText(el, max); } };
+  const setImg = (img, src) => { if (src) { if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else img.hidden = true; };
+  const two = n => String(n).padStart(2, "0");
+  const clock = (s, ot) => (ot ? "+" : "") + two(Math.floor(s / 60)) + ":" + two(s % 60);
+
+  // === player cams: Player Cam (WebRTC) or a VDO.Ninja link, per box =============
+  const ME = Math.random().toString(16).slice(2, 18);
+  const peers = {};   // cam id -> {pc, stream, started}
+  let registered = false;
+  const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.status); return d; }));
+  function drop(id) {
+    const p = peers[id];
+    if (!p) return;
+    delete peers[id];
+    try { p.pc.close(); } catch (e) { /* closed */ }
+  }
+  function gathered(pc) {
+    if (pc.iceGatheringState === "complete") return Promise.resolve();
+    return new Promise(resolve => {
+      pc.addEventListener("icegatheringstatechange", () => { if (pc.iceGatheringState === "complete") resolve(); });
+      setTimeout(resolve, 2500);
+    });
+  }
+  function unhide(sdp, ip, hubHost) {
+    if (ip && /^(127\.|::1$|::ffff:127\.)/.test(ip)) ip = /^localhost$/i.test(hubHost) ? "127.0.0.1" : hubHost;
+    if (!sdp || !ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return sdp;
+    return sdp.replace(/^(a=candidate:\S+ \d+ \S+ \d+ )\S+\.local( \d+ typ host)/gm, "$1" + ip + "$2");
+  }
+  function connect(id) {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    peers[id] = { pc, stream: null, started: Date.now() };
+    pc.addTransceiver("video", { direction: "recvonly" });
+    pc.ontrack = e => { if (peers[id]) peers[id].stream = e.streams[0] || new MediaStream([e.track]); };
+    pc.onconnectionstatechange = () => { if (pc.connectionState === "failed" || pc.connectionState === "closed") drop(id); };
+    pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => gathered(pc))
+      .then(() => post("/api/cam/send", { to: id, from: ME, data: { type: "offer", sdp: pc.localDescription.sdp } }))
+      .catch(() => drop(id));
+  }
+  (async function inbox() {
+    if (params.has("still")) return;
+    for (;;) {
+      try {
+        const r = await post("/api/cam/poll", { id: ME, wait: registered ? 20 : 0 });
+        registered = true;
+        for (const m of r.messages || []) {
+          const p = peers[m.from];
+          if (!p) continue;
+          if (m.type === "answer" && p.pc.signalingState === "have-local-offer")
+            p.pc.setRemoteDescription({ type: "answer", sdp: unhide(m.sdp, m.ip, location.hostname) }).catch(() => drop(m.from));
+          else if (m.type === "bye") drop(m.from);
+        }
+      } catch (e) { await sleep(2000); }
+    }
+  })();
+  addEventListener("pagehide", () => {
+    for (const id of Object.keys(peers)) if (navigator.sendBeacon)
+      navigator.sendBeacon("/api/cam/send", new Blob([JSON.stringify({ to: id, from: ME, data: { type: "bye" } })], { type: "text/plain" }));
+  });
+  function linkUrl(link) {
+    try {
+      const u = new URL(link);
+      if (/(^|\.)vdo\.ninja$|(^|\.)obs\.ninja$/.test(u.hostname))
+        ["cover", "cleanoutput", "noaudio"].forEach(p => { if (!u.searchParams.has(p)) u.searchParams.set(p, ""); });
+      return u.toString();
+    } catch (e) { return link; }
+  }
+  // Show {link} or {id} in a box (a link keeps its iframe while it's the same: reloading restarts it).
+  function feed(box, want) {
+    let v = box.querySelector("video.cv"), f = box.querySelector("iframe.cv");
+    const link = want && want.link, stream = want && want.id && peers[want.id] && peers[want.id].stream;
+    if (link) {
+      if (!f || f.dataset.link !== link) {
+        if (f) f.remove();
+        f = document.createElement("iframe");
+        f.className = "cv"; f.allow = "autoplay; camera; microphone"; f.dataset.link = link; f.src = linkUrl(link);
+        f.onload = () => f.classList.add("on");
+        box.insertBefore(f, box.firstChild);
+      }
+    } else if (f) f.remove();
+    if (stream) {
+      if (!v) { v = document.createElement("video"); v.className = "cv"; v.autoplay = v.muted = v.playsInline = true; box.insertBefore(v, box.firstChild); }
+      if (v.srcObject !== stream) { v.srcObject = stream; v.play().catch(() => {}); }
+      v.classList.add("on");
+    } else if (v) { v.srcObject = null; v.remove(); }
+    return !!link || !!stream;
+  }
+  let pubKey = "";
+  function syncPeers() {
+    const cams = S.cams || {}, pubs = cams.on !== false ? cams.publishers || [] : [];
+    const key = pubs.map(p => p.id).join(",") + "|" + registered;
+    if (key !== pubKey) {
+      pubKey = key;
+      const want = new Set(pubs.map(p => p.id));
+      for (const id of want) if (registered && !peers[id]) connect(id);
+      for (const id of Object.keys(peers)) if (!want.has(id)) drop(id);
+    }
+    for (const p of pubs) {
+      const peer = peers[p.id];
+      if (peer && peer.pc.connectionState !== "connected" && Date.now() - peer.started > 10000) { drop(p.id); pubKey = ""; }
+    }
+  }
+  function camFor(team, slot) {
+    const cams = S.cams || {};
+    if (cams.on === false) return null;
+    const mine = x => x.player && x.player.team === team && x.player.slot === slot;
+    const link = (cams.links || []).find(l => l.link && mine(l));
+    if (link) return { link: link.link };
+    const pub = (cams.publishers || []).find(mine);
+    return pub ? { id: pub.id } : null;
+  }
+
+  // === the top bar =================================================================
+  let tickKey = "";
+  function renderTicker() {
+    const c = cfg(), L = c.left || {}, R = c.right || {};
+    const parts = [c.event, c.stage, L.name && R.name ? `${L.name} vs ${R.name}` : ""].filter(Boolean);
+    const text = parts.join("  |  ");
+    if (text === tickKey) return;
+    tickKey = text;
+    const t = $("#bug .ticker");
+    t.className = "ticker";
+    t.innerHTML = `<span>${esc(text)}</span>`;
+    // Scrolls when there's more than one thing to say (as a ticker), else sits in the middle.
+    const w = t.firstChild.getBoundingClientRect().width + 26;
+    if (parts.length < 2 && w < 420) { t.classList.add("still"); return; }
+    t.firstChild.style.paddingRight = "26px";
+    t.firstChild.innerHTML = esc(text) + '<span style="padding:0 0 0 26px">|</span>';
+    const one = t.firstChild.getBoundingClientRect().width;
+    t.innerHTML += t.innerHTML + t.innerHTML;
+    t.style.setProperty("--tick-w", -one + "px");
+    t.style.setProperty("--tick", Math.max(8, one / 42) + "s");
+    t.classList.add("run");
+  }
+  const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+  const shown = [null, null];   // the scores on the bug
+  function setScore(side, i, n) {
+    const box = $(".score." + side);
+    if (shown[i] === n) return;
+    const first = shown[i] === null;
+    shown[i] = n;
+    if (first) { box.querySelector("b").textContent = n; return; }
+    for (const b of box.querySelectorAll("b.old")) b.remove();
+    const old = box.querySelector("b:not(.old)");
+    old.className = "old";
+    const b = document.createElement("b");
+    b.className = "new"; b.textContent = n;
+    box.appendChild(b);
+    box.classList.remove("flash"); void box.offsetWidth; box.classList.add("flash");
+    setTimeout(() => old.remove(), 500);
+  }
+  function renderBug(view) {
+    const c = cfg(), g = S.game;
+    for (const [side, t, i] of [["l", c.left || {}, 0], ["r", c.right || {}, 1]]) {
+      const box = $(".lbox." + side);
+      setImg(box.querySelector("img"), t.logo);
+      box.querySelector(".noimg").textContent = t.logo ? "" : (t.tricode || "");
+      setImg($(`.plate.${side} .gl img`), t.logo);
+      setText($(`.plate.${side} .nm span`), t.name || "", 222);
+      setText($(".code." + side), t.tricode || "");
+      // (the score holds still under GOAL, and moves on as the plate turns back)
+      if (!(view.goalSide === i && view.mode === "goal" && shown[i] !== null)) setScore(side, i, (g.teams[i] || {}).score || 0);
+    }
+    $(".clock .t").textContent = clock(g.clock || 0, g.overtime);
+    const n = Math.max(1, Number(c.best_of) || 1), lw = Number((c.left || {}).wins) || 0, rw = Number((c.right || {}).wins) || 0;
+    let pips = "";
+    for (let k = 0; k < n; k++) pips += `<i class="${k < lw ? "l" : k >= n - rw ? "r" : k === lw ? "now" : ""}"></i>`;
+    if ($(".pips").innerHTML !== pips) $(".pips").innerHTML = pips;
+    $("#bug").classList.toggle("off", view.away);
+    $("#bug").classList.toggle("replay", view.mode === "replay");
+    $(".plate.l").classList.toggle("goal", view.mode === "goal" && view.goalSide === 0);
+    $(".plate.r").classList.toggle("goal", view.mode === "goal" && view.goalSide === 1);
+    renderTicker();
+  }
+
+  // === the players ===================================================================
+  function renderTeams(view) {
+    const show = cfg().show || {}, g = S.game;
+    for (const t of [0, 1]) {
+      const box = $("#team" + t), players = g.players.filter(p => p.team === t).slice(0, 4);
+      while (box.children.length < players.length) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.style.top = box.children.length * 48 + "px";
+        row.innerHTML = '<div class="bst"><i></i></div><div class="bg"></div><div class="nm"></div><div class="bv"></div>';
+        box.appendChild(row);
+      }
+      while (box.children.length > players.length) box.lastChild.remove();
+      box.classList.toggle("away", view.hudAway || show.players === false || !players.length);
+      players.forEach((p, i) => {
+        const row = box.children[i];
+        row.classList.toggle("target", !!g.target && g.target.name === p.name && g.target.team === p.team);
+        row.classList.toggle("dead", !!p.demolished);
+        setText(row.querySelector(".nm"), nameOf(p), 200);
+        const boost = p.boost == null ? null : Math.round(p.boost);
+        row.querySelector(".bv").textContent = boost == null ? "" : boost;
+        row.querySelector(".bst i").style.width = (boost || 0) + "%";
+      });
+    }
+  }
+  let sponsorIndex = 0, sponsorTimer = null, sponsorKey = null;
+  function renderSponsor(view) {
+    const c = cfg(), list = (c.sponsors || []).filter(Boolean), on = (c.show || {}).sponsors !== false && list.length > 0;
+    $("#sponsor").hidden = !on;
+    $("#sponsor").classList.toggle("away", view.hudAway);
+    const key = JSON.stringify([list, c.sponsor_seconds]);
+    if (key === sponsorKey) return;
+    sponsorKey = key; sponsorIndex = 0;
+    const next = () => {
+      const img = $("#sponsor img"), src = list[sponsorIndex % list.length];
+      if (src && img.getAttribute("src") !== src) { img.style.opacity = 0; setTimeout(() => { img.src = src; img.style.opacity = 1; }, 300); }
+      clearTimeout(sponsorTimer);
+      if (list.length > 1) sponsorTimer = setTimeout(() => { sponsorIndex++; next(); }, Math.max(2, Number(c.sponsor_seconds) || 8) * 1000);
+    };
+    if (on) next();
+  }
+
+  // === the spectated player ============================================================
+  let targetKey = "";
+  function renderTarget(view) {
+    const show = cfg().show || {}, g = S.game, t = g.target;
+    const p = t && g.players.find(x => x.name === t.name && x.team === t.team);
+    const el = $("#target");
+    el.classList.toggle("away", !p || view.hudAway || show.target === false);
+    $("#dial").classList.toggle("away", !p || view.hudAway || show.boost === false || p.boost == null);
+    if (!p) return;
+    const colour = p.team ? "var(--orange)" : "var(--blue)";
+    el.style.setProperty("--tc", colour);
+    const key = p.team + "|" + p.name;
+    if (key !== targetKey) {
+      const plate = $("#target .plate2");
+      if (targetKey) { plate.classList.remove("swap"); void plate.offsetWidth; plate.classList.add("swap"); }
+      targetKey = key;
+    }
+    setImg($("#target .plate2 img"), ((p.team ? cfg().right : cfg().left) || {}).logo);
+    setText($("#target .who"), nameOf(p), 240);
+    const html = STATS.map(([k, x]) => `<div style="left:${x}px"><b>${p[k] || 0}</b><small>${k}</small></div>`).join("");
+    if ($("#target .stats").innerHTML !== html) $("#target .stats").innerHTML = html;
+    // Their cam: slides down behind the plate when they have none.
+    const tc = S.target_cam, box = $("#target .cam .box");
+    const live = feed(box, tc && (tc.link || tc.id) ? tc : null);
+    el.classList.toggle("nocam", !live && !(tc && tc.demo));
+    box.style.background = !live && tc && tc.demo ? "radial-gradient(circle at 50% 38%, #3a4150, #10151d 75%)" : "#000";
+    // The dial: the ring fills clockwise from the bottom.
+    const b = Math.max(0, Math.min(100, p.boost || 0)), r = 88, a = b / 100 * 2 * Math.PI;
+    const x = -Math.sin(a) * r, y = Math.cos(a) * r, large = b > 50 ? 1 : 0;
+    const arc = b >= 100 ? `<circle r="${r}" fill="none" stroke="${p.team ? "#f26522" : "#1ba9f5"}" stroke-width="24"/>`
+      : b > 0 ? `<path d="M0 ${r} A${r} ${r} 0 ${large} 1 ${x.toFixed(2)} ${y.toFixed(2)}" fill="none" stroke="${p.team ? "#f26522" : "#1ba9f5"}" stroke-width="24"/>` : "";
+    $("#dial svg").innerHTML = `<circle r="109.5" fill="#171d26"/><circle r="100" fill="#0a0e14"/>${arc}` +
+      `<circle r="74.5" fill="#0a0e14" stroke="#1c222b" stroke-width="3"/>` +
+      `<path d="M0 -100v13M0 100v-13M-100 0h13M100 0h-13" stroke="#fff" stroke-width="5"/>`;
+    $("#dial .val").textContent = Math.round(b);
+  }
+
+  // === the replay: cams and the lower third =====================================
+  function renderSides(view) {
+    const g = S.game;
+    for (const t of [0, 1]) {
+      const side = $("#side" + t), players = g.players.filter(p => p.team === t);
+      side.classList.toggle("on", view.cams);
+      for (let slot = 1; slot <= 3; slot++) {
+        const tile = side.querySelector(".tile.s" + slot), p = players[slot - 1];
+        tile.hidden = !p && players.length > 0 && slot > players.length;
+        // (cams only play while they're on screen, so they're loaded when the goal goes in)
+        const live = view.cams && p ? feed(tile.querySelector(".box"), camFor(t, slot)) : feed(tile.querySelector(".box"), null);
+        tile.classList.toggle("live", live);
+        tile.classList.toggle("demo", !live && !!S.demo && !!p);
+        setText(tile.querySelector(".who span"), p ? nameOf(p) : "", 260);
+      }
+    }
+  }
+  let lowerKey = "";
+  function renderLower(view) {
+    $("#lower").classList.toggle("on", view.lower);
+    let goal = S.game.goal || S.game.last_goal;
+    if (sim) {   // (the preview: the last goal, else a made-up one by the scoring side)
+      const ps = S.game.players.filter(p => p.team === sim.team);
+      const last = S.game.last_goal;
+      goal = last && last.team === sim.team ? last
+        : { at: "preview" + sim.team, scorer: ps[0] || { name: "SCORER" }, assister: ps[1] || null, speed: 152 };
+    }
+    if (!goal) return;
+    const key = [goal.at, nameOf(goal.scorer), nameOf(goal.assister), goal.speed].join("|");
+    if (key === lowerKey) return;
+    lowerKey = key;
+    setText($("#lower .scorer"), nameOf(goal.scorer));
+    $("#lower .speed").textContent = Math.round((+goal.speed || 0) * KMH_TO_MPH);
+    const a = nameOf(goal.assister);
+    setText($("#lower .assister"), a);
+    $("#lower .it.c").hidden = !a;
+  }
+
+  // === what's on: the HUD, a goal, or the replay ====================================
+  // mode: "hud" | "goal" (cams in, GOAL on the bug) | "replay" (lower third, REPLAY)
+  const view = { mode: "hud", goalSide: null, cams: false, lower: false, hudAway: true, away: true, backAt: 0 };
+  let sim = null;            // the control panel's preview: {goal, replay} times
+  let stingerSrc = "", cutTimer = null, replayLive = false;
+  const stinger = $("#stinger");
+  function stingerCfg() { return S.config.replay_stinger || {}; }
+  function loadStinger() {
+    const st = stingerCfg(), src = st.on !== false && st.src ? st.src : "";
+    if (src !== stingerSrc) { stingerSrc = src; if (src) { stinger.src = src; stinger.load(); } else stinger.removeAttribute("src"); }
+  }
+  stinger.addEventListener("ended", () => stinger.classList.remove("on"));
+  stinger.addEventListener("error", () => { stinger.classList.remove("on"); if (!replayLive && view.mode === "replay") goLive(); });
+  function goLive() {
+    // (under the stinger: the HUD's lower parts cut away, the lower third flies in)
+    clearTimeout(cutTimer);
+    replayLive = true;
+    document.body.classList.add("cut");
+    view.hudAway = true; view.mode = "replay";
+    paint();
+    void document.body.offsetWidth;
+    document.body.classList.remove("cut");
+    view.lower = true;
+    paint();
+  }
+  function startReplay() {
+    view.mode = "replay"; view.cams = true; replayLive = false;
+    if (stingerSrc && stinger.readyState >= 1) {
+      const st = stingerCfg(), dur = (stinger.duration || 1) * 1000;
+      const cut = Number.isFinite(+st.cut) && st.cut !== null && st.cut !== "" ? Math.max(0, +st.cut) : dur / 2;
+      stinger.currentTime = 0;
+      stinger.classList.add("on");
+      const p = stinger.play();
+      const go = () => { cutTimer = setTimeout(goLive, Math.min(cut, dur)); };
+      if (p && p.then) p.then(go).catch(() => { stinger.muted = true; stinger.play().then(go).catch(() => { stinger.classList.remove("on"); goLive(); }); });
+      else go();
+    } else goLive();
+  }
+  function endReplay() {
+    clearTimeout(cutTimer);
+    replayLive = false;
+    view.mode = "hud"; view.cams = false; view.lower = false;
+    // (the HUD comes back once the cams and lower third are on their way out)
+    view.backAt = Date.now() + 450;
+    setTimeout(step, 460);
+  }
+  function step() {
+    const g = S.game;
+    let phase = g.phase, replay = !!g.replay || phase === "replay";
+    if (sim) {
+      const age = Date.now() - sim.at;
+      if (age > 13500) sim = null;
+      else { replay = age >= 2600 && age < 10500; phase = replay ? "replay" : age < 2600 ? "goal" : "countdown"; }
+    }
+    view.away = phase === "podium";
+    const goalNow = phase === "goal" && !replay;
+    if (replay && view.mode !== "replay") {
+      if (view.mode !== "goal") view.goalSide = goalTeam();
+      startReplay();
+    } else if (!replay && view.mode === "replay") endReplay();
+    else if (goalNow && view.mode === "hud") {
+      view.mode = "goal"; view.cams = true; view.goalSide = goalTeam();
+    } else if (!goalNow && view.mode === "goal") {
+      view.mode = "hud"; view.cams = false;
+    }
+    if (view.mode !== "replay" && Date.now() >= (view.backAt || 0)) view.hudAway = view.away;
+    if (view.away) { view.hudAway = true; view.cams = false; view.lower = false; }
+    paint();
+  }
+  function goalTeam() {
+    if (sim) return sim.team;
+    const goal = S.game.goal || S.game.last_goal;
+    return goal && (goal.team === 0 || goal.team === 1) ? goal.team : null;
+  }
+  function paint() {
+    if (!S) return;
+    renderBug(view);
+    renderTeams(view);
+    renderSponsor(view);
+    renderTarget(view);
+    renderSides(view);
+    renderLower(view);
+  }
+
+  let firstPreview = null;
+  function render(s) {
+    if (!s || !s.game || !s.config) return;
+    S = s;
+    window.rlHud = s;   // (for checking the overlay)
+    syncPeers();
+    loadStinger();
+    // The control panel's "Preview goal and replay": a made-up goal for the scoring side picked there.
+    const pv = s.preview || null;
+    if (firstPreview === null) firstPreview = pv ? pv.at : 0;
+    else if (pv && pv.at !== firstPreview && (!sim || sim.key !== pv.at)) {
+      firstPreview = pv.at;
+      sim = { at: Date.now(), team: pv.team === 1 ? 1 : 0, key: pv.at };
+    }
+    step();
+  }
+  window.ngPreview = team => { sim = { at: Date.now(), team: team === 1 ? 1 : 0, key: Date.now() }; step(); };
+  setInterval(() => { if (S && sim) step(); }, 200);
+  if (document.fonts) document.fonts.ready.then(() => { tickKey = ""; if (S) paint(); });
+  if (params.has("still")) return;
+  const es = new EventSource("/api/stream");
+  es.onmessage = e => { try { render(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+})();
+</script>
+</body>
+</html>
