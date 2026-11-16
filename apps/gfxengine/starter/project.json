@@ -32252,8 +32252,8 @@
    "layer": 0,
    "layers": [
     {
-     "id": "lec40b355",
-     "name": "bg",
+     "id": "lc4b93f66",
+     "name": "Background (design)",
      "type": "image",
      "x": 1492,
      "y": 16,
@@ -32281,7 +32281,134 @@
      "loop": true
     },
     {
-     "id": "l8595d3f4",
+     "id": "l135463ae",
+     "name": "Background loop base",
+     "type": "rect",
+     "x": 1492,
+     "y": 16,
+     "w": 395,
+     "h": 212,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 92
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "fill": "#0a0a0c",
+     "radius": 0,
+     "stroke": "#f5c518",
+     "strokeWidth": 0,
+     "mask": "assets/Back in bug/loop-mask.png",
+     "show": "{{Global!Bug loop}}"
+    },
+    {
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "screen",
+     "id": "lc6affec5",
+     "name": "Background loop",
+     "type": "video",
+     "x": 1492,
+     "y": 16,
+     "w": 395,
+     "h": 212,
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 92
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!BG loop}}",
+     "fit": "cover",
+     "loop": true,
+     "audio": false,
+     "tint": "{{Global!BG loop colour}}",
+     "brightness": "{{Global!BG loop brightness}}",
+     "speed": "{{Global!BG loop speed}}",
+     "mask": "assets/Back in bug/loop-mask.png",
+     "show": "{{Global!Bug loop}}"
+    },
+    {
+     "id": "lc42f6c0c",
+     "name": "Left colour",
+     "type": "rect",
+     "x": 1494,
+     "y": 53,
+     "w": 137,
+     "h": 137,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 92
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "fill": "{{Global!Left color}}",
+     "radius": 0,
+     "stroke": "#f5c518",
+     "strokeWidth": 0
+    },
+    {
+     "id": "l01a82af7",
+     "name": "Right colour",
+     "type": "rect",
+     "x": 1747,
+     "y": 52,
+     "w": 137,
+     "h": 137,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 92
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "fill": "{{Global!Right color}}",
+     "radius": 0,
+     "stroke": "#f5c518",
+     "strokeWidth": 0
+    },
+    {
+     "id": "l85a040a2",
      "name": "Left logo",
      "type": "image",
      "x": 1514,
@@ -32310,7 +32437,7 @@
      "loop": true
     },
     {
-     "id": "l08561107",
+     "id": "l5422e702",
      "name": "Right logo",
      "type": "image",
      "x": 1767,
@@ -32339,7 +32466,7 @@
      "loop": true
     },
     {
-     "id": "l52a06ce2",
+     "id": "l47e91022",
      "name": "VS",
      "type": "text",
      "x": 1612,
@@ -32378,7 +32505,7 @@
      "scroll": 0
     },
     {
-     "id": "ldea9948d",
+     "id": "l5c6101e7",
      "name": "Title",
      "type": "text",
      "x": 1500,
@@ -32417,7 +32544,7 @@
      "scroll": 0
     },
     {
-     "id": "l58f3b365",
+     "id": "lb3e3eee8",
      "name": "Clock",
      "type": "text",
      "x": 1760,
@@ -36766,7 +36893,8 @@
    "803b80caf2dcc398"
   ],
   "Back in bug": [
-   "ca846dc1c9bd2923"
+   "ca846dc1c9bd2923",
+   "79d0f9e6f7fa40af"
   ],
   "Back soon bug": [
    "17f7976a384ec935"

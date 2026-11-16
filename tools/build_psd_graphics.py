@@ -177,14 +177,48 @@ def footer(g):
 
 
 def back_in(g, psd):
+    from PIL import Image, ImageFilter
     bg = g.one("bg")
+    bg["name"] = "Background (design)"
     image, (dx, dy), boxes = smart_object_without(psd, "bg", {"SCS_WHITEBORDER"})
-    path = os.path.join(g.folder, "bg.png")
-    image.save(path, optimize=True)
+    image.save(os.path.join(g.folder, "bg.png"), optimize=True)
     bg["w"], bg["h"] = image.size
-    logos = sorted(boxes["SCS_WHITEBORDER"])
-    after = bg
-    for side, (x1, y1, x2, y2) in zip(("Left", "Right"), logos):
+    # The bug's own shapes (inner coordinates): the three boxes side by side, and the two tabs.
+    from psd_tools import PSDImage
+    outer = next(l for l in PSDImage.open(psd).descendants() if l.name == "bg" and l.kind == "smartobject")
+    inner = PSDImage.open(io.BytesIO(outer.smart_object.data))
+    shapes = [l for l in inner.descendants() if l.name in ("Rectangle 7", "Rectangle 10") and l.visible]
+    boxes7 = sorted((l for l in shapes if l.name == "Rectangle 7"), key=lambda l: l.bbox[0])
+    left_box, middle_box, right_box = boxes7
+    tabs = [l for l in shapes if l.name == "Rectangle 10"]
+    # Where the background loop shows: the middle box and the tabs, inside their gold edges.
+    mask = Image.new("L", image.size, 0)
+    for l in [middle_box] + tabs:
+        alpha = l.composite().getchannel("A")
+        mask.paste(alpha, (l.bbox[0] + dx - bg["x"], l.bbox[1] + dy - bg["y"]), alpha)
+    mask = mask.filter(ImageFilter.MinFilter(5))   # (2px in: the edges stay gold)
+    white = Image.new("RGBA", image.size, (255, 255, 255, 0))
+    white.putalpha(mask)
+    white.save(os.path.join(g.folder, "loop-mask.png"), optimize=True)
+    under_loop = g.add(bg, {"id": new_id("l"), "name": "Background loop base", "type": "rect", "x": bg["x"], "y": bg["y"],
+                            "w": bg["w"], "h": bg["h"], "opacity": 1, "rotation": 0, "visible": True, "blend": "normal",
+                            "field": "", "anim": copy.deepcopy(bg["anim"]), "fill": "#0a0a0c", "radius": 0,
+                            "stroke": "#f5c518", "strokeWidth": 0, "mask": f"assets/{g.c['name']}/loop-mask.png",
+                            "show": "{{Global!Bug loop}}"})
+    sp = json.load(open(os.path.join(STARTER, "project.json"), encoding="utf-8"))
+    board = next(c for c in sp["compositions"] if c["name"] == "Sponsor board")
+    loop = copy.deepcopy(next(l for l in board["layers"] if l["name"] == "Background loop"))
+    loop.update(id=new_id("l"), name="Background loop", x=bg["x"], y=bg["y"], w=bg["w"], h=bg["h"], blend="screen",
+                mask=f"assets/{g.c['name']}/loop-mask.png", show="{{Global!Bug loop}}", anim=copy.deepcopy(bg["anim"]))
+    after = g.add(under_loop, loop)
+    # The boxes behind the logos: each team's colour (inside the gold edge).
+    for side, l in (("Left", left_box), ("Right", right_box)):
+        x1, y1, x2, y2 = l.bbox
+        after = g.add(after, {"id": new_id("l"), "name": f"{side} colour", "type": "rect", "x": x1 + dx + 2, "y": y1 + dy + 2,
+                              "w": x2 - x1 - 4, "h": y2 - y1 - 4, "opacity": 1, "rotation": 0, "visible": True,
+                              "blend": "normal", "field": "", "anim": copy.deepcopy(bg["anim"]),
+                              "fill": "{{Global!%s color}}" % side, "radius": 0, "stroke": "#f5c518", "strokeWidth": 0})
+    for side, (x1, y1, x2, y2) in zip(("Left", "Right"), sorted(boxes["SCS_WHITEBORDER"])):
         after = g.new_picture(f"{side} logo", x1 + dx, y1 + dy, x2 - x1, y2 - y1, "{{Global!%s logo}}" % side, after,
                               anim={"in": {"type": "scale", "dur": 450, "delay": 120}, "out": {"type": "fade", "dur": 250, "delay": 0}})
     g.text(g.one("back in"), "BACK IN", x=1500, w=104, align="left", field="Title", name="Title")
@@ -341,8 +375,8 @@ def build(psd_dir, only=None):
                 if l["type"] == "text" and l.get("font", "").lower().startswith("opensauce"):
                     l["weight"] = 300 if "light" in l["font"].lower() else 700
             # Only the files it uses, into starter/assets/<name>/.
-            used = {os.path.basename(l["src"]) for l in comp["layers"]
-                    if str(l.get("src", "")).startswith(f"assets/{name}/")}
+            used = {os.path.basename(l[k]) for l in comp["layers"] for k in ("src", "mask")
+                    if str(l.get(k, "")).startswith(f"assets/{name}/")}
             dest = os.path.join(STARTER, "assets", name)
             shutil.rmtree(dest, ignore_errors=True)
             os.makedirs(dest)

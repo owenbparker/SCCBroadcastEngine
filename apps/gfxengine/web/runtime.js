@@ -950,6 +950,13 @@
     outer.dataset.id = layer.id;
     if (layer.show && !opts.showHidden && !showing(layer)) outer.style.display = "none";
     const inner = el("div", "gfx-A");
+    if (layer.mask) {
+      // Shown only where a picture is (its alpha, stretched over the layer's box):
+      // the background loop in the shape of a bug's boxes.
+      const m = `url("${url(encodeURI(layer.mask))}")`;
+      Object.assign(inner.style, { webkitMaskImage: m, maskImage: m, webkitMaskSize: "100% 100%", maskSize: "100% 100%",
+        webkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat" });
+    }
     inner.appendChild(buildContent(layer, value, opts));
     outer.appendChild(inner);
     outer._value = value;
