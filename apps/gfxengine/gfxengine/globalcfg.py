@@ -18,7 +18,7 @@ import copy
 import re
 import time
 
-from . import schedule, standings, tournament
+from . import matchup, results, schedule, standings, tournament
 
 DEFAULT = {
     "event": "", "stage": "", "best_of": 3, "game": "",   # game: "" = from the score
@@ -36,6 +36,7 @@ DEFAULT = {
     "tournament": tournament.default(),
     "schedule": schedule.default(),
     "standings": standings.default(),   # the Standings graphics' teams (see standings.py)
+    "results": results.default(),       # past match results, for Recent Results (see results.py)
     # The clock graphics show ({{clock}} and {{Global!Clock label}}): the time of
     # day, or a countdown to "until" for Starting Soon or Be Right Back.
     "clock": {"mode": "time", "until": "", "zone": "EST"},
@@ -46,6 +47,10 @@ DEFAULT = {
     "roster": "left",    # whose players the player graphics show
     # who the Player stats page shows: the top player ("auto") or one picked ("left 3")
     "player_stats": "auto",
+    # The Head Chicklet's player ("left 2"), and the Head to Head board's two
+    # (each side's top player by the stats, "auto", or the one picked: "3").
+    "spotlight": "left 1",
+    "h2h": {"left": "auto", "right": "auto"},
     # The caster lower third: how many boxes, the box's colour (primary), its
     # edge and shadow's (secondary) and the text's (none set: the secondary).
     "caster": {"count": 1, "primary": "#c2bdff", "secondary": "#001a1a"},
@@ -118,6 +123,9 @@ def clean(g):
     out["tournament"] = tournament.clean(g.get("tournament"))
     out["schedule"] = schedule.clean(g.get("schedule"))
     out["standings"] = standings.clean(g.get("standings"))
+    out["results"] = results.clean(g.get("results"))
+    out["spotlight"] = matchup.clean_spotlight(g.get("spotlight"))
+    out["h2h"] = matchup.clean_h2h(g.get("h2h"))
     out["roster"] = "right" if g.get("roster") == "right" else "left"
     pick = str(g.get("player_stats") or "")
     out["player_stats"] = pick if re.match(r"^(left|right) ([1-9]|10)$", pick) else "auto"

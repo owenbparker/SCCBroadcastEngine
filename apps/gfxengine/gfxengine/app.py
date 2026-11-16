@@ -41,8 +41,8 @@ from .log import log, since
 from .media import Jobs, ffmpeg_path, stinger_cut
 from .project import Workspace, blank_comp, blank_layer, new_id
 from .stats import GAMES, Stats, read as read_stats, rows as stats_rows
-from .teams import Teams, ign_key, player_named, roster_rows
-from . import schedule, standings, tournament, tournaments
+from .teams import Teams, flag, ign_key, player_named, roster_rows
+from . import data as data_mod, matchup, results, schedule, standings, tournament, tournaments
 from .updater import Updater, clean_up_old_update
 from .workspaces import Workspaces
 
@@ -159,6 +159,8 @@ class Engine:
         # Data sent by game HUDs ("League HUD" -> its fields), kept while the engine runs.
         self.feeds = {}
         self.feeds_rev = 0
+        # (when it came, its table) - see set_run_of_show
+        self.run_of_show = (0.0, [["Field", "Value"]])
         if not self.settings.get().get("network_key"):
             self.settings.update({"network_key": new_key()})
         if not self.settings.get().get("engine_id") or self.settings.get().get("engine_id_pc") != socket.gethostname():
@@ -278,6 +280,19 @@ class Engine:
         for table, s_ in (("Roster", side), ("Opponent", "right" if side == "left" else "left")):
             snap["tables"][table] = roster_rows(self.teams.find(g[s_]["name"], g[s_]["game"]), s_,
                                                 [stats_names.get(f"{s_.title()} player {i}", "") for i in range(1, 6)])
+        # The Recent Results graphic: the past results of the team the player graphics show.
+        title = " ".join(x for x in (g["event"], "RESULTS") if x)
+        snap["tables"]["Results"] = results.rows(g["results"], g[side]["name"],
+                                                 lambda n: self.teams.find(n, g[side]["game"]), title)
+        team_of = lambda s_: self.teams.find(g[s_]["name"], g[s_]["game"])   # noqa: E731
+        snap["tables"]["Spotlight"] = matchup.spotlight_rows(g, team_of, flag)
+        try:
+            snap["tables"]["Head to head"] = matchup.h2h_rows(g, self.stats.data, team_of, player_named)
+        except Exception as e:   # (like the stats: never the whole engine)
+            log(f"Couldn't work out the head to head: {e!r}")
+            snap["tables"]["Head to head"] = matchup.h2h_rows(g, None, team_of, player_named)
+        # Tonight's run of show (SCC Broadcast Engine's, on the left of Control).
+        snap["tables"]["Run of show"] = self.run_of_show[1]
         for name, feed in self.feeds.items():
             snap["tables"][name] = feed["rows"]
         snap["tables"]["HUDs"] = self.hud_rows()
@@ -372,7 +387,7 @@ class Engine:
                     for page, sides in v.items():   # ({"team": {"left": "champion"}}: just that one)
                         if isinstance(sides, dict):
                             g[k].setdefault(page, {}).update(sides)
-                elif k in ("left", "right", "bgloop", "caster", "pictures") and isinstance(v, dict):
+                elif k in ("left", "right", "bgloop", "caster", "pictures", "h2h") and isinstance(v, dict):
                     g[k].update(v)
                 else:
                     g[k] = v
@@ -381,6 +396,31 @@ class Engine:
             t = self._tournaments()
             self.ws.set_global(g, t if tournaments.sync(t, g) else None)
             return g
+
+    def set_run_of_show(self, rows):
+        """Tonight's run of show, from SCC Broadcast Engine (sccbe/app.py pushes
+        it every few seconds): the "Run of show" table the Footer reads."""
+        if not isinstance(rows, list):
+            raise ValueError("rows must be a list")
+        table = [["Field", "Value"]] + [[str(r[0])[:80], "" if r[1] is None else str(r[1])[:300]]
+                                        for r in rows[:200] if isinstance(r, (list, tuple)) and len(r) >= 2]
+        changed = table != self.run_of_show[1]
+        self.run_of_show = (time.time(), table)
+        if changed:
+            self.feeds_rev += 1
+            self.changed()
+
+    def import_results(self, filename, blob, replace=False):
+        """Past results from a spreadsheet (CSV, Excel...) into the open tournament's."""
+        rows, _ = data_mod.parse(filename or "results.csv", blob)
+        found = results.from_rows(rows)
+        if not found:
+            raise ValueError("No matches found in that file: it needs a row for each match, with both teams "
+                             "(and their scores), like Date, Label, Team 1, Score 1, Score 2, Team 2")
+        with self.ws.lock:
+            old = [] if replace else self.global_config()["results"]
+            self.set_global({"results": results.merge(old, found)})
+        return {"added": len(found), "global": self.global_config()}
 
     # --- the saved tournaments (see tournaments.py) ---------------------------
 
@@ -1298,6 +1338,12 @@ def make_handler(engine):
                         return self._json({"photo": engine.save_team_photo((q.get("player") or [""])[0], name, blob)})
                     logo = engine.save_team_logo((q.get("team") or [""])[0], name, blob, (q.get("game") or [""])[0])
                     return self._json({"logo": logo, "teams": engine.teams.list()})
+                if path == "/api/results/import":
+                    if length > 30 << 20:
+                        raise ValueError("That file is too big (30 MB at most)")
+                    name = unquote(self.headers.get("X-Filename") or (q.get("name") or [""])[0])
+                    return self._json(engine.import_results(name, self.rfile.read(length),
+                                                            (q.get("mode") or [""])[0] == "replace"))
                 if path == "/api/tournaments/logo":
                     if length > 30 << 20:
                         raise ValueError("That file is too big (30 MB at most)")
@@ -1376,6 +1422,8 @@ def make_handler(engine):
                 # --- global configuration, game HUDs ---
                 elif path == "/api/global":
                     result = {"global": engine.set_global(body.get("global") or {})}
+                elif path == "/api/runofshow":
+                    engine.set_run_of_show(body.get("rows"))
                 elif path == "/api/timer":
                     result = {"global": engine.timer(body.get("action") or "", body.get("secs"), body.get("down"))}
                 elif path == "/api/teams":

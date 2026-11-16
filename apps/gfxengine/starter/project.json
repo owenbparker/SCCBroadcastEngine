@@ -1113,7 +1113,7 @@
     },
     {
      "id": "l9c2a6d16",
-     "name": "Universit\u00e9 de Montr\u00e9al vs. St. Clair College",
+     "name": "Université de Montréal vs. St. Clair College",
      "type": "text",
      "x": 1437,
      "y": 497,
@@ -31333,6 +31333,5083 @@
      "swap": "fade"
     }
    ]
+  },
+  {
+   "id": "cbdbdc133",
+   "name": "Footer",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "l77cfbf78",
+     "name": "middle-bg",
+     "type": "image",
+     "x": 738,
+     "y": 879,
+     "w": 906,
+     "h": 156,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 252
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/middle-bg.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l67181561",
+     "name": "Left logo box",
+     "type": "image",
+     "x": 308,
+     "y": 878,
+     "w": 156,
+     "h": 156,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 176
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/left-logo.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l2d5abaf5",
+     "name": "Right logo box",
+     "type": "image",
+     "x": 573,
+     "y": 878,
+     "w": 156,
+     "h": 156,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 272
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/right-logo.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l69e65b57",
+     "name": "middle-score",
+     "type": "image",
+     "x": 463,
+     "y": 878,
+     "w": 111,
+     "h": 156,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 224
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/middle-score.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l37e20b5c",
+     "name": "Left logo",
+     "type": "image",
+     "x": 332,
+     "y": 888,
+     "w": 115,
+     "h": 132,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 200
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!Left logo}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "l196a759e",
+     "name": "Right logo",
+     "type": "image",
+     "x": 596,
+     "y": 888,
+     "w": 115,
+     "h": 132,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 296
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!Right logo}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "l8473a9cd",
+     "name": "Score",
+     "type": "text",
+     "x": 431,
+     "y": 926,
+     "w": 176,
+     "h": 81,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 318
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Global!Left score}}-{{Global!Right score}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 57.57,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "la475cfe9",
+     "name": "top-bar-decor",
+     "type": "image",
+     "x": 308,
+     "y": 872,
+     "w": 1336,
+     "h": 8,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 72
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/top-bar-decor.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "lf799f5d7",
+     "name": "Rectangle 7 copy",
+     "type": "image",
+     "x": 43,
+     "y": 877,
+     "w": 259,
+     "h": 160,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 104
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/Rectangle 7 copy.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "la53176e2",
+     "name": "Rectangle 8 copy 5",
+     "type": "image",
+     "x": 43,
+     "y": 871,
+     "w": 259,
+     "h": 10,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/Rectangle 8 copy 5.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l3de449c0",
+     "name": "Sponsor",
+     "type": "image",
+     "x": 58,
+     "y": 896,
+     "w": 229,
+     "h": 126,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 48
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Sponsors}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "l742f0db0",
+     "name": "holder",
+     "type": "image",
+     "x": 1657,
+     "y": 872,
+     "w": 218,
+     "h": 164,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 380
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/holder.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l2b889bd3",
+     "name": "Next map in",
+     "type": "text",
+     "x": 1668,
+     "y": 906,
+     "w": 196,
+     "h": 46,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 474
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Run of show!Next map in}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 32.8,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "when": [
+      {
+       "value": "{{Run of show!Next map}}",
+       "op": "has"
+      }
+     ]
+    },
+    {
+     "id": "l1d5daaa2",
+     "name": "Countdown",
+     "type": "text",
+     "x": 1615,
+     "y": 941,
+     "w": 302,
+     "h": 93,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 498
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{countdown:Run of show!Next map at}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 66.27,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "when": [
+      {
+       "value": "{{Run of show!Next map}}",
+       "op": "has"
+      }
+     ]
+    },
+    {
+     "id": "lc78ba1e3",
+     "name": "Clock label",
+     "type": "text",
+     "x": 1668,
+     "y": 906,
+     "w": 196,
+     "h": 46,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 474
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Global!Clock label}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 32.8,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "when": [
+      {
+       "value": "{{Run of show!Next map}}",
+       "op": "empty"
+      }
+     ]
+    },
+    {
+     "id": "ldb5bde13",
+     "name": "Clock",
+     "type": "text",
+     "x": 1615,
+     "y": 941,
+     "w": 302,
+     "h": 93,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 498
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{clock}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 66.27,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "when": [
+      {
+       "value": "{{Run of show!Next map}}",
+       "op": "empty"
+      }
+     ]
+    },
+    {
+     "id": "l64a066c1",
+     "name": "lines",
+     "type": "image",
+     "x": 1039,
+     "y": 900,
+     "w": 305,
+     "h": 120,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 344
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/lines.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Run of show!Shown}}"
+    },
+    {
+     "id": "l6adbb547",
+     "name": "Now",
+     "type": "text",
+     "x": 752,
+     "y": 902,
+     "w": 280,
+     "h": 44,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 390
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Run of show!Now text}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 31.69,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Run of show!Shown}}"
+    },
+    {
+     "id": "l7a7c3e7c",
+     "name": "Now time",
+     "type": "text",
+     "x": 752,
+     "y": 954,
+     "w": 280,
+     "h": 59,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 450
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Run of show!Now time}}",
+     "font": "OpenSauceOne-Light",
+     "size": 42.78,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Run of show!Shown}}"
+    },
+    {
+     "id": "l260e56f0",
+     "name": "Next",
+     "type": "text",
+     "x": 1050,
+     "y": 902,
+     "w": 290,
+     "h": 44,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 426
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Run of show!Next text}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 31.69,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Run of show!Shown}}"
+    },
+    {
+     "id": "l95025bf3",
+     "name": "Next time",
+     "type": "text",
+     "x": 1050,
+     "y": 954,
+     "w": 290,
+     "h": 59,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 486
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Run of show!Next time}}",
+     "font": "OpenSauceOne-Light",
+     "size": 42.78,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Run of show!Shown}}"
+    },
+    {
+     "id": "l96ce4b64",
+     "name": "Later",
+     "type": "text",
+     "x": 1354,
+     "y": 902,
+     "w": 285,
+     "h": 44,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 438
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Run of show!Later text}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 31.69,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Run of show!Shown}}"
+    },
+    {
+     "id": "l7ba9f783",
+     "name": "Later time",
+     "type": "text",
+     "x": 1354,
+     "y": 954,
+     "w": 285,
+     "h": 59,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 498
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Run of show!Later time}}",
+     "font": "OpenSauceOne-Light",
+     "size": 42.78,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Run of show!Shown}}"
+    },
+    {
+     "id": "l3cbb9f11",
+     "name": "Event",
+     "type": "text",
+     "x": 760,
+     "y": 930,
+     "w": 862,
+     "h": 60,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 390
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Global!Event}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 44,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "",
+     "when": [
+      {
+       "value": "{{Run of show!Shown}}",
+       "op": "empty"
+      }
+     ]
+    },
+    {
+     "id": "l68346bc0",
+     "name": "top-bar-decor",
+     "type": "image",
+     "x": 308,
+     "y": 872,
+     "w": 421,
+     "h": 7,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 84
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Footer/top-bar-decor-2.png",
+     "fit": "fill",
+     "loop": true
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "overlay"
+  },
+  {
+   "id": "cf8577cb6",
+   "name": "Back in bug",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "lec40b355",
+     "name": "bg",
+     "type": "image",
+     "x": 1492,
+     "y": 16,
+     "w": 395,
+     "h": 212,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 92
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Back in bug/bg.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l8595d3f4",
+     "name": "Left logo",
+     "type": "image",
+     "x": 1514,
+     "y": 63,
+     "w": 99,
+     "h": 112,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 120
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!Left logo}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "l08561107",
+     "name": "Right logo",
+     "type": "image",
+     "x": 1767,
+     "y": 63,
+     "w": 99,
+     "h": 112,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 120
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!Right logo}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "l52a06ce2",
+     "name": "VS",
+     "type": "text",
+     "x": 1612,
+     "y": 95,
+     "w": 155,
+     "h": 79,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 186
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "vs",
+     "font": "OpenSauceOne-Bold",
+     "size": 56.17,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "ldea9948d",
+     "name": "Title",
+     "type": "text",
+     "x": 1500,
+     "y": 22,
+     "w": 104,
+     "h": 33,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Title",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 174
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "BACK IN",
+     "font": "OpenSauceOne-Bold",
+     "size": 23.59,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l58f3b365",
+     "name": "Clock",
+     "type": "text",
+     "x": 1760,
+     "y": 194,
+     "w": 122,
+     "h": 43,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 198
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{clock}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 30.76,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "overlay"
+  },
+  {
+   "id": "cb1367eb3",
+   "name": "Back soon bug",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "le176dd9d",
+     "name": "bg",
+     "type": "image",
+     "x": 29,
+     "y": 16,
+     "w": 430,
+     "h": 147,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 92
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Back soon bug/bg.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l443bf345",
+     "name": "Logo",
+     "type": "image",
+     "x": 51,
+     "y": 32,
+     "w": 99,
+     "h": 112,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 104
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Back soon bug/logo.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l0e64ad55",
+     "name": "Clock",
+     "type": "text",
+     "x": 180,
+     "y": 91,
+     "w": 200,
+     "h": 90,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 198
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{clock}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 64.22,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "ldbb77bf1",
+     "name": "Title",
+     "type": "text",
+     "x": 180,
+     "y": 34,
+     "w": 272,
+     "h": 60,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Title",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 186
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "BACK SOON",
+     "font": "OpenSauceOne-Bold",
+     "size": 42.94,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "overlay"
+  },
+  {
+   "id": "c3bf4f2a5",
+   "name": "Head chicklet",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "lc41e822b",
+     "name": "Rectangle 10",
+     "type": "image",
+     "x": -2,
+     "y": 864,
+     "w": 625,
+     "h": 72,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 36
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head chicklet/Rectangle 10.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l010b7a3f",
+     "name": "Rectangle 10 copy",
+     "type": "image",
+     "x": -2,
+     "y": 935,
+     "w": 542,
+     "h": 46,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 48
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head chicklet/Rectangle 10 copy.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l373b4f22",
+     "name": "Rectangle 8",
+     "type": "image",
+     "x": -2,
+     "y": 858,
+     "w": 625,
+     "h": 7,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 24
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head chicklet/Rectangle 8.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "lc44abf84",
+     "name": "Headshot",
+     "type": "image",
+     "x": 1,
+     "y": 625,
+     "w": 222,
+     "h": 455,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 152
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Spotlight!Headshot}}",
+     "fit": "contain",
+     "loop": true,
+     "position": "bottom",
+     "show": "{{Spotlight!Headshot}}"
+    },
+    {
+     "id": "l8746e476",
+     "name": "Team logo",
+     "type": "image",
+     "x": 30,
+     "y": 870,
+     "w": 170,
+     "h": 105,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 152
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Spotlight!Team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "when": [
+      {
+       "value": "{{Spotlight!Headshot}}",
+       "op": "empty"
+      }
+     ]
+    },
+    {
+     "id": "l8f8eb03e",
+     "name": "Name",
+     "type": "text",
+     "x": 234,
+     "y": 878,
+     "w": 360,
+     "h": 65,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 234
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Spotlight!Name}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 46.63,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lc19a29c9",
+     "name": "Team and game",
+     "type": "text",
+     "x": 236,
+     "y": 943,
+     "w": 290,
+     "h": 38,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 246
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Spotlight!Line}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 27.37,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "lower third"
+  },
+  {
+   "id": "cefe27c1b",
+   "name": "Caster 1x lower third",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "lb711093a",
+     "name": "Rectangle 7",
+     "type": "image",
+     "x": 42,
+     "y": 869,
+     "w": 158,
+     "h": 160,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 104
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 1x lower third/Rectangle 7.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l5838a810",
+     "name": "Rectangle 8",
+     "type": "image",
+     "x": 42,
+     "y": 864,
+     "w": 158,
+     "h": 10,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 12
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 1x lower third/Rectangle 8.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "lce49c524",
+     "name": "Logo",
+     "type": "image",
+     "x": 68,
+     "y": 883,
+     "w": 108,
+     "h": 124,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 116
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 1x lower third/SCS_WHITEBORDER.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l38ba757f",
+     "name": "Rectangle 10",
+     "type": "image",
+     "x": 196,
+     "y": 870,
+     "w": 375,
+     "h": 75,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 60
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 1x lower third/Rectangle 10.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l6fb17146",
+     "name": "Rectangle 10 copy",
+     "type": "image",
+     "x": 197,
+     "y": 941,
+     "w": 302,
+     "h": 49,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 84
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 1x lower third/Rectangle 10 copy.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l0e4557f7",
+     "name": "Rectangle 8",
+     "type": "image",
+     "x": 197,
+     "y": 865,
+     "w": 374,
+     "h": 10,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 48
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 1x lower third/Rectangle 8-2.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l5f7f573e",
+     "name": "Caster 1",
+     "type": "text",
+     "x": 212,
+     "y": 889,
+     "w": 330,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 1",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 222
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "CASTER NAME",
+     "font": "OpenSauceOne-Bold",
+     "size": 38.15,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l2d159e15",
+     "name": "Caster 1 handle",
+     "type": "text",
+     "x": 212,
+     "y": 952,
+     "w": 272,
+     "h": 38,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 1 handle",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 246
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "@HANDLE",
+     "font": "OpenSauceOne-Bold",
+     "size": 27.33,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "lower third"
+  },
+  {
+   "id": "c0a6c981e",
+   "name": "Caster 3x lower third",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "l2f336c4f",
+     "name": "logo-holder",
+     "type": "image",
+     "x": 48,
+     "y": 883,
+     "w": 156,
+     "h": 162,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 92
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 3x lower third/logo-holder.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "le438fcf7",
+     "name": "Logo",
+     "type": "image",
+     "x": 73,
+     "y": 900,
+     "w": 108,
+     "h": 124,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 104
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 3x lower third/SCS_WHITEBORDER.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "le9cf5bc1",
+     "name": "left",
+     "type": "image",
+     "x": 203,
+     "y": 883,
+     "w": 372,
+     "h": 122,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 36
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 3x lower third/left.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l0cb305e8",
+     "name": "right",
+     "type": "image",
+     "x": 1460,
+     "y": 883,
+     "w": 372,
+     "h": 123,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 108
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 3x lower third/right.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l6e020895",
+     "name": "middle",
+     "type": "image",
+     "x": 761,
+     "y": 884,
+     "w": 513,
+     "h": 121,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 72
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Caster 3x lower third/middle.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l2decc127",
+     "name": "Caster 1",
+     "type": "text",
+     "x": 218,
+     "y": 906,
+     "w": 330,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 1",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 198
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "CASTER NAME",
+     "font": "OpenSauceOne-Bold",
+     "size": 38.15,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l9781e50d",
+     "name": "Caster 1 handle",
+     "type": "text",
+     "x": 218,
+     "y": 969,
+     "w": 260,
+     "h": 38,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 1 handle",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 210
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "@HANDLE",
+     "font": "OpenSauceOne-Bold",
+     "size": 27.33,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l227026c2",
+     "name": "Caster 2",
+     "type": "text",
+     "x": 790,
+     "y": 906,
+     "w": 455,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 2",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 234
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "CASTER NAME",
+     "font": "OpenSauceOne-Bold",
+     "size": 38.15,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lda938a57",
+     "name": "Caster 2 handle",
+     "type": "text",
+     "x": 818,
+     "y": 969,
+     "w": 400,
+     "h": 38,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 2 handle",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 246
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "@HANDLE",
+     "font": "OpenSauceOne-Bold",
+     "size": 27.33,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "la57e5626",
+     "name": "Caster 3",
+     "type": "text",
+     "x": 1482,
+     "y": 906,
+     "w": 342,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 3",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 270
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "CASTER NAME",
+     "font": "OpenSauceOne-Bold",
+     "size": 38.15,
+     "color": "#ffffff",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lfb1baa2a",
+     "name": "Caster 3 handle",
+     "type": "text",
+     "x": 1530,
+     "y": 969,
+     "w": 294,
+     "h": 38,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Caster 3 handle",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 282
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "@HANDLE",
+     "font": "OpenSauceOne-Bold",
+     "size": 27.33,
+     "color": "#ffffff",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "lower third"
+  },
+  {
+   "id": "c76ed2c53",
+   "name": "Recent results",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "lcc71f35c",
+     "name": "Backdrop",
+     "type": "image",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 0.749,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 24
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Player stats/Layer 1.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "screen",
+     "id": "l4a5db421",
+     "name": "Background loop",
+     "type": "video",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 600,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!BG loop}}",
+     "fit": "cover",
+     "loop": true,
+     "audio": false,
+     "tint": "{{Global!BG loop colour}}",
+     "brightness": "{{Global!BG loop brightness}}",
+     "speed": "{{Global!BG loop speed}}"
+    },
+    {
+     "id": "led4c87fd",
+     "name": "Match 1 rectangle 7",
+     "type": "image",
+     "x": 34,
+     "y": 35,
+     "w": 184,
+     "h": 186,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 104
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "le132b622",
+     "name": "Match 1 rectangle 7 copy 2",
+     "type": "image",
+     "x": 342,
+     "y": 35,
+     "w": 185,
+     "h": 186,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 428
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 2.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l920b203e",
+     "name": "Match 1 rectangle 7 copy 3",
+     "type": "image",
+     "x": 214,
+     "y": 35,
+     "w": 132,
+     "h": 186,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 284
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 3.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l649e444a",
+     "name": "Match 1 team logo",
+     "type": "image",
+     "x": 63,
+     "y": 49,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 116
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 1 team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l541a1424",
+     "name": "Match 1 opponent logo",
+     "type": "image",
+     "x": 370,
+     "y": 49,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 476
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 1 opponent logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l5a47dc92",
+     "name": "Match 1 score",
+     "type": "text",
+     "x": 177,
+     "y": 93,
+     "w": 206,
+     "h": 94,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 366
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 1 score}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 67.14,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l9a47dc20",
+     "name": "Match 1 rectangle 8",
+     "type": "image",
+     "x": 34,
+     "y": 29,
+     "w": 493,
+     "h": 11,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 12
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 8.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l7a38a8d1",
+     "name": "Match 2 rectangle 7",
+     "type": "image",
+     "x": 34,
+     "y": 291,
+     "w": 184,
+     "h": 185,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 152
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7-2.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "la15d1fee",
+     "name": "Match 2 rectangle 7 copy 2",
+     "type": "image",
+     "x": 342,
+     "y": 291,
+     "w": 185,
+     "h": 185,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 440
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 2-2.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "lb98c1342",
+     "name": "Match 2 rectangle 7 copy 3",
+     "type": "image",
+     "x": 214,
+     "y": 291,
+     "w": 132,
+     "h": 185,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 320
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 3-2.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "lebc32159",
+     "name": "Match 2 team logo",
+     "type": "image",
+     "x": 63,
+     "y": 305,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 164
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 2 team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "l103faa45",
+     "name": "Match 2 opponent logo",
+     "type": "image",
+     "x": 370,
+     "y": 305,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 488
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 2 opponent logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "lb5b34262",
+     "name": "Match 2 score",
+     "type": "text",
+     "x": 177,
+     "y": 349,
+     "w": 206,
+     "h": 94,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 402
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 2 score}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 67.14,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "ld5f8032d",
+     "name": "Match 2 rectangle 8",
+     "type": "image",
+     "x": 34,
+     "y": 285,
+     "w": 493,
+     "h": 11,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 60
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 8-2.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "l87b15272",
+     "name": "Match 3 rectangle 7",
+     "type": "image",
+     "x": 34,
+     "y": 547,
+     "w": 184,
+     "h": 186,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 200
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7-3.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "lff40b048",
+     "name": "Match 3 rectangle 7 copy 2",
+     "type": "image",
+     "x": 342,
+     "y": 547,
+     "w": 185,
+     "h": 186,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 452
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 2-3.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "la530b265",
+     "name": "Match 3 rectangle 7 copy 3",
+     "type": "image",
+     "x": 214,
+     "y": 547,
+     "w": 132,
+     "h": 186,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 356
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 3-3.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "l3436d569",
+     "name": "Match 3 team logo",
+     "type": "image",
+     "x": 63,
+     "y": 561,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 212
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 3 team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "l86c63abe",
+     "name": "Match 3 opponent logo",
+     "type": "image",
+     "x": 370,
+     "y": 561,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 500
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 3 opponent logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "l67fba38f",
+     "name": "Match 3 score",
+     "type": "text",
+     "x": 177,
+     "y": 605,
+     "w": 206,
+     "h": 94,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 438
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 3 score}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 67.14,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "l0623bcfe",
+     "name": "Match 3 rectangle 8",
+     "type": "image",
+     "x": 34,
+     "y": 541,
+     "w": 493,
+     "h": 11,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 108
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 8-3.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "l13f195c2",
+     "name": "Match 4 rectangle 7",
+     "type": "image",
+     "x": 34,
+     "y": 803,
+     "w": 184,
+     "h": 185,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 248
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7-4.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l7eae7ebd",
+     "name": "Match 4 rectangle 7 copy 2",
+     "type": "image",
+     "x": 342,
+     "y": 803,
+     "w": 185,
+     "h": 185,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 464
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 2-4.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l2da06060",
+     "name": "Match 4 rectangle 7 copy 3",
+     "type": "image",
+     "x": 214,
+     "y": 803,
+     "w": 132,
+     "h": 185,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 392
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7 copy 3-4.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "lec700fd5",
+     "name": "Match 4 team logo",
+     "type": "image",
+     "x": 63,
+     "y": 817,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 260
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 4 team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l088f244c",
+     "name": "Match 4 opponent logo",
+     "type": "image",
+     "x": 370,
+     "y": 817,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 512
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Match 4 opponent logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l2b42852b",
+     "name": "Match 4 score",
+     "type": "text",
+     "x": 177,
+     "y": 861,
+     "w": 206,
+     "h": 94,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 474
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 4 score}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 67.14,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l6c5a03a0",
+     "name": "Match 4 rectangle 8",
+     "type": "image",
+     "x": 34,
+     "y": 797,
+     "w": 493,
+     "h": 11,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 156
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 8-4.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l63117873",
+     "name": "Match 1 label bar",
+     "type": "image",
+     "x": 34,
+     "y": 224,
+     "w": 494,
+     "h": 56,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 48
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 11.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l632c8679",
+     "name": "Match 2 label bar",
+     "type": "image",
+     "x": 34,
+     "y": 481,
+     "w": 494,
+     "h": 56,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 96
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 11 copy.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "lf01c337d",
+     "name": "Match 3 label bar",
+     "type": "image",
+     "x": 33,
+     "y": 736,
+     "w": 494,
+     "h": 56,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 144
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 11 copy 2.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "l5b066205",
+     "name": "Match 1 label",
+     "type": "text",
+     "x": 40,
+     "y": 236,
+     "w": 482,
+     "h": 44,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 378
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 1 label}}",
+     "font": "OpenSauceOne-Light",
+     "size": 31.57,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "l92db7b5f",
+     "name": "Match 2 label",
+     "type": "text",
+     "x": 40,
+     "y": 494,
+     "w": 482,
+     "h": 44,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 414
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 2 label}}",
+     "font": "OpenSauceOne-Light",
+     "size": 31.57,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 2 show}}"
+    },
+    {
+     "id": "l3fd632b1",
+     "name": "Match 3 label",
+     "type": "text",
+     "x": 40,
+     "y": 748,
+     "w": 482,
+     "h": 44,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 450
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 3 label}}",
+     "font": "OpenSauceOne-Light",
+     "size": 31.57,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 3 show}}"
+    },
+    {
+     "id": "l5a088cce",
+     "name": "Match 4 label bar",
+     "type": "image",
+     "x": 33,
+     "y": 993,
+     "w": 494,
+     "h": 56,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 192
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 11 copy 2-2.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l1076a85b",
+     "name": "Match 4 label",
+     "type": "text",
+     "x": 40,
+     "y": 1005,
+     "w": 482,
+     "h": 44,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 486
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Match 4 label}}",
+     "font": "OpenSauceOne-Light",
+     "size": 31.57,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0,
+     "show": "{{Results!Match 4 show}}"
+    },
+    {
+     "id": "l8cd8505b",
+     "name": "Rectangle 8",
+     "type": "image",
+     "x": 762,
+     "y": 857,
+     "w": 1125,
+     "h": 11,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 516
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 8-5.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l67de0ac2",
+     "name": "Rectangle 8 copy 2",
+     "type": "image",
+     "x": 567,
+     "y": 858,
+     "w": 185,
+     "h": 11,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 468
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 8 copy 2.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "ld08e19fa",
+     "name": "Rectangle 7",
+     "type": "image",
+     "x": 567,
+     "y": 865,
+     "w": 185,
+     "h": 184,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 560
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7-5.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l42beccbd",
+     "name": "Team logo",
+     "type": "image",
+     "x": 594,
+     "y": 877,
+     "w": 134,
+     "h": 154,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 572
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Team logo}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "l0a0ffffb",
+     "name": "Rectangle 7",
+     "type": "image",
+     "x": 761,
+     "y": 865,
+     "w": 1126,
+     "h": 185,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 528
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 7-6.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l68f4b770",
+     "name": "Team",
+     "type": "text",
+     "x": 781,
+     "y": 899,
+     "w": 1090,
+     "h": 70,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 690
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Team}}",
+     "font": "OpenSauceOne-Light",
+     "size": 50.0,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 300,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l42b9a1cf",
+     "name": "Title",
+     "type": "text",
+     "x": 781,
+     "y": 955,
+     "w": 1090,
+     "h": 83,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Title",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 700
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Results!Title}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 59.02,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "ldf391ff8",
+     "name": "Players panel",
+     "type": "image",
+     "x": 567,
+     "y": 34,
+     "w": 1320,
+     "h": 815,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 524
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Rectangle 12 copy.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "lf61046ab",
+     "name": "Team logo (no headshots)",
+     "type": "image",
+     "x": 1027,
+     "y": 191,
+     "w": 400,
+     "h": 500,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 524
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Results!Team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "show": "{{Roster!No headshots}}"
+    },
+    {
+     "id": "l3094285c",
+     "name": "Match 1 woody2026-5 copy 4",
+     "type": "image",
+     "x": 508,
+     "y": 72,
+     "w": 445,
+     "h": 792,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 536
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Recent results/Woody2026-5 copy 4.png",
+     "fit": "fill",
+     "loop": true,
+     "show": "{{Results!Match 1 show}}"
+    },
+    {
+     "id": "lb3e7628b",
+     "name": "Player 4 headshot",
+     "type": "image",
+     "x": 1479,
+     "y": 72,
+     "w": 445,
+     "h": 792,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 668
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Roster!Player 4 headshot}}",
+     "fit": "contain",
+     "loop": true,
+     "position": "bottom",
+     "show": "{{Roster!Player 4 headshot}}"
+    },
+    {
+     "id": "l274d9b33",
+     "name": "Player 3 headshot",
+     "type": "image",
+     "x": 1237,
+     "y": 72,
+     "w": 445,
+     "h": 792,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 656
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Roster!Player 3 headshot}}",
+     "fit": "contain",
+     "loop": true,
+     "position": "bottom",
+     "show": "{{Roster!Player 3 headshot}}"
+    },
+    {
+     "id": "ld283cb29",
+     "name": "Player 1 headshot",
+     "type": "image",
+     "x": 752,
+     "y": 72,
+     "w": 445,
+     "h": 792,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 584
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Roster!Player 1 headshot}}",
+     "fit": "contain",
+     "loop": true,
+     "position": "bottom",
+     "show": "{{Roster!Player 1 headshot}}"
+    },
+    {
+     "id": "l4f2e4d9d",
+     "name": "Player 2 headshot",
+     "type": "image",
+     "x": 993,
+     "y": 72,
+     "w": 446,
+     "h": 792,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 644
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Roster!Player 2 headshot}}",
+     "fit": "contain",
+     "loop": true,
+     "position": "bottom",
+     "show": "{{Roster!Player 2 headshot}}"
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "board"
+  },
+  {
+   "id": "cfac6403c",
+   "name": "Head to head",
+   "layer": 0,
+   "layers": [
+    {
+     "id": "l68524963",
+     "name": "Backdrop",
+     "type": "image",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 0.749,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 24
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Player stats/Layer 1.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "screen",
+     "id": "lcd7b8b79",
+     "name": "Background loop",
+     "type": "video",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 600,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!BG loop}}",
+     "fit": "cover",
+     "loop": true,
+     "audio": false,
+     "tint": "{{Global!BG loop colour}}",
+     "brightness": "{{Global!BG loop brightness}}",
+     "speed": "{{Global!BG loop speed}}"
+    },
+    {
+     "id": "l085a06da",
+     "name": "head-2-head",
+     "type": "image",
+     "x": 576,
+     "y": 271,
+     "w": 769,
+     "h": 540,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 176
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/head-2-head.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "lfcbed3de",
+     "name": "Left row 1",
+     "type": "text",
+     "x": 640,
+     "y": 353,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 258
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Left row 1}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.17,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l8e586d42",
+     "name": "Right row 1",
+     "type": "text",
+     "x": 1082,
+     "y": 352,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 378
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Right row 1}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.17,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l45058f7c",
+     "name": "Row 1 title",
+     "type": "text",
+     "x": 880,
+     "y": 364,
+     "w": 160,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 330
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Row 1 title}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 37.97,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l05dec2dd",
+     "name": "Left row 2",
+     "type": "text",
+     "x": 640,
+     "y": 480,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 282
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Left row 2}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.12,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l7c0d58fb",
+     "name": "Right row 2",
+     "type": "text",
+     "x": 1082,
+     "y": 479,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 402
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Right row 2}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.12,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lf43bc25f",
+     "name": "Row 2 title",
+     "type": "text",
+     "x": 880,
+     "y": 486,
+     "w": 160,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 342
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Row 2 title}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 37.97,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lbc240f6d",
+     "name": "Left row 3",
+     "type": "text",
+     "x": 640,
+     "y": 602,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 294
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Left row 3}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.17,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lde057c21",
+     "name": "Right row 3",
+     "type": "text",
+     "x": 1082,
+     "y": 601,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 390
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Right row 3}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.17,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lb0fa6fd8",
+     "name": "Row 3 title",
+     "type": "text",
+     "x": 880,
+     "y": 610,
+     "w": 160,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 354
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Row 3 title}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 37.97,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l901b158f",
+     "name": "Left row 4",
+     "type": "text",
+     "x": 640,
+     "y": 722,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 306
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Left row 4}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.17,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l9b90879e",
+     "name": "Right row 4",
+     "type": "text",
+     "x": 1082,
+     "y": 722,
+     "w": 200,
+     "h": 84,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 414
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Right row 4}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 60.17,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lebce86e8",
+     "name": "Row 4 title",
+     "type": "text",
+     "x": 880,
+     "y": 730,
+     "w": 160,
+     "h": 53,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 366
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Row 4 title}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 37.97,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lda4fcc46",
+     "name": "Title",
+     "type": "text",
+     "x": 748,
+     "y": 279,
+     "w": 426,
+     "h": 55,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Title",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 318
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "HEAD TO HEAD",
+     "font": "OpenSauceOne-Bold",
+     "size": 39.56,
+     "color": "#ffffff",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lfb273315",
+     "name": "frame-left",
+     "type": "image",
+     "x": 57,
+     "y": 201,
+     "w": 583,
+     "h": 724,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 104
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/frame-left.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "laf5f53a6",
+     "name": "freame-right",
+     "type": "image",
+     "x": 1281,
+     "y": 201,
+     "w": 583,
+     "h": 724,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 368
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/freame-right.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l48728a91",
+     "name": "top-frame-left",
+     "type": "image",
+     "x": 57,
+     "y": 200,
+     "w": 583,
+     "h": 46,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 12
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/top-frame-left.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l1022f06a",
+     "name": "top-frame-right",
+     "type": "image",
+     "x": 1281,
+     "y": 200,
+     "w": 583,
+     "h": 46,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 276
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/top-frame-right.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "lae1c5834",
+     "name": "Left headshot",
+     "type": "image",
+     "x": 150,
+     "y": 158,
+     "w": 395,
+     "h": 766,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 152
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Head to head!Left headshot}}",
+     "fit": "contain",
+     "loop": true,
+     "position": "bottom",
+     "show": "{{Head to head!Left headshot}}"
+    },
+    {
+     "id": "l31e19718",
+     "name": "Left logo (no headshot)",
+     "type": "image",
+     "x": 190,
+     "y": 380,
+     "w": 315,
+     "h": 340,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 152
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Head to head!Left team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "when": [
+      {
+       "value": "{{Head to head!Left headshot}}",
+       "op": "empty"
+      }
+     ]
+    },
+    {
+     "id": "l330b040a",
+     "name": "Right headshot",
+     "type": "image",
+     "x": 1377,
+     "y": 154,
+     "w": 370,
+     "h": 768,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 404
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Head to head!Right headshot}}",
+     "fit": "contain",
+     "loop": true,
+     "position": "bottom",
+     "show": "{{Head to head!Right headshot}}"
+    },
+    {
+     "id": "l90a5409d",
+     "name": "Right logo (no headshot)",
+     "type": "image",
+     "x": 1417,
+     "y": 380,
+     "w": 290,
+     "h": 340,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 404
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Head to head!Right team logo}}",
+     "fit": "contain",
+     "loop": true,
+     "when": [
+      {
+       "value": "{{Head to head!Right headshot}}",
+       "op": "empty"
+      }
+     ]
+    },
+    {
+     "id": "l172e09bb",
+     "name": "holder",
+     "type": "image",
+     "x": 60,
+     "y": 832,
+     "w": 581,
+     "h": 92,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 60
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/holder.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l32eb363a",
+     "name": "Left team box",
+     "type": "image",
+     "x": 55,
+     "y": 830,
+     "w": 117,
+     "h": 95,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 128
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/Rectangle 16 copy-2.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "la0171e55",
+     "name": "Left team logo",
+     "type": "image",
+     "x": 85,
+     "y": 840,
+     "w": 66,
+     "h": 75,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 452
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Head to head!Left team logo}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "l75446a50",
+     "name": "holder",
+     "type": "image",
+     "x": 1282,
+     "y": 832,
+     "w": 581,
+     "h": 92,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 300
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/holder-2.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l7a350348",
+     "name": "Right team box",
+     "type": "image",
+     "x": 1748,
+     "y": 830,
+     "w": 117,
+     "h": 95,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 440
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Head to head/Rectangle 16 copy-2.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l17f8170b",
+     "name": "Right team logo",
+     "type": "image",
+     "x": 1778,
+     "y": 841,
+     "w": 66,
+     "h": 75,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 452
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Head to head!Right team logo}}",
+     "fit": "contain",
+     "loop": true
+    },
+    {
+     "id": "lb03e2ed9",
+     "name": "Right team",
+     "type": "text",
+     "x": 1432,
+     "y": 207,
+     "w": 420,
+     "h": 40,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 498
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Right team short}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 28.5,
+     "color": "#ffffff",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "ld73c4cec",
+     "name": "Right name",
+     "type": "text",
+     "x": 1385,
+     "y": 840,
+     "w": 345,
+     "h": 105,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 486
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Right name}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 75.0,
+     "color": "#ffffff",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "la83bb088",
+     "name": "Right role",
+     "type": "text",
+     "x": 1302,
+     "y": 862,
+     "w": 118,
+     "h": 40,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 462
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Right role}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 28.5,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lfb9d35be",
+     "name": "Left name",
+     "type": "text",
+     "x": 188,
+     "y": 841,
+     "w": 350,
+     "h": 105,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 234
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Left name}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 75.0,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l2e0ccbc3",
+     "name": "Left role",
+     "type": "text",
+     "x": 500,
+     "y": 862,
+     "w": 118,
+     "h": 40,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 270
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Left role}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 28.5,
+     "color": "#ffffff",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "l28a45324",
+     "name": "Left team",
+     "type": "text",
+     "x": 66,
+     "y": 207,
+     "w": 420,
+     "h": 40,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 186
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Head to head!Left team short}}",
+     "font": "OpenSauceOne-Bold",
+     "size": 28.5,
+     "color": "#ffffff",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0
+    }
+   ],
+   "width": 1920,
+   "height": 1080,
+   "kind": "board"
   }
  ],
  "transitions": [
@@ -31509,7 +36586,7 @@
      "tournament": "CANADIAN ESPORTS NATIONALS",
      "game": "VALORANT",
      "type": "",
-     "team1": "Universit\u00e9 de Montr\u00e9al",
+     "team1": "Université de Montréal",
      "team2": "St. Clair College",
      "date": "2026-11-25",
      "time": "20:30"
@@ -31641,6 +36718,30 @@
   "Smash crews scoreboard": [
    "2a2d017525111247",
    "70bc06f1c24f431d"
+  ],
+  "Footer": [
+   "803b80caf2dcc398"
+  ],
+  "Back in bug": [
+   "ca846dc1c9bd2923"
+  ],
+  "Back soon bug": [
+   "17f7976a384ec935"
+  ],
+  "Head chicklet": [
+   "8e756515da6deb87"
+  ],
+  "Caster 1x lower third": [
+   "6d8c7f83517802f9"
+  ],
+  "Caster 3x lower third": [
+   "3d844c7dea3630aa"
+  ],
+  "Recent results": [
+   "310e3cdbebbe686d"
+  ],
+  "Head to head": [
+   "73043b1a4691ae87"
   ]
  },
  "pack_removed": [
@@ -31659,6 +36760,14 @@
   "Opponent lineup (2)",
   "Opponent lineup (3)",
   "Opponent lineup (4)",
-  "Opponent lineup (5)"
+  "Opponent lineup (5)",
+  "Footer",
+  "Back in bug",
+  "Back soon bug",
+  "Head chicklet",
+  "Caster 1x lower third",
+  "Caster 3x lower third",
+  "Recent results",
+  "Head to head"
  ]
 }

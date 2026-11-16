@@ -205,6 +205,16 @@
           <div id="st-rows" class="st-rows"></div>
           <p class="muted small">The Standings (8 teams) and Standings (16 teams) graphics show these, down the left column first. Pick a team from the team list, or type a new one; drop a logo on a row to give that team its logo.</p>
         </div>
+        <div class="tn-part panel pad" id="rs-part">
+          <div class="tn-head"><h4>Past results</h4>
+            <span class="muted small" id="rs-count"></span>
+            <div class="spacer"></div>
+            <button class="small ghost" id="rs-current" title="Adds the match on Global now (its teams and series score) as a result">+ This match</button>
+            <button class="small ghost" id="rs-import" title="A spreadsheet (CSV or Excel) with a row for each match">Import…</button>
+            <button class="small" id="rs-add">+ Add result</button></div>
+          <div id="rs-rows" class="rs-rows"></div>
+          <p class="muted small">The Recent results graphic shows the latest 4 for the team picked in Control (newest first, by date). Each tournament keeps its own. Import takes a CSV or Excel file with a row for each match: Date, Label (e.g. Week 1 - Game 1), Team 1, Score 1, Score 2, Team 2 (column titles in the first row, or in that order), or the score as one "3-1" between the teams.</p>
+        </div>
         <div class="tn-part panel pad">
           <div class="tn-head"><h4>Knockout bracket</h4>
             <div class="seg" id="tn-size"><button data-size="8">8 teams</button><button data-size="16">16 teams</button></div>
@@ -470,6 +480,7 @@
 <script src="pages.js"></script>
 <script src="home.js"></script>
 <script src="tournament.js"></script>
+<script src="results.js"></script>
 <script src="schedule.js"></script>
 <script src="cameras.js"></script>
 </body>

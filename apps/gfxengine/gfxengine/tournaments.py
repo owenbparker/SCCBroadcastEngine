@@ -4,7 +4,7 @@ a crew can switch between events without typing them in again.
 
     {"active": "nace-fall",
      "list": [{"id": "nace-fall", "name": "NACE Fall", "updated": 1700000000.0,
-               "data": {"event", "tournament_logo", "tournament", "standings", "schedule"}}, ...]}
+               "data": {"event", "tournament_logo", "tournament", "standings", "schedule", "results"}}, ...]}
 
 Global stays what the graphics read: the active tournament's data is a copy
 of those Global keys, saved back into it whenever Global changes (Engine.
@@ -16,9 +16,9 @@ import copy
 import re
 import time
 
-from . import schedule, standings, tournament
+from . import results, schedule, standings, tournament
 
-KEYS = ("event", "tournament_logo", "tournament", "standings", "schedule")
+KEYS = ("event", "tournament_logo", "tournament", "standings", "schedule", "results")
 MAX = 100
 
 
@@ -32,7 +32,7 @@ def _slug(name, taken):
 
 def blank_data(name=""):
     return {"event": name, "tournament_logo": "", "tournament": tournament.default(),
-            "standings": standings.default(), "schedule": schedule.default()}
+            "standings": standings.default(), "schedule": schedule.default(), "results": results.default()}
 
 
 def data_of(g):
@@ -46,7 +46,8 @@ def _clean_data(d, name):
             "tournament_logo": str(d.get("tournament_logo") or "")[:300],
             "tournament": tournament.clean(d.get("tournament")),
             "standings": standings.clean(d.get("standings")),
-            "schedule": schedule.clean(d.get("schedule"))}
+            "schedule": schedule.clean(d.get("schedule")),
+            "results": results.clean(d.get("results"))}
 
 
 def clean(t, g):

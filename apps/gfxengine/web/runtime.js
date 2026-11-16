@@ -25,13 +25,16 @@
     ...[400, 500, 700, 800, 900].map(w => ["Montserrat", `fonts/Montserrat-${w}.woff2`, String(w)]),
     ...[500, 600, 700].map(w => ["Barlow Condensed", `fonts/BarlowCondensed-${w}.woff2`, String(w)]),
     ...[700, 900].map(w => ["Vazirmatn", `fonts/Vazirmatn-${w}.woff2`, String(w)]),
+    // (the SCC 2026 graphics' font: Footer, Caster, Head to Head...)
+    ...[300, 700].map(w => ["Open Sauce One", `fonts/OpenSauceOne-${w}.woff2`, String(w)]),
   ];
-  GFX.builtinFonts = ["Inter", "Montserrat", "Barlow Condensed", "Bebas Neue", "Anton", "Permanent Marker", "Vazirmatn"];
+  GFX.builtinFonts = ["Inter", "Montserrat", "Barlow Condensed", "Bebas Neue", "Anton", "Permanent Marker", "Vazirmatn", "Open Sauce One"];
   const STANDINS = [
     [/gotham.*(black|ultra)/i, "Montserrat", 900], [/gotham.*bold/i, "Montserrat", 700],
     [/gotham.*medium/i, "Montserrat", 500], [/gotham/i, "Montserrat", 400],
     [/(trade.?gothic|tradegothic).*(cond|cn|20)/i, "Barlow Condensed", 700], [/trade.?gothic/i, "Barlow Condensed", 600],
     [/vazirmatn.*black/i, "Vazirmatn", 900], [/vazirmatn/i, "Vazirmatn", 700],
+    [/open.?sauce.*(light|thin|300)/i, "Open Sauce One", 300], [/open.?sauce/i, "Open Sauce One", 700],
     [/anton/i, "Anton", 400], [/brick/i, "Permanent Marker", 400],
     [/redzone|carbon|bebas|impact|oswald/i, "Bebas Neue", 400],
     [/(helvetica|arial|roboto|sf.?pro|segoe).*(black|heavy)/i, "Inter", 900],
@@ -111,6 +114,17 @@
       let s = Math.max(0, Math.round((target - now) / 1000));
       if (target < now && now - target > 12 * 3600e3) { target.setDate(target.getDate() + 1); s = Math.round((target - now) / 1000); }
       const h = Math.floor(s / 3600);
+      return (h ? `${h}:${pad(Math.floor(s / 60) % 60)}` : pad(Math.floor(s / 60))) + `:${pad(s % 60)}`;
+    }
+    m = /^countdown:\s*([^!]+![^!]+)$/i.exec(t);
+    if (m) {
+      // To a moment in the data ({{countdown:Run of show!Next map at}}): the
+      // engine's time in seconds, or a time of day.
+      const v = token(m[1].trim()).trim();
+      if (/^\d{1,2}:\d{2}$/.test(v)) return token("countdown:" + v);
+      const at = parseFloat(v);
+      if (!isFinite(at) || at <= 0) return "00:00";
+      const s = Math.max(0, Math.round(at - GFX.now() / 1000)), h = Math.floor(s / 3600);
       return (h ? `${h}:${pad(Math.floor(s / 60) % 60)}` : pad(Math.floor(s / 60))) + `:${pad(s % 60)}`;
     }
     m = /^([^!]+)!(.+)$/.exec(t);

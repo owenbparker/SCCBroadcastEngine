@@ -414,10 +414,12 @@ $("#update-back").addEventListener("click", e => {
     const mvp = comp.layers.some(l => /\{\{\s*Stats!MVP/i.test((l.text || "") + (l.src || "")));
     const caster = comp.layers.some(l => /Global!Caster/i.test(l.move || ""));
     const pics = comp.layers.some(l => /\{\{\s*Stats!.*(headshot|champion)\}\}/i.test(l.src || ""));
+    const uses = re => comp.layers.some(l => re.test((l.text || "") + (l.src || "") + (l.show || "")));
+    const spot = uses(/\{\{\s*Spotlight!/i), h2h = uses(/\{\{\s*Head to head!/i), past = uses(/\{\{\s*Results!/i);
     // (Player stats has its own setting: its picture is the MVP's)
     const picsPage = comp.layers.some(l => /\{\{\s*Stats!MVP (headshot|champion)\}\}/i.test(l.src || "")) ? "player" : "team";
-    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null].filter(Boolean);
-    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage,
+    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent, past) : null, spot ? spotlightField(s) : null, h2h ? h2hField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null].filter(Boolean);
+    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage, spot, h2h, past,
       Object.keys(s.data.feeds || {}), (s.data.tables.Global || []).map(r => r[0]),
       comp.hud ? JSON.stringify(s.data.feeds[comp.hud.split("/")[0]] && s.data.feeds[comp.hud.split("/")[0]].unreachable) : ""]);
     if (!force && box.dataset.sig === sig) {
@@ -441,7 +443,7 @@ $("#update-back").addEventListener("click", e => {
     const same = box.dataset.comp === comp.id;
     box.dataset.comp = comp.id;
     if (!fields.length) {
-      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || mvp || caster || pics || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
+      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || mvp || caster || pics || spot || h2h || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
       return;
     }
     keepScroll(box, () => { box.replaceChildren(...fields.map(l => {
@@ -526,9 +528,9 @@ $("#update-back").addEventListener("click", e => {
   }
   // The player graphics: whose players (the left or right team's roster, from the Teams tab).
   // An Opponent lineup graphic shows the other team from the one picked here.
-  function rosterField(s, opponent) {
-    const el = h("div", { class: "field roster-field", "data-opponent": opponent ? "1" : "" },
-      h("label", {}, opponent ? "Opponent of" : "Players from", h("span", { class: "kind" }, "teams")),
+  function rosterField(s, opponent, past) {
+    const el = h("div", { class: "field roster-field", "data-opponent": opponent ? "1" : "", "data-results": past ? "1" : "" },
+      h("label", {}, opponent ? "Opponent of" : past ? "Team" : "Players from", h("span", { class: "kind" }, "teams")),
       h("select", { "data-k": "roster", onchange: e => api("/api/global", { global: { roster: e.target.value } }) },
         h("option", { value: "left" }), h("option", { value: "right" })),
       h("div", { class: "resolved", "data-k": "roster-note" }));
@@ -587,6 +589,28 @@ $("#update-back").addEventListener("click", e => {
     markSize(el, s);
     return el;
   }
+  // The Head Chicklet's player: anyone on either team in Global (their roster in the Teams tab).
+  function spotlightField(s) {
+    const el = h("div", { class: "field spotlight-field" },
+      h("label", {}, "Player", h("span", { class: "kind" }, "teams")),
+      h("select", { "data-k": "spotlight", onchange: e => api("/api/global", { global: { spotlight: e.target.value } }) }),
+      h("div", { class: "resolved", "data-k": "spotlight-note" }));
+    markSize(el, s);
+    return el;
+  }
+  // The Head to Head board's two players: each team's top player by the game's stats, or one picked.
+  function h2hField(s) {
+    const set = (side, v) => api("/api/global", { global: { h2h: { [side]: v } } });
+    const el = h("div", { class: "field h2h-field" },
+      h("label", {}, "Players", h("span", { class: "kind" }, "teams")),
+      h("div", { class: "row-gap" },
+        h("select", { "data-k": "h2h-left", onchange: e => set("left", e.target.value) }),
+        h("span", { class: "muted small" }, "vs"),
+        h("select", { "data-k": "h2h-right", onchange: e => set("right", e.target.value) })),
+      h("div", { class: "resolved", "data-k": "h2h-note" }));
+    markSize(el, s);
+    return el;
+  }
   // The clock: the time of day, or a countdown for Starting Soon or Be Right Back
   // (Global's, so every clock changes, on air too).
   function clockField(s) {
@@ -635,11 +659,51 @@ $("#update-back").addEventListener("click", e => {
       const label = side => { const t = s.global[side]; return `${side === "left" ? "Left" : "Right"} team: ${t.name || "(none)"}${t.game ? ` (${t.game})` : ""}`; };
       ro.options[0].textContent = label("left"); ro.options[1].textContent = label("right");
       if (document.activeElement !== ro) ro.value = s.global.roster || "left";
-      const opp = !!el.dataset.opponent;
+      const opp = !!ro.closest(".roster-field").dataset.opponent;
       const rows = Object.fromEntries((s.data.tables[opp ? "Opponent" : "Roster"] || []).slice(1));
       el.querySelector("[data-k=roster-note]").textContent = (opp ? `Shows the ${rows.Side === "left" ? "left" : "right"} team${rows.Team ? ` (${rows.Team})` : ""}. ` : "") + (rows.Team
         ? `${rows.Players} player${rows.Players === "1" ? "" : "s"} on ${rows.Team}'s roster in the Teams tab.`
         : "That team isn't in the Teams tab, so the names come from the game's stats.");
+    }
+    if (ro && ro.closest(".roster-field").dataset.results) {
+      const res = Object.fromEntries((s.data.tables.Results || []).slice(1));
+      el.querySelector("[data-k=roster-note]").textContent += ` ${res.Count || 0} past result${res.Count === "1" ? "" : "s"} for ${res.Team || "this team"} on the Tournament page (the latest 4 show).`;
+    }
+    const sp = Object.fromEntries((s.data.tables.Spotlight || []).slice(1));
+    const players = side => { const S = side === "left" ? "Left" : "Right", out = [];
+      for (let n = 1; n <= 10 && (`${S} player ${n}` in sp); n++) out.push([n, sp[`${S} player ${n}`]]);
+      return out; };
+    const teamName = side => (s.global[side] || {}).short || (s.global[side] || {}).name || (side === "left" ? "Left" : "Right");
+    const fill = (sel, opts, value) => {
+      const sig = JSON.stringify(opts);
+      if (sel.dataset.sig !== sig) { sel.dataset.sig = sig; sel.replaceChildren(...opts.map(([v, t]) => h("option", { value: v }, t))); }
+      if (document.activeElement !== sel) sel.value = opts.some(o => o[0] === value) ? value : opts[0][0];
+    };
+    const spot = el.querySelector("[data-k=spotlight]");
+    if (spot) {
+      const opts = [];
+      for (const side of ["left", "right"]) for (const [n, name] of players(side)) opts.push([`${side} ${n}`, `${teamName(side)}: ${name || `Player ${n} (empty)`}`]);
+      if (!opts.length) opts.push(["left 1", "(no players: add the teams' rosters in the Teams tab)"]);
+      fill(spot, opts, s.global.spotlight || "left 1");
+      el.querySelector("[data-k=spotlight-note]").textContent = sp.Name
+        ? `Shows ${sp.Name}${sp.Headshot ? "" : " (no headshot in the Teams tab: their team's logo instead)"}, with "${sp.Line}" under the name.`
+        : "Pick a player. Names and headshots come from the teams' rosters in the Teams tab.";
+    }
+    const hh = Object.fromEntries((s.data.tables["Head to head"] || []).slice(1));
+    for (const side of ["left", "right"]) {
+      const sel = el.querySelector(`[data-k=h2h-${side}]`);
+      if (!sel) continue;
+      const S = side === "left" ? "Left" : "Right";
+      const pick = ((s.global.h2h || {})[side]) || "auto";
+      const opts = [["auto", `${teamName(side)}: top player${pick === "auto" && hh[`${S} name`] ? ` (${hh[`${S} name`]})` : ""}`]];
+      for (const [n, name] of players(side)) if (name) opts.push([String(n), `${teamName(side)}: ${name}`]);
+      fill(sel, opts, pick);
+    }
+    if (el.querySelector("[data-k=h2h-note]")) {
+      const titles = [1, 2, 3, 4].map(i => hh[`Row ${i} title`]).filter(Boolean).join(", ");
+      el.querySelector("[data-k=h2h-note]").textContent = hh.Status
+        ? `Their ${titles} from the game's stats. The top player is the one with the most ${hh["Row 4 title"] || "ACS"}.`
+        : `No game's stats yet: connect a game HUD (${titles} show as 0 until then).`;
     }
     const cs = s.global.caster || { count: 1, primary: "#c2bdff", secondary: "#001a1a" };
     for (const [k, v] of [["caster-count", String(cs.count)], ["caster-primary", cs.primary], ["caster-secondary", cs.secondary],

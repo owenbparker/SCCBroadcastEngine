@@ -95,7 +95,9 @@ def _valorant(f):
                             "extra": f.get(f"{S} P{n} CREDITS", ""),
                             "values": {"acs": _int(acs) if str(acs or "") != "" else acs_estimate(k, a, rounds),
                                        # (the round's first kill, counted by the HUD; "–" from a HUD too old to)
-                                       "fk": _int(f.get(f"{S} P{n} FK")) if f"{S} P{n} FK" in f else None}})
+                                       "fk": _int(f.get(f"{S} P{n} FK")) if f"{S} P{n} FK" in f else None,
+                                       # (average damage a round: only if the HUD reads it)
+                                       "adr": _int(f.get(f"{S} P{n} ADR")) if str(f.get(f"{S} P{n} ADR") or "") != "" else None}})
         teams[side] = {"score": _int(f.get(f"SCORE {S}")), "players": players}
     return teams
 
