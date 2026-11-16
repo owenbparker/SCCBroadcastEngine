@@ -21,11 +21,13 @@
     let height = 0;
     try { height = +localStorage.getItem(KEY) || 0; } catch (e) { /* private window */ }
 
-    // Preview, the take bar and Program are three columns; Graphics sits under
-    // Preview + the take bar and Fields under Program, edge to edge. Dragging
-    // scales the monitors (always 16:9) and every column with them, so the
-    // panels below keep lining up. Width is what limits them at most.
-    const TAKE = 150, MIN = 160;   // (smaller and Fields gets too narrow to use)
+    // Preview, the take bar and Program are three columns across the full
+    // width; Graphics sits under Preview + the take bar and Fields under
+    // Program, and they always keep the full width. Dragging only changes the
+    // monitors' size (always 16:9): they stay against the take bar, so the
+    // middle edges keep lining up with the panels below, and the panels just
+    // get taller or shorter.
+    const TAKE = 150, MIN = 140;
     function apply() {
       const boxes = mons.querySelectorAll(".mon-box");
       const takebar = mons.querySelector(".takebar");
@@ -39,13 +41,17 @@
       // widest each monitor can be, and the tallest the page leaves room for
       const full = Math.max(160, (inner - TAKE - 2 * gap) / 2);
       const most = Math.max(110, page.clientHeight - 260 - headH);
-      const want = height || Math.min(full * 9 / 16, window.innerHeight * 0.42);
+      const want = height || full * 9 / 16;
       const h0 = Math.max(MIN, Math.min(want, most));
       const w = Math.min(full, h0 * 16 / 9), h = w * 9 / 16;
-      mons.style.gridTemplateColumns = `${w}px ${TAKE}px ${w}px`;
-      mons.style.justifyContent = "center";
-      bottom.style.gridTemplateColumns = `${w + gap + TAKE + (gap - gapB)}px ${w}px`;
-      bottom.style.justifyContent = "center";
+      mons.style.gridTemplateColumns = `${full}px ${TAKE}px ${full}px`;
+      mons.style.justifyContent = "";
+      bottom.style.gridTemplateColumns = `${full + gap + TAKE + (gap - gapB)}px ${full}px`;
+      bottom.style.justifyContent = "";
+      for (const m of mons.querySelectorAll(".monitor")) {
+        m.style.width = `${w}px`;
+        m.style.justifySelf = m.classList.contains("pvw") ? "end" : "start";
+      }
       for (const b of boxes) b.style.cssText = `width:100%;height:${h}px;max-height:none;aspect-ratio:auto;flex:none`;
       // the take bar is no taller than the monitors: its transitions list scrolls
       const small = h < 300;
