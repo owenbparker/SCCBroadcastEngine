@@ -312,6 +312,28 @@ def open_folder(path):
         subprocess.Popen(["xdg-open", path])
 
 
+# A browser on another PC (or a browser tab on this one) reaches these pages
+# through the GFX Engine's port (http://<pc>:8782/sccbe/, see the engine's
+# _shell), which adds X-SCCBE-Remote: the address that browser used. It gets
+# the top bar, Control with its run of show, and the engine's pages: not this
+# PC's settings, parts or updates.
+REMOTE_GET = {"/api/state", "/api/ros", "/api/ros/export", "/api/ros/pcs", "/api/engine/workspaces", "/api/engine/tournaments"}
+REMOTE_POST = ("/api/ros/", "/api/engine/workspace", "/api/engine/tournament", "/api/engine/cue")
+_REMOTE_RE = re.compile(r"^https?://([A-Za-z0-9.\-]+|\[[0-9A-Fa-f:.]+\])(:\d{1,5})?$")
+
+
+def remote_state(state):
+    """/api/state for a browser on the network: what the top bar needs, nothing else."""
+    s = state["settings"]
+    return {"app": {"name": state["app"]["name"], "version": state["app"]["version"]},
+            "remote": True,
+            "settings": {"setup_done": True, "background": s.get("background"), "solid_colour": s.get("solid_colour"),
+                         "name": s.get("name") or "", "parts": {}},
+            "parts": [{k: p.get(k) for k in ("key", "title", "kind", "icon", "status", "port", "entry")} for p in state["parts"]],
+            "engine": state["engine"],
+            "update": {"available": False}}
+
+
 def make_handler(shell):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -319,7 +341,20 @@ def make_handler(shell):
         def log_message(self, *a):
             pass
 
+        def _remote(self):
+            """The address a browser on the network used (None: this PC's own window)."""
+            r = (self.headers.get("X-SCCBE-Remote") or "").strip()
+            if not r:
+                return None
+            return r if _REMOTE_RE.match(r) else "http://localhost"
+
         def _send(self, code, body, ctype):
+            remote = self._remote()
+            if remote and ctype == "application/json":
+                # (the engine's address as that browser reaches it, not 127.0.0.1)
+                base, is_remote = shell.engine_base()
+                if base and not is_remote:
+                    body = body.replace(json.dumps(base)[1:-1].encode(), remote.encode())
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
@@ -341,8 +376,10 @@ def make_handler(shell):
 
         def do_GET(self):
             path = urlparse(self.path).path
+            if self._remote() and path.startswith("/api/") and path not in REMOTE_GET:
+                return self._json({"error": "Only in the app on that PC"}, 403)
             if path == "/api/state":
-                return self._json(shell.state())
+                return self._json(remote_state(shell.state()) if self._remote() else shell.state())
             if path == "/api/log":
                 return self._json({"lines": lines()})
             if path == "/api/ros":
@@ -402,6 +439,9 @@ def make_handler(shell):
                 # (a web page open in a browser on this PC can't drive the app)
                 self.close_connection = True
                 return self._json({"error": "Only this PC's own pages can change SCC Broadcast Engine"}, 403)
+            if self._remote() and not (path.startswith(REMOTE_POST[0]) or path in REMOTE_POST[1:]):
+                self.close_connection = True
+                return self._json({"error": "Only in the app on that PC"}, 403)
             try:
                 body = self._body()
                 if path.startswith("/api/ros/"):
@@ -475,6 +515,8 @@ def start(shell, port=None):
     port = port or shell.settings.get()["http_port"]
     shell.httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(shell))
     shell.httpd.daemon_threads = True
+    # (the GFX Engine passes /sccbe/... from browsers on the network on to here)
+    os.environ["SCCBE_SHELL"] = f"http://127.0.0.1:{port}"
     threading.Thread(target=shell.httpd.serve_forever, name="shell-http", daemon=True).start()
     shell.ros_net = rosnet.start(shell.ros)
     clean_up_old_update()
