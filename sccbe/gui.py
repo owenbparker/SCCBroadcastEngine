@@ -226,6 +226,14 @@ def main(argv=None):
         return run_part(P, args.part, args.debug)
     from .log import log, open_file
     open_file(os.path.join(config.DATA_DIR, "shell"))
+    if not args.smoke_test and not already_running(args.port or config.Settings(
+            os.path.join(config.DATA_DIR, "shell", "settings.json")).get()["http_port"]):
+        # The old GFX Engine / HUDs' data (teams, workspaces, ...), before any part starts.
+        from . import migrate
+        try:
+            migrate.run(config.DATA_DIR)
+        except Exception as e:
+            log(f"Couldn't look for the old apps' data: {e!r}", "error")
     from .app import Shell, start
 
     shell = Shell(config.Settings(os.path.join(config.DATA_DIR, "shell", "settings.json")))

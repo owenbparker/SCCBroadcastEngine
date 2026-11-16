@@ -509,6 +509,7 @@ function renderSettings() {
   if (up.channel === "test") $("#u-version").textContent += " (test builds)";
   $("#f-app").textContent = S.app.app_dir;
   $("#f-data").textContent = S.app.data_dir;
+  renderImported();
 }
 
 $("#parts-list").addEventListener("click", e => {
@@ -531,6 +532,36 @@ $("#u-back").onclick = () => {
     post("/api/update/rollback", {});
 };
 $("#chip-update").addEventListener("click", () => setTimeout(() => go("settings/updates")));
+function renderImported() {
+  const list = (S.imported && S.imported.folders) || [];
+  const names = { gfxengine: "GFX Engine", lolhud: "League HUD", valhud: "VALORANT HUD", codhud: "CoD HUD",
+                  rlhud: "RL HUD", smashhud: "Smash HUD", owhud: "Overwatch HUD", multistream: "Multistream" };
+  const box = $("#imp-list");
+  box.textContent = "";
+  if (!list.length) { box.innerHTML = `<p class="mut">No old app folders found yet.</p>`; return; }
+  for (const f of list) {
+    const row = document.createElement("div");
+    row.className = "li";
+    row.innerHTML = `<span></span><span class="v mono"></span>`;
+    row.children[0].textContent = `${names[f.part] || f.part} · ${f.at || ""}`;
+    row.children[1].textContent = f.folder || "";
+    box.appendChild(row);
+  }
+}
+$("#imp-go").onclick = async () => {
+  const btn = $("#imp-go");
+  btn.disabled = true;
+  $("#imp-result").textContent = "Importing… the engine and HUDs restart when it's done.";
+  try {
+    const r = await api("/api/import-old", { folder: $("#imp-folder").value.trim() });
+    apply(r);
+    const i = r.imported || {};
+    $("#imp-result").textContent = i.sources && i.sources.length
+      ? `Added ${i.teams} teams, ${i.workspaces.length} workspaces and ${i.files} files.` + (i.errors.length ? ` Problems: ${i.errors.join("; ")}` : "")
+      : (i.errors && i.errors.length ? `Problems: ${i.errors.join("; ")}` : "No old app data found there.");
+  } catch (e) { $("#imp-result").textContent = e.message; }
+  btn.disabled = false;
+};
 $("#open-data").onclick = () => post("/api/open-folder", { which: "data" });
 $("#open-app").onclick = () => post("/api/open-folder", { which: "app" });
 
