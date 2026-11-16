@@ -11,7 +11,7 @@
 <div id="bg" class="bg solid"><video id="bg-video" muted loop playsinline preload="none"></video></div>
 
 <header class="bar glass" id="bar">
-  <a class="brand" href="#home"><img src="assets/logo.png" alt=""><span>SCC Broadcast Engine</span></a>
+  <a class="brand" href="#home"><img src="assets/logo.png" alt=""><span>SCC Broadcast Engine</span><em class="vtag" id="vtag" hidden></em></a>
   <nav id="nav">
     <a class="t" data-go="home" href="#home"><i data-i="home"></i>Home</a>
     <a class="t" data-go="engine/control" href="#engine/control"><i data-i="live"></i>Control</a>
@@ -31,6 +31,14 @@
     <a class="chip icon" id="chip-settings" data-go="settings" href="#settings" title="Settings"><i data-i="settings"></i></a>
   </div>
 </header>
+
+<!-- The window's own buttons (no Windows title bar; sccbe/winframe.py). Shown only in the app window. -->
+<div class="wincaps glass" id="wincaps" hidden>
+  <button class="wb" data-w="min" title="Minimise"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></button>
+  <button class="wb" data-w="max" title="Maximise"><svg viewBox="0 0 10 10" class="mx"><rect x=".5" y=".5" width="9" height="9" rx="1.5"/></svg><svg viewBox="0 0 10 10" class="rs"><rect x=".5" y="2.5" width="7" height="7" rx="1.2"/><path d="M2.5 2.5V1.7c0-.66.54-1.2 1.2-1.2h4.6c.66 0 1.2.54 1.2 1.2v4.6c0 .66-.54 1.2-1.2 1.2H7.5"/></svg></button>
+  <button class="wb x" data-w="close" title="Close"><svg viewBox="0 0 10 10"><path d="M.5.5l9 9M9.5.5l-9 9"/></svg></button>
+</div>
+<div id="wedges" hidden><i data-e="n"></i><i data-e="s"></i><i data-e="e"></i><i data-e="w"></i><i data-e="ne"></i><i data-e="nw"></i><i data-e="se"></i><i data-e="sw"></i></div>
 
 <div class="menu glass" id="menu-games" hidden></div>
 <div class="menu glass" id="menu-build" hidden>
@@ -212,5 +220,6 @@
 
 <script src="app.js"></script>
 <script src="ros.js"></script>
+<script src="winframe.js"></script>
 </body>
 </html>

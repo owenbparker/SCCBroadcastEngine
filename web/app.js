@@ -136,6 +136,9 @@ function show() {
 
 function render() {
   if (!S) return;
+  const vt = $("#vtag"), v = S.app.version || "";
+  vt.hidden = !v;
+  vt.textContent = /^\d/.test(v) ? "v" + v : v;
   renderBar();
   document.body.classList.toggle("setup-mode", !S.settings.setup_done);
   if (!S.settings.setup_done) return showView("setup");
@@ -351,13 +354,14 @@ $("#menu-tn").addEventListener("click", async ev => {
 // the labels on the tabs that aren't open (their icons stay).
 function fitBar() {
   const bar = $("#bar");
-  bar.classList.remove("compact", "icons");
+  bar.classList.remove("compact", "icons", "tight");
   const nav = $("#nav");
   for (const t of nav.querySelectorAll(".t")) if (!t.title) t.title = t.textContent.replace(/▾/g, "").trim();
   const over = () => bar.scrollWidth > bar.clientWidth + 1 || nav.scrollWidth > nav.clientWidth + 1 ||
     $("#nav").getBoundingClientRect().right > bar.querySelector(".right").getBoundingClientRect().left - 6;
   if (over()) bar.classList.add("compact");
   if (over()) bar.classList.add("icons");
+  if (over()) bar.classList.add("tight");   // narrow window: the chips drop their names too
 }
 async function loadWorkspaces() {
   try { wsList = await api("/api/engine/workspaces"); } catch (e) { wsList = { workspaces: [], current: "" }; }
