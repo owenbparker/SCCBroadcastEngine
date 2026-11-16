@@ -164,9 +164,7 @@ class ReplayStinger:
                 left -= len(chunk)
         os.replace(path + ".part", path)
         media = _media()
-        if media and ext in (".webm", ".mp4", ".m4v") and media.playable(path):
-            return self._use(path, filename)
-        if ext in (".webm", ".mp4", ".m4v") and not media:
+        if ext in (".webm", ".mp4", ".m4v"):   # (browser-ready as it is)
             return self._use(path, filename)
         if not media or not media.ffmpeg_path():
             raise ValueError("This video needs converting and FFmpeg isn't available here: export it as WebM or MP4")
