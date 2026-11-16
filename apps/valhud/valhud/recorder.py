@@ -34,6 +34,10 @@ from .log import log, log_once
 class MatchRecorder:
     FRAME_EVERY = 1.0      # seconds between saved frames
     IDLE_END = 180.0       # no agent select / match for this long: the recording's over
+    MATCH_START = 5        # match frames within MATCH_WINDOW s before one starts a recording
+    MATCH_WINDOW = 10.0    # (a loading screen or menu can look like the match for a frame or two)
+    SPLIT_AFTER = 120.0    # seconds of match before agent select means the next map
+    INFO_EVERY = 30        # frames between info.json updates (so a recording cut off still says what it has)
     KEEP_DAYS = 14
     KEEP_GB = 15.0
     QUALITY = 85           # JPEG quality (about 200 KB a 1080p frame)
@@ -52,6 +56,8 @@ class MatchRecorder:
         self._lock = threading.RLock()
         self._jobs = queue.Queue(maxsize=8)
         self._writer = None
+        self._match_since = 0.0    # first match frame of this recording
+        self._select_at = 0.0      # last agent select frame
 
     # --- what the app tells it -------------------------------------------------
 
@@ -63,15 +69,20 @@ class MatchRecorder:
             return
         with self._lock:
             now = time.time()
-            if self.current and what == "select" and getattr(self, "_had_match", False) \
-                    and now - getattr(self, "_select_at", 0) > 60:
+            if what == "match":
+                hits = [t for t in getattr(self, "_match_hits", []) if now - t <= self.MATCH_WINDOW] + [now]
+                self._match_hits = hits[-self.MATCH_START:]
+                if not self.current and len(hits) < self.MATCH_START and not map_name:   # (the Riot Client naming the map is sure)
+                    return
+            if self.current and what == "select" and self._match_since \
+                    and now - self._match_since > self.SPLIT_AFTER and now - self._select_at > 60:
                 self.stop("next agent select")
             if not self.current:
                 self.start(map_name)
             if what == "select":
                 self._select_at = now
-            else:
-                self._had_match = True
+            elif not self._match_since:
+                self._match_since = now
             if map_name and not self.map:
                 self.map = map_name
                 self._write_info()
@@ -145,9 +156,14 @@ class MatchRecorder:
             stamp = time.strftime("%Y%m%d-%H%M%S")
             name = stamp + (f"-{map_name}" if map_name else "")
             self.current = os.path.join(self.folder, name)
+            n = 1
+            while os.path.exists(self.current):   # (two in the same second)
+                n += 1
+                self.current = os.path.join(self.folder, f"{name}-{n}")
             os.makedirs(os.path.join(self.current, "frames"), exist_ok=True)
             self.started = self.seen_at = time.time()
-            self.map, self.frames, self._frame_at, self._had_match, self._seq = map_name, 0, 0.0, False, 0
+            self.map, self.frames, self._frame_at, self._seq = map_name, 0, 0.0, 0
+            self._match_since, self._select_at = 0.0, self.started
             self._events = open(os.path.join(self.current, "events.jsonl"), "a", encoding="utf-8")
             self._write_info()
             log(f"Recording the match for replay: {name}")
@@ -241,5 +257,9 @@ class MatchRecorder:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 image.convert("RGB").save(path, "JPEG", quality=self.QUALITY)
                 self.frames += 1
+                if self.frames % self.INFO_EVERY == 0:
+                    with self._lock:
+                        if self.current and path.startswith(self.current):
+                            self._write_info()
             except (OSError, ValueError) as e:
                 log_once("recorder-frame", f"Match recorder couldn't save a frame: {e!r}")

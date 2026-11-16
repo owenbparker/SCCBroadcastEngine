@@ -345,9 +345,27 @@ def in_match(frame, bars=None):
         return True
     if select_header(frame):
         return False
+    # Without the top bar's colours, health bars alone count only when they
+    # look like the game's: a pill with a gap each side (loading screens and
+    # menus light up the same strip with art), on both teams.
     bars = bars if bars is not None else [health_bar(frame, side, slot)[0] for side in ("left", "right")
                                           for slot in range(1, 6)]
-    return any(bars)
+    sides = set()
+    for i, lit in enumerate(bars):
+        side, slot = ("left", "right")[i // 5], i % 5 + 1
+        if lit and side not in sides and _bar_alone(frame, side, slot):
+            sides.add(side)
+    return len(sides) == 2
+
+
+def _bar_alone(frame, side, slot):
+    """Nothing bar-coloured just past either end of a seat's health bar."""
+    x = TOP_X[side][slot - 1]
+    for x0 in (x - BAR_HALF - 9, x + BAR_HALF + 3):
+        strip = frame.crop(x0, BAR_Y[0], x0 + 6, BAR_Y[1])
+        if any(_bar_pixel(strip.getpixel((cx, cy))) for cx in range(strip.width) for cy in range(strip.height)):
+            return False
+    return True
 
 
 # Round history on the Tab scoreboard: a row for the defending team and one

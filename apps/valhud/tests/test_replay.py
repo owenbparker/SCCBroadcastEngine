@@ -146,6 +146,32 @@ class RecorderTests(unittest.TestCase):
             self.assertEqual(len(replay.load_readings(folder)), 1)
             self.assertIn("rounds", replay.report(folder, AGENTS))
 
+    def test_a_match_frame_or_two_starts_nothing(self):
+        # (2026-11-16: a loading screen read as the match for a frame started
+        # recordings in the menus, and agent select seen 6 s into one split it.)
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = MatchRecorder(os.path.join(tmp, "r"))
+            for _ in range(rec.MATCH_START - 1):
+                rec.seen("match")
+            self.assertIsNone(rec.current)
+            rec.seen("match")
+            first = rec.current
+            self.assertTrue(first)
+            rec.seen("select")
+            self.assertEqual(rec.current, first)          # too soon to be the next map
+            rec._match_since -= rec.SPLIT_AFTER + 1
+            rec._select_at -= 61
+            rec.seen("select")
+            self.assertNotEqual(rec.current, first)       # the next map's agent select
+            rec.stop("test")
+
+    def test_the_riot_client_naming_the_map_starts_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = MatchRecorder(os.path.join(tmp, "r"))
+            rec.seen("match", "Summit")
+            self.assertTrue(rec.current)
+            rec.stop("test")
+
     def test_off_records_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             rec = MatchRecorder(os.path.join(tmp, "r"), enabled=lambda: False)

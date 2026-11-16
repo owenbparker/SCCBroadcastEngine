@@ -47,6 +47,9 @@ class HeaderIsNotTheMatchTests(unittest.TestCase):
             self.assertFalse(in_match(f), name)
         f = Frame(frame("agent_select", "loading.webp"))
         self.assertFalse(in_match(f))
+        # Menus and loading screens that lit a "health bar" with their art (2026-11-16).
+        for name in ("riot_loading.webp", "menu.webp", "map_loading.webp"):
+            self.assertFalse(in_match(Frame(frame("menus", name))), name)
         for path in (("spectate", "card_gora46_cypher.webp"), ("tab_scoreboard.png",), ("tab_scoreboard_rifles.png",)):
             f = Frame(frame(*path))
             self.assertFalse(select_header(f), path)
