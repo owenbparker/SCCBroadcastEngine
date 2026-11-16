@@ -49,6 +49,9 @@ DEFAULT = {
     # The caster lower third: how many boxes, the box's colour (primary), its
     # edge and shadow's (secondary) and the text's (none set: the secondary).
     "caster": {"count": 1, "primary": "#c2bdff", "secondary": "#001a1a"},
+    # The graphics' text: most of it is the primary colour (white), the lines
+    # picked out (the stage, LOCAL TIME...) the secondary (gold). Set in Control.
+    "text": {"primary": "#ffffff", "secondary": "#ffc52a"},
     # The graphics whose own output (/output?comp=id) is switched on: it always
     # shows its graphic, on Program or not (the rest show nothing, to save the PC).
     "outputs_on": [],
@@ -139,6 +142,8 @@ def clean(g):
                      "primary": colour(caster.get("primary"), DEFAULT["caster"]["primary"]),
                      "secondary": colour(caster.get("secondary"), DEFAULT["caster"]["secondary"])}
     out["caster"]["text"] = colour(caster.get("text"), out["caster"]["secondary"])
+    text = g.get("text") if isinstance(g.get("text"), dict) else {}
+    out["text"] = {k: colour(text.get(k), DEFAULT["text"][k]) for k in ("primary", "secondary")}
     clock = dict(DEFAULT["clock"], **(g.get("clock") or {}))
     until = str(clock.get("until") or "").strip()
     out["clock"] = {"mode": clock.get("mode") if clock.get("mode") in CLOCK_LABELS else "time",
@@ -256,7 +261,7 @@ def rows(g):
     c = g["caster"]
     moves = caster_moves(c["count"])
     out += [["Caster boxes", str(c["count"])], ["Caster primary", c["primary"]], ["Caster secondary", c["secondary"]],
-            ["Caster text", c["text"]]]
+            ["Caster text", c["text"]], ["Text primary", g["text"]["primary"]], ["Text secondary", g["text"]["secondary"]]]
     for i in range(4):
         out += [[f"Caster {i + 1} shown", "1" if i < c["count"] else ""], [f"Caster {i + 1} move", moves[i] if i < c["count"] else ""]]
     out += [[k, v] for k, v in g["custom"]]
