@@ -8,6 +8,7 @@ import threading
 import time
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from rlhud import statsapi
@@ -185,29 +186,41 @@ class ServerTests(unittest.TestCase):
                         self.assertEqual(r.status, 200, path)
                 post("/api/config", {"design": "newgerrit"})
                 self.assertIn("NEW GERRIT", page("/overlay"))
-                from rlhud import app as app_mod
-                old_dir = app_mod.STINGER_DIR
-                app_mod.STINGER_DIR = os.path.join(tmp, "stingers")
                 import rlhud.config as config_mod
-                old_cfg_dir, config_mod.STINGER_DIR = config_mod.STINGER_DIR, app_mod.STINGER_DIR
+                import rlhud.replaystinger as rs_mod
+                old_dirs = (config_mod.STINGER_DIR, rs_mod.STINGER_DIR)
+                config_mod.STINGER_DIR = rs_mod.STINGER_DIR = os.path.join(tmp, "stingers")
                 try:
+                    # By default: the engine's "Replay stinger", else the built-in SCC one (no engine here).
+                    st = app.overlay_state()["config"]["replay_stinger"]
+                    self.assertEqual((st["from"], st["src"], st["cut"]), ("builtin", "builtin-stinger/SCC_Replay.webm", 653))
+                    with urllib.request.urlopen(base + "/builtin-stinger/SCC_Replay.webm", timeout=5) as r:
+                        self.assertEqual(r.status, 200)
+                    def upload(name, blob):
+                        req = urllib.request.Request(base + "/api/stinger/upload?name=" + urllib.parse.quote(name), blob,
+                                                     {"Content-Type": "application/octet-stream"})
+                        return json.loads(urllib.request.urlopen(req, timeout=5).read())
                     with self.assertRaises(urllib.error.HTTPError):
-                        post("/api/stinger", {"name": "x.gif", "data": "data:image/gif;base64,R0lG"})
-                    clip = base64.b64encode(b"\x1aE\xdf\xa3 not really a webm").decode()
-                    c = post("/api/stinger", {"name": "SCC Replay!.webm", "data": "data:video/webm;base64," + clip})["config"]
-                    self.assertEqual(c["replay_stinger"]["src"], "stingers/SCC Replay.webm")
-                    self.assertTrue(os.path.isfile(os.path.join(tmp, "stingers", "SCC Replay.webm")))
+                        upload("x.gif", b"GIF89a")
+                    # Your own (an optional override).
+                    upload("SCC Replay!.webm", b"\x1aE\xdf\xa3 not really a webm")
+                    st = app.overlay_state()["config"]["replay_stinger"]
+                    self.assertEqual((st["from"], st["src"]), ("upload", "stingers/SCC Replay.webm"))
                     with urllib.request.urlopen(base + "/stingers/SCC%20Replay.webm", timeout=5) as r:
                         self.assertEqual(r.read()[:4], b"\x1aE\xdf\xa3")
                     post("/api/config", {"replay_stinger": {"cut": 600}})
-                    self.assertEqual(cfg.get()["replay_stinger"]["src"], "stingers/SCC Replay.webm")
+                    self.assertEqual(app.overlay_state()["config"]["replay_stinger"]["cut"], 600)
                     post("/api/stinger/preview", {"team": 1})
                     self.assertEqual(app.overlay_state()["preview"]["team"], 1)
-                    self.assertEqual(app.overlay_state()["config"]["replay_stinger"]["cut"], 600)
-                    post("/api/stinger/remove", {})
-                    self.assertEqual(cfg.get()["replay_stinger"]["src"], "")
+                    post("/api/stinger/remove", {})   # (back to the engine's / the built-in one)
+                    self.assertEqual(app.overlay_state()["config"]["replay_stinger"]["from"], "builtin")
+                    # The engine's: its transition named "Replay stinger".
+                    self.assertEqual(rs_mod.pick_replay([{"type": "stinger", "name": "SCC stinger", "src": "a.webm"},
+                                                         {"type": "stinger", "name": "Replay stinger", "src": "b.webm"}])["src"], "b.webm")
+                    self.assertEqual(rs_mod.pick_replay([{"type": "stinger", "name": "My replay", "src": "c.webm"}])["src"], "c.webm")
+                    self.assertIsNone(rs_mod.pick_replay([{"type": "fade", "name": "Replay stinger"}]))
                 finally:
-                    app_mod.STINGER_DIR, config_mod.STINGER_DIR = old_dir, old_cfg_dir
+                    config_mod.STINGER_DIR, rs_mod.STINGER_DIR = old_dirs
                 post("/api/config", {"design": "classic"})
                 # An observer PC sends the game.
                 post("/api/ingest", {"messages": [["UpdateState", UPDATE["Data"]]]})

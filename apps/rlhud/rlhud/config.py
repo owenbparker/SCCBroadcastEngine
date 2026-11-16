@@ -64,9 +64,11 @@ DEFAULTS = {
     # the cams, the replay stinger and the replay lower third). A picked
     # built-in design other than classic wins over the GFX Engine overlay.
     "design": "classic",
-    # NEW GERRIT's replay stinger: a video (WebM with transparency, or MP4)
-    # played as the game's replay starts; "cut" is when it covers the picture
-    # (ms; None = halfway), where the HUD swaps to the replay graphics.
+    # NEW GERRIT's replay stinger, played as the game's replay starts. By
+    # default the connected GFX Engine's "Replay stinger" (else the built-in
+    # SCC one); "src" is your own instead (uploaded, an optional override),
+    # and "cut" when it covers the picture (ms; None = halfway), where the HUD
+    # swaps to the replay graphics. See rlhud/replaystinger.py.
     "replay_stinger": {"src": "", "name": "", "cut": None, "on": True},
     # The SCC GFX Engine this HUD sends its game and series to (see rlhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},
@@ -119,7 +121,9 @@ def web_file(rel):
     (sponsors/...), else the web folder. Paths that climb out are refused."""
     rel = rel.replace("\\", "/").lstrip("/")
     base = WEB_DIR
-    for prefix, folder in (("logos/", LOGO_DIR), ("sponsors/", SPONSOR_DIR), ("stingers/", STINGER_DIR)):
+    builtin = os.path.join(os.path.dirname(RESOURCE_DIR), "gfxengine", "starter", "assets", "stingers")
+    for prefix, folder in (("logos/", LOGO_DIR), ("sponsors/", SPONSOR_DIR), ("stingers/", STINGER_DIR),
+                           ("builtin-stinger/", builtin)):
         if rel.startswith(prefix):
             base, rel = folder, rel[len(prefix):]
     path = os.path.normpath(os.path.join(base, rel))

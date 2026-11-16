@@ -16,8 +16,8 @@
   Around a goal (the replay):
     - a goal is scored: three player cams a side fly in at once, and the
       scoring team's plate on the top bar turns into GOAL;
-    - the game's replay starts: the replay stinger (uploaded in the control
-      panel) plays, and under it the HUD's lower parts go and the replay
+    - the game's replay starts: the replay stinger (the GFX Engine's "Replay
+      stinger", or one uploaded in the control panel) plays, and under it the HUD's lower parts go and the replay
       lower third (scorer, speed, assist) flies in; the clock shows REPLAY;
     - the replay ends: the cams and the lower third leave (no stinger), and
       the HUD's lower parts come back.
@@ -63,10 +63,10 @@
 
   #bug .core { position: absolute; left: 736px; top: 46px; width: 448px; height: 98px; background: var(--deep);
                clip-path: inset(0 0 0 0); transition: clip-path .5s var(--ease); }
-  .lbox { position: absolute; top: 0; width: 78px; height: 78px; display: grid; place-items: center; }
+  .lbox { position: absolute; top: 0; width: 78px; height: 78px; }
   .lbox.l { left: 0; } .lbox.r { left: 370px; }
-  .lbox img { max-width: 52px; max-height: 44px; object-fit: contain; transition: transform .4s var(--pop); }
-  .lbox .noimg { font: 700 22px "NGRubik"; }
+  .lbox img { position: absolute; left: 13px; top: 13px; width: 52px; height: 52px; object-fit: contain; }
+  .lbox .noimg { position: absolute; inset: 0; display: grid; place-items: center; font: 700 22px "NGRubik"; }
   .score { position: absolute; top: 0; width: 78px; height: 78px; overflow: hidden; }
   .score.l { left: 75px; background: var(--blue); } .score.r { left: 295px; background: var(--orange); }
   .score b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 54px/1 "NGRubik"; font-style: normal; padding-bottom: 2px; }
@@ -80,10 +80,8 @@
   .clock { position: absolute; left: 150px; top: 0; width: 148px; height: 78px; overflow: hidden; }
   .clock .t { position: absolute; inset: 0; display: grid; place-items: center; font: 700 40px/1 "NGRubik"; font-style: normal;
               transition: transform .4s var(--ease) .15s, opacity .3s .15s; }
-  .clock .rp { position: absolute; inset: 0; background: #f4f5f7; color: #0a0e14; display: flex; align-items: center; justify-content: center; gap: 10px;
+  .clock .rp { position: absolute; inset: 0; background: #f4f5f7; color: #0a0e14; display: flex; align-items: center; justify-content: center;
                font: 700 28px/1 "NGRubik"; font-style: normal; letter-spacing: .02em; clip-path: inset(0 0 100% 0); transition: clip-path .4s var(--ease); }
-  .clock .rp i { width: 10px; height: 10px; border-radius: 50%; background: var(--red); animation: blink 1s steps(2, start) infinite; }
-  @keyframes blink { to { visibility: hidden; } }
   #bug.replay .clock .rp { clip-path: inset(0 0 0 0); }
   #bug.replay .clock .t { transform: translateY(40px); opacity: 0; transition-delay: 0s; }
   .foot { position: absolute; left: 0; top: 75px; width: 448px; height: 23px; }
@@ -110,19 +108,15 @@
                transform: scaleX(0); transition: transform .35s var(--back); }
   .plate.l .gl { transform-origin: right; } .plate.r .gl { transform-origin: left; }
   .plate .gl .wash { position: absolute; inset: 0; background: #fff; transition: background .45s ease .55s; }
-  .plate .gl img { position: relative; max-width: 54px; max-height: 50px; object-fit: contain; }
+  .plate .gl img { position: relative; width: 54px; height: 50px; object-fit: contain; }
   .plate .gl b { position: relative; font: 700 46px/1 "NGRubik"; font-style: normal; letter-spacing: .03em; color: #0a0e14; transition: color .45s ease .55s; }
-  .plate .gl .shine { position: absolute; top: -10px; bottom: -10px; width: 60px; left: -80px;
-                      background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform: skewX(-18deg); }
   .plate.goal .nm { opacity: 0; }
   .plate.l.goal .nm { transform: translateX(-60px); } .plate.r.goal .nm { transform: translateX(60px); }
   .plate.goal .gl { transform: scaleX(1); transition: transform .4s var(--ease) .12s; }
   .plate.goal .gl .wash { background: var(--deep); }
   .plate.goal .gl b { color: #fff; animation: goalpop .5s var(--pop) .3s both; }
   .plate.goal .gl img { animation: goalpop .5s var(--pop) .22s both; }
-  .plate.goal .gl .shine { animation: shine 1.8s ease-in-out 1s infinite; }
   @keyframes goalpop { from { transform: scale(1.6); opacity: 0; } }
-  @keyframes shine { 0% { left: -80px; } 55%, 100% { left: 290px; } }
   .plate.l.goal .gl b { color: var(--c-l, #fff); } .plate.r.goal .gl b { color: var(--c-r, #fff); }
 
   /* Coming on / going off. */
@@ -189,31 +183,35 @@
   /* === the replay: cams down each side ======================================= */
   .side { position: absolute; top: 241px; width: 301px; height: 553px; pointer-events: none; }
   .side.l { left: 0; } .side.r { left: 1619px; }
-  .side .edge { position: absolute; top: 0; width: 10px; height: 553px; transform: scaleY(0); transition: transform .35s var(--ease); }
+  /* (each cam brings its piece of the team-coloured edge with it) */
+  .side .tile { position: absolute; width: 301px; transition: transform .5s var(--ease); }
+  .side.l .tile { left: 0; transform: translateX(-310px); } .side.r .tile { left: 0; transform: translateX(310px); }
+  .tile .edge { position: absolute; top: 0; width: 10px; height: calc(100% + 13px); }
+  .tile.s3 .edge { height: 100%; }
   .side.l .edge { left: 291px; background: var(--blue); } .side.r .edge { left: 0; background: var(--orange); }
-  .side .tile { position: absolute; width: 291px; transition: transform .5s var(--ease); }
-  .side.l .tile { left: 0; transform: translateX(-310px); } .side.r .tile { left: 10px; transform: translateX(310px); }
   .tile.s1 { top: 0; height: 175px; } .tile.s2 { top: 188px; height: 175px; } .tile.s3 { top: 375px; height: 178px; }
-  .tile .gap { position: absolute; left: 0; bottom: -13px; width: 291px; height: 13px; background: var(--panel); }
+  .tile .gap { position: absolute; bottom: -13px; width: 291px; height: 13px; background: var(--panel); }
+  .side.l .gap { left: 0; } .side.r .gap { left: 10px; }
   .tile.s3 .gap { display: none; }
-  .tile .box { position: absolute; inset: 0; overflow: hidden; background: #0b1017; }
+  .tile .box { position: absolute; top: 0; bottom: 0; width: 291px; overflow: hidden; background: #0b1017; }
+  .side.l .box { left: 0; } .side.r .box { left: 10px; }
   .tile .who { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 16px;
                font: italic 700 28px "NGDin"; white-space: nowrap; color: rgba(255,255,255,.55); transition: opacity .3s; }
   .tile.live .who { opacity: 0; }
   .tile.demo .box { background: radial-gradient(circle at 50% 38%, #3a4150, #10151d 75%); }
   .tile.demo .who { color: #fff; }
-  .side.on .edge { transform: scaleY(1); }
   .side.on .tile { transform: translateX(0); }
   .side.on .tile.s1 { transition-delay: .08s; } .side.on .tile.s2 { transition-delay: .16s; } .side.on .tile.s3 { transition-delay: .24s; }
   .side:not(.on) .tile { transition: transform .4s var(--back); }
   .side:not(.on) .tile.s3 { transition-delay: 0s; } .side:not(.on) .tile.s2 { transition-delay: .06s; } .side:not(.on) .tile.s1 { transition-delay: .12s; }
-  .side:not(.on) .edge { transition: transform .3s var(--back) .3s; }
   video.cv, iframe.cv { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: cover; opacity: 0; transition: opacity .3s; }
   video.cv.on, iframe.cv.on { opacity: 1; }
 
   /* === the replay lower third ================================================ */
   #lower { position: absolute; left: 0; top: 1016px; width: 1920px; height: 64px; overflow: hidden; pointer-events: none; }
-  #lower .line { position: absolute; left: 0; top: 0; width: 1920px; height: 4px; background: var(--red); transform: scaleX(0); transition: transform .35s var(--ease); }
+  /* (the red line comes in with the bar) */
+  #lower .line { position: absolute; left: 0; top: 0; width: 1920px; height: 4px; background: var(--red);
+                 transform: translateY(68px); transition: transform .45s var(--ease) .12s; }
   #lower .bar { position: absolute; left: 0; top: 4px; width: 1920px; height: 60px; background: url("designs/gerrit2026/bar.png") 0 0 / 1920px 60px;
                 transform: translateY(64px); transition: transform .45s var(--ease) .12s; }
   #lower .items { position: absolute; left: 0; right: 0; top: 4px; height: 60px; display: flex; align-items: center; justify-content: center; }
@@ -225,12 +223,12 @@
   #lower .ai { width: 56px; height: 56px; margin: 2px 4px 0 30px; }
   #lower .mph { font-size: 24px; margin-left: 1px; padding-top: 6px; }
   #lower .scorer, #lower .assister { max-width: 330px; overflow: hidden; }
-  #lower.on .line { transform: scaleX(1); }
+  #lower.on .line { transform: translateY(0); }
   #lower.on .bar { transform: translateY(0); }
   #lower.on .it { transform: translateY(0); opacity: 1; }
   #lower.on .it.a { transition-delay: .35s; } #lower.on .it.b { transition-delay: .45s; } #lower.on .it.c { transition-delay: .55s; }
   #lower:not(.on) .bar { transition: transform .35s var(--back); }
-  #lower:not(.on) .line { transition: transform .3s var(--back) .25s; }
+  #lower:not(.on) .line { transition: transform .35s var(--back); }
   #lower:not(.on) .it { transition: opacity .2s; }
 
   /* === the replay stinger ================================================== */
@@ -241,28 +239,26 @@
 <body>
 <!-- The replay's cams (under the HUD's top bar). -->
 <div class="side l" id="side0">
-  <div class="tile s1"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
-  <div class="tile s2"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
-  <div class="tile s3"><div class="box"><div class="who"><span></span></div></div></div>
-  <div class="edge"></div>
+  <div class="tile s1"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div><div class="edge"></div></div>
+  <div class="tile s2"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div><div class="edge"></div></div>
+  <div class="tile s3"><div class="box"><div class="who"><span></span></div></div><div class="edge"></div></div>
 </div>
 <div class="side r" id="side1">
-  <div class="tile s1"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
-  <div class="tile s2"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div></div>
-  <div class="tile s3"><div class="box"><div class="who"><span></span></div></div></div>
-  <div class="edge"></div>
+  <div class="tile s1"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div><div class="edge"></div></div>
+  <div class="tile s2"><div class="box"><div class="who"><span></span></div></div><div class="gap"></div><div class="edge"></div></div>
+  <div class="tile s3"><div class="box"><div class="who"><span></span></div></div><div class="edge"></div></div>
 </div>
 
 <div id="bug" class="off">
   <div class="head"><div class="ticker still"></div></div>
   <div class="plate l"><div class="fill rim"></div><div class="nm"><span></span></div>
-    <div class="gl"><div class="wash"></div><img alt=""><b>GOAL</b><div class="shine"></div></div></div>
+    <div class="gl"><div class="wash"></div><img alt=""><b>GOAL</b></div></div>
   <div class="plate r"><div class="fill rim"></div><div class="nm"><span></span></div>
-    <div class="gl"><div class="wash"></div><img alt=""><b>GOAL</b><div class="shine"></div></div></div>
+    <div class="gl"><div class="wash"></div><img alt=""><b>GOAL</b></div></div>
   <div class="core">
     <div class="lbox l"><img alt=""><div class="noimg"></div></div>
     <div class="score l rim"><b>0</b></div>
-    <div class="clock"><div class="t">05:00</div><div class="rp"><i></i>REPLAY</div></div>
+    <div class="clock"><div class="t">05:00</div><div class="rp">REPLAY</div></div>
     <div class="score r rim"><b>0</b></div>
     <div class="lbox r"><img alt=""><div class="noimg"></div></div>
     <div class="foot"><div class="code l"></div><div class="bg"></div><div class="pips"></div><div class="code r"></div></div>
@@ -636,6 +632,8 @@
       const st = stingerCfg(), dur = (stinger.duration || 1) * 1000;
       const cut = Number.isFinite(+st.cut) && st.cut !== null && st.cut !== "" ? Math.max(0, +st.cut) : dur / 2;
       stinger.currentTime = 0;
+      stinger.muted = st.audio === false;
+      stinger.volume = Math.max(0, Math.min(1, st.volume == null ? 1 : +st.volume));
       stinger.classList.add("on");
       const p = stinger.play();
       const go = () => { cutTimer = setTimeout(goLive, Math.min(cut, dur)); };
