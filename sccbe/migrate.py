@@ -2,6 +2,7 @@
 Engine and the game HUDs installed on their own, e.g. C:\\SCC GFX Engine),
 and of an SCC Broadcast Engine installed in another folder.
 
+A copy of the data folder is made first (data/_backups, see backup.py).
 It only ever ADDS: the old folders are read, never changed, and nothing in
 this app's data folder is replaced.
 
@@ -11,8 +12,8 @@ this app's data folder is replaced.
                                    that's already here, same name + game, is kept as it is)
                  library/...       logos, photos, fonts: copied when missing; a
                                    different file with the same name gets a new name
-                 settings.json     settings this app doesn't have yet; opens the
-                                   workspace the old engine had open
+                 settings.json     the saved camera looks and name, when this
+                                   app has none (never the open workspace)
     game HUDs    config.json       settings this app doesn't have yet
                  logos/, ...       files copied when missing
 
@@ -45,10 +46,12 @@ OLD_APPS = {
 SCCBE_NAME = "SCC Broadcast Engine"
 
 # Never copied: the program itself, its updates, and things made again on their own.
-SKIP_DIRS = {"_internal", "_update", "_backup", "certs", "frames", "__pycache__", "data"}
+SKIP_DIRS = {"_internal", "_update", "_backup", "certs", "frames", "__pycache__", "data", "_backups"}
 SKIP_FILES = re.compile(r"(?i)(\.(exe|dll|pyd|log|tmp|lock)$|^unins\d*\.|^smoke-test\.txt$)")
 SETTINGS_FILES = ("settings.json", "config.json")
 MARK = "imported.json"
+# The GFX Engine settings an import may fill in (when this app has none).
+ENGINE_SETTINGS = ("name", "camera_looks")
 
 
 # --- finding the old folders -----------------------------------------------------
@@ -325,14 +328,18 @@ def _import_engine(src, dest, mark, report):
     if os.path.isdir(src_lib):
         renamed = _copy_missing(src_lib, dest_lib, report, rename=True, skip={"teams.csv"})
         _import_teams(src_lib, dest_lib, renamed, report)
-    # Settings: the engine's own ID stays this app's (the HUDs here pair with it).
-    old = _merge_settings(os.path.join(src, "settings.json"), os.path.join(dest, "settings.json"), report,
-                          keep=("engine_id", "engine_id_pc", "http_port", "workspace"))
-    open_ws = done.get(old.get("workspace")) if old else None
-    if report["workspaces"] and open_ws and os.path.isdir(os.path.join(dest, "workspaces", open_ws)):
-        settings = _read_json(os.path.join(dest, "settings.json"))
-        settings["workspace"] = open_ws
-        _write_json(os.path.join(dest, "settings.json"), settings)
+    # Settings: only the saved camera looks and the engine's name, and only
+    # when this app has none. Never the open workspace (the tournaments are
+    # saved in it: opening another one hid them, v1.0.45), the network or the IDs.
+    old = _read_json(os.path.join(src, "settings.json"))
+    old = {k: v for k, v in old.items() if k in ENGINE_SETTINGS}
+    if old:
+        tmp = os.path.join(dest, ".import-settings.json")
+        _write_json(tmp, old)
+        try:
+            _merge_settings(tmp, os.path.join(dest, "settings.json"), report)
+        finally:
+            os.remove(tmp)
 
 
 def _import_part(src, dest, report):
@@ -350,11 +357,15 @@ def run(data_dir, extra=(), again=False):
     mark_path = os.path.join(data_dir, "shell", MARK)
     marks = _read_json(mark_path)
     out = {"sources": [], "teams": 0, "workspaces": [], "files": 0, "errors": []}
-    for part, folder in find_sources(data_dir, extra):
+    todo = [(p, f) for p, f in find_sources(data_dir, extra)
+            if again or not (marks.get(f"{p}|{_norm(f)}") or {}).get("at")]
+    if todo:
+        # A copy of the data folder as it is, before anything is added.
+        from . import backup
+        out["backup"] = backup.make(data_dir, "before-import")
+    for part, folder in todo:
         key = f"{part}|{_norm(folder)}"
         mark = marks.get(key) or {}
-        if mark.get("at") and not again:
-            continue
         report = {"teams": 0, "workspaces": [], "files": 0, "settings": 0}
         try:
             dest = os.path.join(data_dir, part)
