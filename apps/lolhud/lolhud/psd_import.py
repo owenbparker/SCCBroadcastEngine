@@ -237,7 +237,13 @@ def import_psd(psd_path, name):
         keep = {id(l) for l in run}
         for l in run:
             keep |= {id(a) for a in ancestors(l)}
-        img = psd.composite(layer_filter=lambda l: id(l) in keep)
+        try:
+            img = psd.composite(layer_filter=lambda l: id(l) in keep)
+        except ImportError:
+            # An effect (a gradient fill, say) needs a renderer this PC
+            # doesn't have: lay the layers down one by one instead, each
+            # with what it can draw (Photoshop's own pixels at worst).
+            img = flat_layers(run)
         run.clear()
         if img is None:
             return
@@ -248,8 +254,26 @@ def import_psd(psd_path, name):
                              "x": box[0], "y": box[1], "w": box[2] - box[0], "h": box[3] - box[1]})
 
     def layer_image(layer):
-        img = layer.composite()
+        try:
+            img = layer.composite()
+        except ImportError:
+            img = None
+        if img is None:
+            img = layer.topil()
         return img.convert("RGBA") if img is not None else None
+
+    def flat_layers(layers):
+        from PIL import Image
+        canvas = Image.new("RGBA", (psd.width, psd.height), (0, 0, 0, 0))
+        for l in layers:   # bottom to top, as walked
+            img = layer_image(l)
+            if img is None:
+                continue
+            x, y = l.bbox[0], l.bbox[1]
+            layer_canvas = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+            layer_canvas.paste(img, (x, y))
+            canvas = Image.alpha_composite(canvas, layer_canvas)
+        return canvas
 
     for layer in walk(psd):
         if layer.is_group():
