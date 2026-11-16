@@ -266,6 +266,7 @@
       f.src = url(value);
       return f;
     }
+    if (t === "image" && layer.tint && value) return tintedImage(layer, value);
     if (t === "image") {
       if (!value) return el("div");
       const img = el("img", "gfx-media", { objectFit: fitOf(layer.fit), objectPosition: POSITIONS[layer.position] || "" });
@@ -310,6 +311,90 @@
     v.addEventListener("error", () => { v.remove(); tint.remove(); });
     box.append(v, tint);
     return box;
+  }
+
+  // A picture in another colour (the backdrop under the background loop, in
+  // the loop's colour): each pixel keeps its light and dark and its alpha, and
+  // takes the colour's hue (a grey colour makes it grey). Done once per
+  // picture and colour, then kept.
+  const tinted = new Map();   // "address|#colour" -> blob address (or a promise of it)
+  const lastTint = new Map(); // address -> its last one made (shown while a new colour is made)
+  function hexRgb(c) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(c || "").trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return [n >> 16 & 255, n >> 8 & 255, n & 255];
+  }
+  function rgbHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    if (!d) return [0, 0, l];
+    const s = d / (1 - Math.abs(2 * l - 1));
+    const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, s, l];
+  }
+  function hslRgb(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+  }
+  GFX.tintPixels = function (px, colour) {
+    const rgb = hexRgb(colour);
+    if (!rgb) return px;
+    const [th, ts] = rgbHsl(...rgb);
+    // (a strong colour keeps the picture's own richness; a greyish one greys it)
+    const k = Math.min(1, ts * 2);
+    for (let i = 0; i < px.length; i += 4) {
+      if (!px[i + 3]) continue;
+      const [, s, l] = rgbHsl(px[i], px[i + 1], px[i + 2]);
+      const out = hslRgb(th, Math.max(s, ts) * k, l);
+      px[i] = out[0]; px[i + 1] = out[1]; px[i + 2] = out[2];
+    }
+    return px;
+  };
+  function tintSrc(value, colour) {
+    const key = value + "|" + colour;
+    if (tinted.has(key)) return tinted.get(key);
+    const p = new Promise(done => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          const ctx = c.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+          const data = ctx.getImageData(0, 0, c.width, c.height);
+          GFX.tintPixels(data.data, colour);
+          ctx.putImageData(data, 0, 0);
+          c.toBlob(b => {
+            const u = b ? URL.createObjectURL(b) : url(encodeURI(value));
+            if (tinted.size > 60) { for (const [k2, old] of tinted) if (typeof old === "string" && old.startsWith("blob:")) URL.revokeObjectURL(old); tinted.clear(); lastTint.clear(); }
+            tinted.set(key, u);
+            lastTint.set(value, u);
+            done(u);
+          }, "image/png");
+        } catch (e) { done(url(encodeURI(value))); }   // (can't be read: as it is)
+      };
+      img.onerror = () => done(url(encodeURI(value)));
+      img.src = url(encodeURI(value));
+    });
+    tinted.set(key, p);
+    return p;
+  }
+  function tintedImage(layer, value) {
+    const colour = GFX.resolve(layer.tint);
+    const img = el("img", "gfx-media", { objectFit: fitOf(layer.fit), objectPosition: POSITIONS[layer.position] || "" });
+    img.draggable = false;
+    if (!hexRgb(colour)) { img.src = url(encodeURI(value)); return img; }
+    const ready = tintSrc(value, colour);
+    if (typeof ready === "string") img.src = ready;
+    else {
+      // (until it's in its colour: the colour it had, or hidden; never a frame in the design's own)
+      const before = lastTint.get(value);
+      if (before && before.startsWith("blob:")) img.src = before; else img.style.visibility = "hidden";
+      ready.then(u => { img.src = u; img.style.visibility = ""; });
+    }
+    return img;
   }
 
   // --- the knockout bracket: drawn from the "Tournament" data, for 8 or 16
@@ -596,6 +681,7 @@
         const v = GFX.content(layer, values);
         if (layer.type === "video") { if (v && !/\{\{/.test(v)) videos.add(url(encodeURI(v))); continue; }
         if (v.startsWith("{{Sponsors")) continue;
+        if (layer.tint && v && !/\{\{/.test(v) && hexRgb(GFX.resolve(layer.tint))) tintSrc(v, GFX.resolve(layer.tint));
         add(v);
         const done = smoothed.get(smoothKey(v, layer));
         if (done) want.add(done);
