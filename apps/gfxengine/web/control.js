@@ -413,13 +413,14 @@ $("#update-back").addEventListener("click", e => {
     const opponent = comp.layers.some(l => /\{\{\s*Opponent!/i.test((l.text || "") + (l.src || "")));
     const mvp = comp.layers.some(l => /\{\{\s*Stats!MVP/i.test((l.text || "") + (l.src || "")));
     const caster = comp.layers.some(l => /Global!Caster/i.test(l.move || ""));
+    const textColours = comp.layers.some(l => /\{\{\s*Global!Text (primary|secondary)\s*\}\}/i.test(l.color || ""));
     const pics = comp.layers.some(l => /\{\{\s*Stats!.*(headshot|champion)\}\}/i.test(l.src || ""));
     const uses = re => comp.layers.some(l => re.test((l.text || "") + (l.src || "") + (l.show || "")));
     const spot = uses(/\{\{\s*Spotlight!/i), h2h = uses(/\{\{\s*Head to head!/i), past = uses(/\{\{\s*Results!/i);
     // (Player stats has its own setting: its picture is the MVP's)
     const picsPage = comp.layers.some(l => /\{\{\s*Stats!MVP (headshot|champion)\}\}/i.test(l.src || "")) ? "player" : "team";
-    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent, past) : null, spot ? spotlightField(s) : null, h2h ? h2hField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null].filter(Boolean);
-    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage, spot, h2h, past,
+    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent, past) : null, spot ? spotlightField(s) : null, h2h ? h2hField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null, textColours ? textColoursField(s) : null].filter(Boolean);
+    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage, textColours, spot, h2h, past,
       Object.keys(s.data.feeds || {}), (s.data.tables.Global || []).map(r => r[0]),
       comp.hud ? JSON.stringify(s.data.feeds[comp.hud.split("/")[0]] && s.data.feeds[comp.hud.split("/")[0]].unreachable) : ""]);
     if (!force && box.dataset.sig === sig) {
@@ -443,7 +444,7 @@ $("#update-back").addEventListener("click", e => {
     const same = box.dataset.comp === comp.id;
     box.dataset.comp = comp.id;
     if (!fields.length) {
-      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || mvp || caster || pics || spot || h2h || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
+      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || mvp || caster || pics || textColours || spot || h2h || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
       return;
     }
     keepScroll(box, () => { box.replaceChildren(...fields.map(l => {
@@ -553,6 +554,27 @@ $("#update-back").addEventListener("click", e => {
         h("label", { class: "swatch" }, "Font colour",
           h("input", { type: "color", "data-k": "caster-text", title: "The name and handle", onchange: e => set({ text: e.target.value }) }))),
       h("div", { class: "resolved" }, "Primary is the box; secondary is the box's edge and its shadow; font is the name and handle. Each box's name and handle are below."));
+    markSize(el, s);
+    return el;
+  }
+  // The graphics' text colours (Global's, so every graphic's text set to them
+  // changes, on air too).
+  function textColoursField(s) {
+    // (sent at most every 0.1 s while a colour is dragged)
+    let wait = null, next = {};
+    const set = change => {
+      Object.assign(next, change);
+      if (!wait) wait = setTimeout(() => { api("/api/global", { global: { text: next } }); next = {}; wait = null; }, 100);
+    };
+    const el = h("div", { class: "field caster-field text-colours" },
+      h("label", {}, "Text colours", h("span", { class: "kind" }, "global")),
+      h("div", { class: "row-gap" },
+        h("label", { class: "swatch" }, "Primary colour",
+          h("input", { type: "color", "data-k": "text-primary", title: "Most of the text: names, scores, titles", oninput: e => set({ primary: e.target.value }) })),
+        h("label", { class: "swatch" }, "Secondary colour",
+          h("input", { type: "color", "data-k": "text-secondary", title: "The lines picked out: the stage, LOCAL TIME...", oninput: e => set({ secondary: e.target.value }) })),
+        h("button", { class: "ghost small", title: "White and gold, as the graphics were made", onclick: () => set({ primary: "#ffffff", secondary: "#ffc52a" }) }, "Reset")),
+      h("div", { class: "resolved" }, "Every graphic's text follows these: primary is most of it, secondary the lines picked out in gold. In Composer, a text layer can follow either."));
     markSize(el, s);
     return el;
   }
@@ -707,7 +729,8 @@ $("#update-back").addEventListener("click", e => {
     }
     const cs = s.global.caster || { count: 1, primary: "#c2bdff", secondary: "#001a1a" };
     for (const [k, v] of [["caster-count", String(cs.count)], ["caster-primary", cs.primary], ["caster-secondary", cs.secondary],
-                          ["caster-text", cs.text || cs.secondary]]) {
+                          ["caster-text", cs.text || cs.secondary],
+                          ["text-primary", (s.global.text || {}).primary || "#ffffff"], ["text-secondary", (s.global.text || {}).secondary || "#ffc52a"]]) {
       const inp = el.querySelector(`[data-k=${k}]`);
       if (inp && document.activeElement !== inp) inp.value = v;
     }

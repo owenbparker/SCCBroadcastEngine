@@ -484,6 +484,7 @@ class PackTests(unittest.TestCase):
             changed = json.loads(json.dumps(kept))
             changed["layers"].append(blank_layer("text"))                  # changed in Composer: left alone
             ws.data["compositions"] = [json.loads(json.dumps(old)), changed]
+            ws.data["colours_linked"] = 1     # (that's its own test)
             self.assertEqual(pack.upgrade(ws, starter), ["Board"])
             board = ws.data["compositions"][0]
             self.assertEqual((board["id"], board["layers"][0]["text"]), (old["id"], "v2"))
@@ -491,6 +492,38 @@ class PackTests(unittest.TestCase):
             self.assertEqual(ws.data["compositions"][1], changed)
             self.assertEqual(ws.data["global"]["sponsors"][0]["logo"], "assets/new.png")
             self.assertEqual(pack.upgrade(ws, starter), [])
+            ws.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_text_colours_and_the_backdrop_follow_global(self):
+        from gfxengine import globalcfg, pack
+        g = globalcfg.clean({})
+        self.assertEqual(g["text"], {"primary": "#ffffff", "secondary": "#ffc52a"})
+        g = globalcfg.clean({"text": {"primary": "#112233", "secondary": "nope"}})
+        self.assertEqual(g["text"], {"primary": "#112233", "secondary": "#ffc52a"})
+        rows = dict(globalcfg.rows(g)[1:])
+        self.assertEqual((rows["Text primary"], rows["Text secondary"]), ("#112233", "#ffc52a"))
+        tmp = tempfile.mkdtemp()
+        try:
+            ws = Workspace(os.path.join(tmp, "ws"))
+            comp = blank_comp("Board")
+            back = dict(blank_layer("image"), x=0, y=0, w=1920, h=1080, src="assets/bg.png")
+            small = dict(blank_layer("image"), x=10, y=10, w=100, h=100, src="assets/x.png")
+            loop = dict(blank_layer("video"), x=0, y=0, w=1920, h=1080, src="{{Global!BG loop}}", tint="{{Global!BG loop colour}}")
+            comp["layers"] = [back, loop, small,
+                              dict(blank_layer("text"), color="#FFFFFF"), dict(blank_layer("text"), color="#ffc52a"),
+                              dict(blank_layer("text"), color="#123456")]
+            ws.data["compositions"] = [comp]
+            self.assertEqual(pack.upgrade(ws, None), ["Board"])
+            ls = ws.data["compositions"][0]["layers"]
+            self.assertEqual(ls[0].get("tint"), "{{Global!BG loop colour}}")
+            self.assertNotIn("tint", ls[2])
+            self.assertEqual([l["color"] for l in ls[3:]], ["{{Global!Text primary}}", "{{Global!Text secondary}}", "#123456"])
+            # (once: a colour set back by hand afterwards stays)
+            ls[3]["color"] = "#ffffff"
+            self.assertEqual(pack.upgrade(ws, None), [])
+            self.assertEqual(ws.data["compositions"][0]["layers"][3]["color"], "#ffffff")
             ws.close()
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

@@ -387,7 +387,7 @@ class Engine:
                     for page, sides in v.items():   # ({"team": {"left": "champion"}}: just that one)
                         if isinstance(sides, dict):
                             g[k].setdefault(page, {}).update(sides)
-                elif k in ("left", "right", "bgloop", "caster", "pictures", "h2h") and isinstance(v, dict):
+                elif k in ("left", "right", "bgloop", "caster", "pictures", "text", "h2h") and isinstance(v, dict):
                     g[k].update(v)
                 else:
                     g[k] = v

@@ -52,84 +52,119 @@ def copy_files(comp, starter, ws):
             shutil.copy2(src, dest)
 
 
+# The text colours the SCC graphics were made with, and the Global colour each
+# follows now (set in Control): white is the primary, the golds the secondary.
+TEXT_COLOURS = {"#ffffff": "{{Global!Text primary}}", "#ffc52a": "{{Global!Text secondary}}", "#eda81f": "{{Global!Text secondary}}"}
+LOOP_TINT = "{{Global!BG loop colour}}"
+
+
+def link_colours(comp):
+    """A graphic's text in the design's white or gold follows Global's text
+    colours, and the full-screen picture under a tinted background loop takes
+    the loop's colour too. Returns True if anything changed."""
+    changed = False
+    layers = comp.get("layers") or []
+    for i, l in enumerate(layers):
+        if l.get("type") == "text":
+            to = TEXT_COLOURS.get(str(l.get("color") or "").strip().lower())
+            if to:
+                l["color"] = to
+                changed = True
+        elif (l.get("type") == "video" and l.get("tint") == LOOP_TINT and i > 0):
+            under = layers[i - 1]
+            if (under.get("type") == "image" and not under.get("tint") and not under.get("recolor")
+                    and under.get("x", 0) <= 0 and under.get("y", 0) <= 0
+                    and under.get("x", 0) + under.get("w", 0) >= 1920 and under.get("y", 0) + under.get("h", 0) >= 1080):
+                under["tint"] = LOOP_TINT
+                changed = True
+    return changed
+
+
 def upgrade(ws, starter):
     """Brings the workspace's untouched SCC graphics up to date. Returns their names."""
     project = _read(starter) if starter else {}
     history = project.get("pack_history") or {}
-    if not history:
-        return []
-    latest = {c["name"]: c for c in project.get("compositions", [])}
     done = []
-    with ws.lock:
-        comps = ws.data["compositions"]
-        seen = list(ws.data.get("pack_seen") or [])
-        # (only for workspaces made from the pack: an empty one stays empty)
-        from_pack = any(c.get("name") in latest for c in comps)
-        for name in project.get("pack_new") or []:
-            if name in seen or name not in latest:
-                continue
-            seen.append(name)
-            if from_pack and not any(c.get("name") == name for c in comps):
-                fresh = copy.deepcopy(latest[name])
-                fresh["id"] = new_id("c")
+    if history:
+        latest = {c["name"]: c for c in project.get("compositions", [])}
+        with ws.lock:
+            comps = ws.data["compositions"]
+            seen = list(ws.data.get("pack_seen") or [])
+            # (only for workspaces made from the pack: an empty one stays empty)
+            from_pack = any(c.get("name") in latest for c in comps)
+            for name in project.get("pack_new") or []:
+                if name in seen or name not in latest:
+                    continue
+                seen.append(name)
+                if from_pack and not any(c.get("name") == name for c in comps):
+                    fresh = copy.deepcopy(latest[name])
+                    fresh["id"] = new_id("c")
+                    copy_files(fresh, starter, ws)
+                    comps.append(fresh)
+                    done.append(name)
+            if seen != list(ws.data.get("pack_seen") or []):
+                ws.data["pack_seen"] = seen
+                ws.changed()
+            for i, comp in enumerate(comps):
+                new = latest.get(comp.get("name"))
+                if not new or signature(comp) not in history.get(comp["name"], []):
+                    continue
+                if signature(comp) == signature(new):
+                    continue
+                fresh = copy.deepcopy(new)
+                fresh["id"] = comp["id"]
                 copy_files(fresh, starter, ws)
-                comps.append(fresh)
-                done.append(name)
-        if seen != list(ws.data.get("pack_seen") or []):
-            ws.data["pack_seen"] = seen
-            ws.changed()
-        for i, comp in enumerate(comps):
-            new = latest.get(comp.get("name"))
-            if not new or signature(comp) not in history.get(comp["name"], []):
-                continue
-            if signature(comp) == signature(new):
-                continue
-            fresh = copy.deepcopy(new)
-            fresh["id"] = comp["id"]
-            copy_files(fresh, starter, ws)
-            comps[i] = fresh
-            done.append(comp["name"])
-        # The caster names and handles have their own colour now (before, they
-        # took the secondary's); Global's text colour starts as the secondary,
-        # so changed copies look the same.
-        for comp in comps:
-            for l in comp.get("layers") or []:
-                if l.get("type") == "text" and l.get("color") == "{{Global!Caster secondary}}":
-                    l["color"] = "{{Global!Caster text}}"
-                    if comp["name"] not in done:
-                        done.append(comp["name"])
-        # Graphics taken out of the pack: the untouched copies go.
-        removed = set(project.get("pack_removed") or [])
-        keep = [c for c in comps if not (c.get("name") in removed and signature(c) in history.get(c["name"], []))]
-        if len(keep) != len(comps):
-            done += [c["name"] for c in comps if c not in keep]
-            comps[:] = keep
-        # What the graphics now share, for a workspace that never set it.
-        g = ws.data.get("global") or {}
-        pg = project.get("global") or {}
-        changed_global = False
-        if not g.get("sponsors") and not g.get("sponsor_epoch") and pg.get("sponsors"):
-            for sp in pg["sponsors"]:
-                copy_files({"src": sp["logo"]}, starter, ws)
-            g["sponsors"] = copy.deepcopy(pg["sponsors"])
-            changed_global = True
-        # A newer set of sponsors, for a workspace that still has the pack's old one.
-        old_set = {"assets/sponsors/Subway.png", "assets/sponsors/NAC Esports.png"}
-        if pg.get("sponsor_set", 1) > 1 and g.get("sponsors") and all(sp.get("logo") in old_set for sp in g["sponsors"]):
-            for sp in pg["sponsors"]:
-                copy_files({"src": sp["logo"]}, starter, ws)
-            g["sponsors"] = copy.deepcopy(pg["sponsors"])
-            g["sponsor_epoch"] = round(time.time(), 3)
-            changed_global = True
-        if "ticker" not in g and pg.get("ticker"):
-            g["ticker"] = list(pg["ticker"])
-            changed_global = True
-        if "schedule" not in g and pg.get("schedule"):
-            g["schedule"] = copy.deepcopy(pg["schedule"])
-            changed_global = True
-        if changed_global:
-            ws.data["global"] = g
-        if done or changed_global:
+                comps[i] = fresh
+                done.append(comp["name"])
+            # The caster names and handles have their own colour now (before, they
+            # took the secondary's); Global's text colour starts as the secondary,
+            # so changed copies look the same.
+            for comp in comps:
+                for l in comp.get("layers") or []:
+                    if l.get("type") == "text" and l.get("color") == "{{Global!Caster secondary}}":
+                        l["color"] = "{{Global!Caster text}}"
+                        if comp["name"] not in done:
+                            done.append(comp["name"])
+            # Graphics taken out of the pack: the untouched copies go.
+            removed = set(project.get("pack_removed") or [])
+            keep = [c for c in comps if not (c.get("name") in removed and signature(c) in history.get(c["name"], []))]
+            if len(keep) != len(comps):
+                done += [c["name"] for c in comps if c not in keep]
+                comps[:] = keep
+            # What the graphics now share, for a workspace that never set it.
+            g = ws.data.get("global") or {}
+            pg = project.get("global") or {}
+            changed_global = False
+            if not g.get("sponsors") and not g.get("sponsor_epoch") and pg.get("sponsors"):
+                for sp in pg["sponsors"]:
+                    copy_files({"src": sp["logo"]}, starter, ws)
+                g["sponsors"] = copy.deepcopy(pg["sponsors"])
+                changed_global = True
+            # A newer set of sponsors, for a workspace that still has the pack's old one.
+            old_set = {"assets/sponsors/Subway.png", "assets/sponsors/NAC Esports.png"}
+            if pg.get("sponsor_set", 1) > 1 and g.get("sponsors") and all(sp.get("logo") in old_set for sp in g["sponsors"]):
+                for sp in pg["sponsors"]:
+                    copy_files({"src": sp["logo"]}, starter, ws)
+                g["sponsors"] = copy.deepcopy(pg["sponsors"])
+                g["sponsor_epoch"] = round(time.time(), 3)
+                changed_global = True
+            if "ticker" not in g and pg.get("ticker"):
+                g["ticker"] = list(pg["ticker"])
+                changed_global = True
+            if "schedule" not in g and pg.get("schedule"):
+                g["schedule"] = copy.deepcopy(pg["schedule"])
+                changed_global = True
+            if changed_global:
+                ws.data["global"] = g
+            if done or changed_global:
+                ws.changed()
+    # Text colours from Control, and the backdrop following the loop's
+    # colour: once for each workspace, every graphic in it (after the update
+    # above, so an older untouched copy is still recognised).
+    with ws.lock:
+        if not ws.data.get("colours_linked"):
+            ws.data["colours_linked"] = 1
+            done += [c["name"] for c in ws.data["compositions"] if link_colours(c) and c["name"] not in done]
             ws.changed()
     if done:
         log(f"Brought {len(done)} SCC graphic(s) up to date (or took out the ones the pack no longer has)")

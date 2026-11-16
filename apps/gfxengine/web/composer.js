@@ -724,6 +724,9 @@
         missing ? h("div", { class: "warnline" }, `"${l.font}" isn't added: a similar font stands in. Add the font file in Assets.`) : null,
         h("div", { class: "grid3" }, lab("Size", bind(l, "size", "number", { min: 1 })), bind(l, "color", "color", { label: "Colour" }),
           lab("Weight", bind(l, "weight", "select", { num: true, options: [[300, "Light"], [400, "Regular"], [500, "Medium"], [600, "Semibold"], [700, "Bold"], [800, "Extra bold"], [900, "Black"]] }))),
+        lab("Colour set in Control", bind(l, "color", "select", { options: [
+          ...(["{{Global!Text primary}}", "{{Global!Text secondary}}"].includes(l.color) ? [] : [[l.color || "", "(its own colour)"]]),
+          ["{{Global!Text primary}}", "Primary text colour"], ["{{Global!Text secondary}}", "Secondary text colour"]] })),
         h("div", { class: "grid3" },
           lab("Align", bind(l, "align", "select", { options: [["left", "Left"], ["center", "Centre"], ["right", "Right"]] })),
           lab("Vertical", bind(l, "valign", "select", { options: [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]] })),
@@ -762,6 +765,11 @@
         l.type === "image" ? lab("Sits at", bind(l, "position", "select", { options: [["", "Middle"], ["bottom", "Bottom"], ["top", "Top"], ["left", "Left"], ["right", "Right"]] })) : null,
         lab("Fit", bind(l, "fit", "select", { options: [["contain", "Fit inside"], ["cover", "Fill and crop"], ["fill", "Stretch"]] })),
         /\{\{\s*sponsors\s*\}\}/i.test(l.src || "") ? bind(l, "timer", "check", { label: "Show a bar with the time it has left" }) : null,
+        l.type === "image" ? h("label", { class: "toggle", title: "The picture in the background loop's colour (Global configuration): it changes with it" },
+          h("input", { type: "checkbox", checked: l.tint === "{{Global!BG loop colour}}", onchange: e => {
+            snapshot(); if (e.target.checked) l.tint = "{{Global!BG loop colour}}"; else delete l.tint; changed({ props: true }); } }),
+          "Take the background loop's colour") : null,
+        l.type === "image" && l.tint && l.tint !== "{{Global!BG loop colour}}" ? bind(l, "tint", "text", { label: "Colour", placeholder: "(none)" }) : null,
         l.type === "image" && /\{\{/.test(l.src || "") ? lab("When Global has none", assetSelect("image", l.placeholder || "", v => { snapshot(); l.placeholder = v; changed({ props: true }); })) : null,
         l.type === "video" ? h("div", { class: "row-gap" },
           bind(l, "tint", "text", { label: "Tint colour (e.g. {{Global!BG loop colour}})", placeholder: "(none)" })) : null,
