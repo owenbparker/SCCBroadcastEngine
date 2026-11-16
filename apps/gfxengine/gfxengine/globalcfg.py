@@ -52,6 +52,8 @@ DEFAULT = {
     "spotlight": "left 1",
     # The Back in bug: the live background loop behind VS and its tabs (else the design's picture).
     "bug_loop": True,
+    # ...and how far it's zoomed in (100 = as it is, 300 = three times as big).
+    "bug_loop_zoom": 100,
     "h2h": {"left": "auto", "right": "auto"},
     # The caster lower third: how many boxes, the box's colour (primary), its
     # edge and shadow's (secondary) and the text's (none set: the secondary).
@@ -131,6 +133,7 @@ def clean(g):
     out["results"] = results.clean(g.get("results"))
     out["spotlight"] = matchup.clean_spotlight(g.get("spotlight"))
     out["bug_loop"] = g.get("bug_loop", True) is not False
+    out["bug_loop_zoom"] = int(round(_num(g.get("bug_loop_zoom"), 100, 400, 100)))
     out["h2h"] = matchup.clean_h2h(g.get("h2h"))
     out["roster"] = "right" if g.get("roster") == "right" else "left"
     pick = str(g.get("player_stats") or "")
@@ -268,7 +271,8 @@ def rows(g):
             ["Clock mode", g["clock"]["mode"]], ["Clock until", g["clock"]["until"]], ["Clock zone", g["clock"]["zone"]],
             ["Clock label", CLOCK_LABELS[g["clock"]["mode"]]],
             ["Timer secs", str(g["timer"]["secs"])], ["Timer started", str(g["timer"]["started"])],
-            ["Timer down", "1" if g["timer"]["down"] else ""], ["Bug loop", "1" if g["bug_loop"] else ""]]
+            ["Timer down", "1" if g["timer"]["down"] else ""], ["Bug loop", "1" if g["bug_loop"] else ""],
+            ["Bug loop zoom", str(g.get("bug_loop_zoom", 100) / 100)]]
     c = g["caster"]
     moves = caster_moves(c["count"])
     out += [["Caster boxes", str(c["count"])], ["Caster primary", c["primary"]], ["Caster secondary", c["secondary"]],

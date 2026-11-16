@@ -209,7 +209,8 @@ def back_in(g, psd):
     board = next(c for c in sp["compositions"] if c["name"] == "Sponsor board")
     loop = copy.deepcopy(next(l for l in board["layers"] if l["name"] == "Background loop"))
     loop.update(id=new_id("l"), name="Background loop", x=bg["x"], y=bg["y"], w=bg["w"], h=bg["h"], blend="screen",
-                mask=f"assets/{g.c['name']}/loop-mask.png", show="{{Global!Bug loop}}", anim=copy.deepcopy(bg["anim"]))
+                mask=f"assets/{g.c['name']}/loop-mask.png", show="{{Global!Bug loop}}", zoom="{{Global!Bug loop zoom}}",
+                anim=copy.deepcopy(bg["anim"]))
     after = g.add(under_loop, loop)
     # The boxes behind the logos: each team's colour (inside the gold edge).
     for side, l in (("Left", left_box), ("Right", right_box)):

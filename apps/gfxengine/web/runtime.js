@@ -937,7 +937,7 @@
   setInterval(() => { for (const b of live) { if (!b.isConnected) live.delete(b); else if (ticking(b._raw)) setText(b); } }, 250);   // (often enough that the timer changes on the second)
 
   // What else a layer's look takes from the data (a tinted loop's colour...).
-  const extraOf = layer => layer.tint ? [layer.tint, layer.brightness, layer.speed].map(v => GFX.resolve(v ?? "")).join("|") : "";
+  const extraOf = layer => [...(layer.tint ? [layer.tint, layer.brightness, layer.speed] : []), layer.zoom].map(v => GFX.resolve(v ?? "")).join("|");
 
   function buildLayer(layer, values, opts) {
     const value = GFX.content(layer, values);
@@ -957,7 +957,11 @@
       Object.assign(inner.style, { webkitMaskImage: m, maskImage: m, webkitMaskSize: "100% 100%", maskSize: "100% 100%",
         webkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat" });
     }
-    inner.appendChild(buildContent(layer, value, opts));
+    const content = buildContent(layer, value, opts);
+    // Zoomed in (a number, or from the data: {{Global!Bug loop zoom}}), around the middle, kept in the layer's box.
+    const zoom = layer.zoom == null ? 1 : +GFX.resolve(String(layer.zoom)) || 1;
+    if (zoom !== 1) { inner.style.overflow = "hidden"; content.style.transform = `scale(${zoom})`; content.style.transformOrigin = "50% 50%"; }
+    inner.appendChild(content);
     outer.appendChild(inner);
     outer._value = value;
     outer._extra = extraOf(layer);

@@ -1765,6 +1765,12 @@ class NewPackGraphicsTests(unittest.TestCase):
         bug = {l["name"]: l for l in comps["Back in bug"]["layers"]}
         self.assertEqual((bug["Left colour"]["fill"], bug["Right colour"]["fill"]), ("{{Global!Left color}}", "{{Global!Right color}}"))
         self.assertEqual(bug["Background loop"]["show"], "{{Global!Bug loop}}")
+        self.assertEqual(bug["Background loop"]["zoom"], "{{Global!Bug loop zoom}}")
+        from gfxengine import globalcfg
+        g = globalcfg.clean({"bug_loop_zoom": 150})
+        self.assertEqual(dict(globalcfg.rows(g)[1:])["Bug loop zoom"], "1.5")
+        self.assertEqual(globalcfg.clean({"bug_loop_zoom": 9999})["bug_loop_zoom"], 400)
+        self.assertEqual(globalcfg.clean({})["bug_loop_zoom"], 100)
         self.assertTrue(os.path.isfile(os.path.join(ROOT, "starter", bug["Background loop"]["mask"])))
         self.assertIn("{{clock}}", text("Back soon bug"))
         self.assertIn("{{Spotlight!Headshot}}", text("Head chicklet"))
