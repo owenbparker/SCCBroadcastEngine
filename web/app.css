@@ -199,6 +199,18 @@ button.mi { padding: 8px 10px; }
 #menu-ws .wspic { width: 34px; height: 34px; border-radius: 9px; }
 #menu-ws .wsn { display: flex; flex-direction: column; min-width: 0; } #menu-ws .wsn small { color: var(--mut); font-size: 11.5px; }
 
+/* tournaments (on the engine's pages): each one's logo on a dark tile, whole */
+.tnpic { width: 26px; height: 26px; border-radius: 8px; background: #1c1c1e center/80% no-repeat; display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+.chip.tnchip b { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#menu-tn { width: 360px; }
+#menu-tn .tnpic { width: 34px; height: 34px; border-radius: 9px; }
+#menu-tn .wsn { display: flex; flex-direction: column; min-width: 0; } #menu-tn .wsn small { color: var(--mut); font-size: 11.5px; }
+#menu-tn .wsn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#menu-tn .tn-new { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-top: 1px solid rgba(255,255,255,.08); margin-top: 4px; }
+#menu-tn .tn-new .row { display: flex; gap: 8px; }
+#menu-tn .tn-new input[type=text] { flex: 1; min-width: 0; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 7px 10px; color: inherit; font: inherit; font-size: 13.5px; }
+#menu-tn .tn-new label { font-size: 12px; color: var(--mut); display: flex; gap: 6px; align-items: center; }
+
 /* the run of show on Control (where the engine's sidebar was) */
 .ros-panel { position: fixed; z-index: 2; left: 12px; top: calc(var(--bar-h) + 20px); bottom: 12px; width: 340px; display: flex; flex-direction: column; padding: 18px 16px 14px; }
 body.ros-on #frames iframe.engine { left: 364px; width: calc(100% - 376px); }

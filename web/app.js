@@ -201,6 +201,7 @@ function renderBar() {
   $('[data-menu="event"]').classList.toggle("on", head === "ros" || (head === "engine" && ["global", "teams", "tournament", "schedule"].includes(sub)));
   $('[data-menu="system"]').classList.toggle("on", head === "settings" || (head === "engine" && ["outputs", "data", "appearance", "home"].includes(sub)));
   renderWorkspaceChip(head);
+  renderTournamentChip(head);
   fitBar();
   $("#chip-settings").classList.toggle("on", head === "settings");
   const anyGame = games.find(g => g.status === "on");
@@ -264,6 +265,56 @@ function renderWorkspaceChip(head) {
   if (!wsList) loadWorkspaces();
   fitBar();
 }
+// The tournament chip: the open tournament's logo and name; its menu lists the
+// saved ones (each keeps its own brackets, standings, schedule and logo).
+let tnList = null;
+function renderTournamentChip(head) {
+  const chip = $("#chip-tn"), e = S.engine, t = e.ok && e.tournament;
+  chip.hidden = !(head === "engine" && t);
+  if (chip.hidden) return;
+  chip.querySelector("b").textContent = t.name || "Tournament";
+  const pic = chip.querySelector(".tnpic");
+  const want = t.logo ? `url("${t.logo}")` : "";
+  if (pic.style.backgroundImage !== want) pic.style.backgroundImage = want;
+  pic.textContent = t.logo ? "" : (t.name || "?").slice(0, 1);
+  if (tnList && tnList.active !== t.id && !$("#menu-tn").hidden) loadTournaments();
+}
+async function loadTournaments() {
+  try { tnList = await api("/api/engine/tournaments"); } catch (e) { tnList = { tournaments: [], active: "" }; }
+  renderTournamentMenu();
+}
+function renderTournamentMenu() {
+  const base = S.engine.base, list = (tnList && tnList.tournaments) || [];
+  const logo = x => !x.logo ? "" : /^(https?|data):/.test(x.logo) ? x.logo : `${base}/${encodeURI(x.logo)}`;
+  const what = x => [x.teams ? `${x.teams} in the bracket` : "", x.standings ? `${x.standings} in the standings` : "",
+    x.matches ? `${x.matches} scheduled` : ""].filter(Boolean).join(" · ") || "Nothing entered yet";
+  const box = $("#menu-tn");
+  box.innerHTML = `<div class="hd">Tournaments</div>` + list.map(x => `<button class="mi${x.id === tnList.active ? " on" : ""}" data-tn="${esc(x.id)}">
+      <span class="tnpic"${logo(x) ? ` style="background-image:url('${logo(x)}')"` : ""}>${logo(x) ? "" : esc((x.name || "?").slice(0, 1))}</span>
+      <span class="wsn"><span>${esc(x.name)}</span><small>${esc(what(x))}</small></span>${x.id === tnList.active ? `<span class="st">open</span>` : ""}</button>`).join("")
+    + `<div class="tn-new"><div class="row"><input type="text" id="tn-name" placeholder="New tournament's name" maxlength="80"><button class="k" id="tn-add">New</button></div>
+      <label><input type="checkbox" id="tn-copy"> Start from the open one's teams and brackets</label></div>`
+    + `<a class="mi" href="#engine/tournament">${icon("bracket")}Manage tournaments<span class="st">rename, logo, delete</span></a>`;
+  const add = async () => {
+    const name = $("#tn-name").value.trim();
+    if (!name) return $("#tn-name").focus();
+    closeMenus();
+    try { const r = await api("/api/engine/tournament", { new: name, copy: $("#tn-copy").checked }); tnList = r; refresh(); }
+    catch (err) { alertBox(err.message); }
+  };
+  $("#tn-add").onclick = add;
+  $("#tn-name").onkeydown = ev => { if (ev.key === "Enter") add(); };
+}
+$("#menu-tn").addEventListener("click", async ev => {
+  ev.stopPropagation();
+  const b = ev.target.closest("[data-tn]");
+  if (!b) { if (ev.target.closest("a")) closeMenus(); return; }
+  closeMenus();
+  if (b.dataset.tn === tnList.active) return;
+  try { tnList = await api("/api/engine/tournament", { id: b.dataset.tn }); refresh(); }
+  catch (err) { alertBox(err.message); }
+});
+
 // When the bar is too narrow for everything, first drop the app name, then
 // the labels on the tabs that aren't open (their icons stay).
 function fitBar() {
@@ -304,8 +355,9 @@ for (const b of document.querySelectorAll("[data-menu]")) {
     closeMenus();
     if (!open) return;
     if (b.dataset.menu === "ws") loadWorkspaces();
+    if (b.dataset.menu === "tn") loadTournaments();
     const r = b.getBoundingClientRect();
-    menu.style.left = Math.max(8, Math.min(r.left, innerWidth - 320)) + "px";
+    menu.style.left = Math.max(8, Math.min(r.left, innerWidth - (parseInt(getComputedStyle(menu).width) || 300) - 12)) + "px";
     menu.hidden = false;
   });
 }

@@ -665,6 +665,99 @@ class TournamentTests(unittest.TestCase):
         self.assertEqual(rows["Group B name"], "GROUP B")
 
 
+class SavedTournamentTests(unittest.TestCase):
+    """Saved tournaments: each event's brackets, standings, schedule and logo, switched from a dropdown."""
+
+    def _engine(self, tmp, ws=None):
+        from gfxengine.app import Engine
+        engine = Engine(Settings(os.path.join(tmp, "settings.json")), ws or os.path.join(tmp, "workspaces"),
+                        starter=None, library_dir=os.path.join(tmp, "library"), legacy_dir=os.path.join(tmp, "none"))
+        self.addCleanup(engine.beacon.stop)
+        return engine
+
+    def test_old_workspace_becomes_a_tournament_and_switching_swaps_the_data(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        # A workspace from before tournaments, with brackets and standings in Global.
+        folder = os.path.join(tmp, "workspaces", "show")
+        os.makedirs(os.path.join(folder, "assets"))
+        from gfxengine.project import blank_project
+        proj = blank_project()
+        proj["name"] = "Show"
+        proj["global"] = {"event": "NACE Fall", "tournament_logo": "assets/logos/nace.png",
+                          "tournament": {"top": {"size": 8, "teams": ["A", "B"], "scores": {"R1 M1": ["2", "0"]}}},
+                          "standings": {"teams": [{"name": "A", "w": "3", "l": "1"}]},
+                          "left": {"name": "Left team"}}
+        with open(os.path.join(folder, "project.json"), "w") as f:
+            json.dump(proj, f)
+        engine = self._engine(tmp)
+        info = engine.tournaments_info()
+        self.assertEqual(len(info["tournaments"]), 1)
+        first = info["tournaments"][0]
+        self.assertEqual((first["name"], first["logo"], first["teams"], first["standings"]),
+                         ("NACE Fall", "assets/logos/nace.png", 2, 1))
+        self.assertIn("tournaments", engine.ws.get())   # (saved, not made up each time)
+
+        # A new one starts blank, and the graphics show it; the left team (not the tournament's) stays.
+        info = engine.new_tournament("Winter Open")
+        self.assertEqual(info["active"], "winter-open")
+        g = engine.global_config()
+        self.assertEqual(g["event"], "Winter Open")
+        self.assertEqual(g["tournament"]["top"]["teams"][:2], ["", ""])
+        self.assertEqual(g["standings"]["teams"][0]["name"], "")
+        self.assertEqual(g["left"]["name"], "Left team")
+        # Edits in Global are kept by the open tournament...
+        engine.set_global({"standings": {"teams": [{"name": "Z", "w": "1"}]}})
+        rows = dict(r[:2] for r in engine.data_snapshot()["tables"]["Global"])
+        self.assertEqual(rows["Tournament name"], "Winter Open")
+        # ...and switching back brings the first one's data back.
+        engine.open_tournament(first["id"])
+        g = engine.global_config()
+        self.assertEqual((g["event"], g["tournament_logo"]), ("NACE Fall", "assets/logos/nace.png"))
+        self.assertEqual(g["tournament"]["top"]["scores"]["R1 M1"], ["2", "0"])
+        self.assertEqual(g["standings"]["teams"][0]["name"], "A")
+        engine.open_tournament("winter-open")
+        self.assertEqual(engine.global_config()["standings"]["teams"][0]["name"], "Z")
+
+        # A copy keeps the brackets; renaming follows into the event; delete opens another.
+        engine.open_tournament(first["id"])
+        info = engine.new_tournament("NACE Fall Week 2", copy_current=True)
+        self.assertEqual(engine.global_config()["tournament"]["top"]["teams"][:2], ["A", "B"])
+        engine.rename_tournament(info["active"], "NACE Fall W2")
+        self.assertEqual(engine.global_config()["event"], "NACE Fall W2")
+        info = engine.delete_tournament(info["active"])
+        self.assertEqual(len(info["tournaments"]), 2)
+        self.assertIn(info["active"], [x["id"] for x in info["tournaments"]])
+        with self.assertRaises(KeyError):
+            engine.open_tournament("nope")
+
+        # A logo for one that isn't open goes into its own data only.
+        png = io.BytesIO()
+        Image.new("RGBA", (4, 4), (255, 0, 0, 255)).save(png, "PNG")
+        other = next(x for x in info["tournaments"] if x["id"] != info["active"])
+        before = engine.global_config()["tournament_logo"]
+        info = engine.tournament_logo(other["id"], "logo.png", png.getvalue())
+        self.assertTrue(next(x for x in info["tournaments"] if x["id"] == other["id"])["logo"].startswith("assets/logos/"))
+        self.assertEqual(engine.global_config()["tournament_logo"], before)
+
+        # It's all saved with the workspace.
+        engine.ws.close()
+        engine2 = self._engine(tmp)
+        self.assertEqual(engine2.tournaments_info()["active"], info["active"])
+        self.assertEqual(len(engine2.tournaments_info()["tournaments"]), 2)
+
+    def test_last_tournament_cant_be_deleted(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        engine = self._engine(tmp)
+        if not engine.ws:
+            engine.create_workspace("Test")
+        only = engine.tournaments_info()["tournaments"]
+        self.assertEqual(len(only), 1)
+        with self.assertRaises(ValueError):
+            engine.delete_tournament(only[0]["id"])
+
+
 class TeamsTests(unittest.TestCase):
     def test_csv(self):
         from gfxengine.teams import Teams, roster_rows

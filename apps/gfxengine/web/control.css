@@ -550,3 +550,15 @@ table.sheet td.c:hover { background: #1d3b5e; }
 .links .link-row a { color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .links .link-row select { min-width: 0; width: 100%; }
 .hud-add .primary { margin-top: 8px; width: 100%; }
+
+/* the saved tournaments (top of the Tournament page) */
+.tn-saved { display: flex; gap: 16px; align-items: center; margin: 0 16px 12px; }
+.tn-logo { width: 84px; height: 84px; flex: none; border-radius: 12px; border: 2px dashed var(--line2); display: grid; place-items: center;
+  color: var(--muted, #888); font-size: 12px; cursor: pointer; background: #111 center/80% no-repeat; }
+.tn-logo:hover, .tn-logo.over { border-color: var(--gold); }
+.tn-logo.has { border-style: solid; color: transparent; }
+.tn-saved-main { flex: 1; min-width: 0; }
+.tn-saved-row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.tn-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted, #888); }
+.tn-field select, .tn-field input { min-width: 200px; }
+.tn-saved p { margin: 8px 0 0; }
