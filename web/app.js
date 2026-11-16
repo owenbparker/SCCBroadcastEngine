@@ -589,6 +589,16 @@ function renderImported() {
   const list = (S.imported && S.imported.folders) || [];
   const names = { gfxengine: "GFX Engine", lolhud: "League HUD", valhud: "VALORANT HUD", codhud: "CoD HUD",
                   rlhud: "RL HUD", smashhud: "Smash HUD", owhud: "Overwatch HUD", multistream: "Multistream" };
+  const bk = (S.imported && S.imported.backups) || [];
+  $("#bk-list").textContent = "";
+  for (const name of bk) {
+    const row = document.createElement("div");
+    row.className = "li";
+    row.innerHTML = `<span class="mono"></span>`;
+    row.firstChild.textContent = name;
+    $("#bk-list").appendChild(row);
+  }
+  if (!bk.length) $("#bk-list").innerHTML = `<p class="mut">No backups yet: the first one is made at the next update.</p>`;
   const box = $("#imp-list");
   box.textContent = "";
   if (!list.length) { box.innerHTML = `<p class="mut">No old app folders found yet.</p>`; return; }
@@ -615,6 +625,7 @@ $("#imp-go").onclick = async () => {
   } catch (e) { $("#imp-result").textContent = e.message; }
   btn.disabled = false;
 };
+$("#open-backups").onclick = () => post("/api/open-folder", { which: "backups" });
 $("#open-data").onclick = () => post("/api/open-folder", { which: "data" });
 $("#open-app").onclick = () => post("/api/open-folder", { which: "app" });
 

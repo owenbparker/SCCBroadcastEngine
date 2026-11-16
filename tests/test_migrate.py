@@ -112,12 +112,12 @@ class MigrateTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(n, "workspaces", "scc-broadcast-2", "assets", "a.png")))
         self.assertTrue(os.path.isfile(os.path.join(n, "workspaces", "lotd", "project.json")))
         self.assertFalse(os.path.exists(os.path.join(n, "workspaces", ".deleted")))
-        # Settings: filled in, own engine ID kept, the old open workspace opened.
+        # Settings: name and camera looks filled in; the engine ID and the OPEN WORKSPACE kept.
         s = read_json(os.path.join(n, "settings.json"))
         self.assertEqual(s["engine_id"], "newid")
         self.assertEqual(s["name"], "Owen GFX")
         self.assertEqual(s["camera_looks"], [{"name": "Day"}])
-        self.assertEqual(s["workspace"], "scc-broadcast-2")
+        self.assertEqual(s["workspace"], "scc-broadcast")
         # Program files not copied.
         self.assertFalse(os.path.exists(os.path.join(n, "GFXEngine.exe")))
         self.assertFalse(os.path.exists(os.path.join(n, "_internal")))
@@ -148,7 +148,68 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual(r["teams"], 101)
         n = os.path.join(self.data, "gfxengine")
         self.assertTrue(os.path.isfile(os.path.join(n, "workspaces", "scc-broadcast", "assets", "a.png")))
-        self.assertEqual(read_json(os.path.join(n, "settings.json"))["workspace"], "scc-broadcast")
+        self.assertNotIn("workspace", read_json(os.path.join(n, "settings.json")))
+
+    def test_update_over_a_used_app_changes_nothing_of_it(self):
+        """owen, v1.0.45: the app had been used (a workspace with saved
+        tournaments open); the import must not open another workspace or
+        change a single file that was there, and must back it all up first."""
+        n = os.path.join(self.data, "gfxengine")
+        tournaments = {"active": "t2", "list": [{"id": f"t{i}", "name": f"Event {i}", "data": {}} for i in range(1, 6)]}
+        write(os.path.join(n, "workspaces", "scc-broadcast", "project.json"),
+              json.dumps({"name": "SCC Broadcast", "tournaments": tournaments}))
+        write(os.path.join(self.old, "workspaces", "cen", "project.json"),
+              json.dumps({"name": "CEN", "tournaments": {"active": "x", "list": [{"id": "x", "name": "NACE VARSITY"}]}}))
+        write(os.path.join(self.old, "settings.json"), json.dumps({"workspace": "cen", "network_address": "10.0.0.5",
+                                                                   "allow_network": False, "http_port": 9999}))
+        snapshot = {}
+        for root, _, files in os.walk(self.data):
+            for f in files:
+                p = os.path.join(root, f)
+                with open(p, "rb") as fh:
+                    snapshot[os.path.relpath(p, self.data)] = fh.read()
+        r = self.run_import()
+        self.assertIn("cen", r["workspaces"])
+        s = read_json(os.path.join(n, "settings.json"))
+        self.assertEqual(s["workspace"], "scc-broadcast")                     # still the one in use
+        for k in ("network_address", "allow_network", "http_port"):
+            self.assertNotIn(k, s)                                            # not taken from the old app
+        self.assertEqual(read_json(os.path.join(n, "workspaces", "scc-broadcast", "project.json"))["tournaments"], tournaments)
+        merged = {os.path.join("gfxengine", "library", "teams.csv"), os.path.join("gfxengine", "settings.json"),
+                  os.path.join("lolhud", "config.json")}
+        for rel, data in snapshot.items():
+            if rel not in merged:
+                with open(os.path.join(self.data, rel), "rb") as fh:
+                    self.assertEqual(fh.read(), data, rel)                    # every file that was there, unchanged
+        # The backup has every file as it was before the import.
+        self.assertTrue(r["backup"] and os.path.isdir(r["backup"]))
+        for rel, data in snapshot.items():
+            with open(os.path.join(r["backup"], rel), "rb") as fh:
+                self.assertEqual(fh.read(), data, rel)
+
+
+class BackupTest(unittest.TestCase):
+    def setUp(self):
+        self.data = tempfile.mkdtemp(prefix="sccbe-backup-")
+
+    def tearDown(self):
+        shutil.rmtree(self.data, ignore_errors=True)
+
+    def test_once_per_version_and_kept(self):
+        from sccbe import backup
+        self.assertIsNone(backup.on_start(self.data, "v1.0.50"))              # nothing to back up yet
+        write(os.path.join(self.data, "gfxengine", "workspaces", "w", "project.json"), '{"name": "W"}')
+        write(os.path.join(self.data, "shell", "parts", "lol.log"), "log")
+        first = backup.on_start(self.data, "v1.0.51")
+        self.assertTrue(os.path.isfile(os.path.join(first, "gfxengine", "workspaces", "w", "project.json")))
+        self.assertFalse(os.path.exists(os.path.join(first, "shell", "parts")))
+        self.assertIsNone(backup.on_start(self.data, "v1.0.51"))              # same version: no new one
+        for i in range(52, 52 + backup.KEEP + 3):
+            self.assertTrue(backup.on_start(self.data, f"v1.0.{i}"))
+        names = backup.listing(self.data)["backups"]
+        self.assertEqual(len(names), backup.KEEP)
+        for name in names:                                                    # no backup inside a backup
+            self.assertFalse(os.path.exists(os.path.join(backup.backups_dir(self.data), name, "_backups")))
 
 
 if __name__ == "__main__":
