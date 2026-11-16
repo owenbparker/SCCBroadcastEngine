@@ -42,6 +42,22 @@ class MatchTests(unittest.TestCase):
         self.assertIsNone(ros.pick_match([], now))
 
 
+class GraphicRowsTests(unittest.TestCase):
+    def test_now_next_later_and_the_next_map(self):
+        self.assertEqual(ros.graphic_rows(None), [["Shown", ""]])
+        show = ros.build_show(ros.starter_template("val", 3), {"game": "VALORANT", "date": "2026-11-13", "time": "20:30", "best_of": 3})
+        rows = dict(ros.graphic_rows(show, now=0))
+        self.assertEqual((rows["Shown"], rows["Now text"], rows["Next text"], rows["Next map in"]),
+                         ("1", "", "NEXT - COUNTDOWN", "MAP 1 IN"))
+        at = datetime.datetime.fromtimestamp(int(rows["Next map at"])).strftime("%H:%M")
+        self.assertEqual(at, "20:30")
+        show["current"] = 2          # Map 1 being played
+        rows = dict(ros.graphic_rows(show, now=0))
+        self.assertEqual((rows["Now text"], rows["Next text"], rows["Later text"], rows["Next map"], rows["Map"]),
+                         ("NOW - MAP 1", "NEXT - BETWEEN MAPS", "LATER - MAP 2", "MAP 2", "1"))
+        self.assertTrue(rows["Next time"].endswith(("AM", "PM")))
+
+
 class ShowTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()

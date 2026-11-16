@@ -20,7 +20,7 @@ from . import parts as P
 from .config import APP_DIR, DATA_DIR, FROZEN, ROLES, Settings, control_pc_url, web_file
 from .log import log, lines
 from . import rosnet
-from .ros import EXT, RunOfShow, read_doc
+from .ros import EXT, RunOfShow, graphic_rows, read_doc
 from .updater import Updater, clean_up_old_update
 from .version import VERSION
 
@@ -233,6 +233,25 @@ class Shell:
         out["engine"] = {"ok": e.get("ok", False), "graphics": e.get("graphics") or [],
                          "schedule": e.get("schedule") or [], "match": e.get("match")}
         return out
+
+    def feed_run_of_show(self, every=3):
+        """Keeps this PC's GFX Engine's "Run of show" table (the Footer's now /
+        next / later and its countdown) up to date. A HUD PC using the Control
+        PC's engine leaves it to the Control PC's own run of show."""
+        last, sent_at = None, 0.0
+        while True:
+            time.sleep(every)
+            try:
+                base, remote = self.engine_base()
+                if remote or not base or P.BY_KEY["engine"].status == "off":
+                    continue
+                rows = graphic_rows(self.ros.state().get("show"))
+                # (the times move while a segment runs long: sent again every 30 s)
+                if rows != last or time.monotonic() - sent_at > 30:
+                    self.engine_call("/api/runofshow", {"rows": rows}, timeout=2)
+                    last, sent_at = rows, time.monotonic()
+            except Exception:
+                last = None   # (the engine isn't up yet: next time)
 
     def ros_post(self, path, body):
         r = self.ros
@@ -521,6 +540,7 @@ def start(shell, port=None):
     os.environ["SCCBE_SHELL"] = f"http://127.0.0.1:{port}"
     threading.Thread(target=shell.httpd.serve_forever, name="shell-http", daemon=True).start()
     shell.ros_net = rosnet.start(shell.ros)
+    threading.Thread(target=shell.feed_run_of_show, name="ros-to-engine", daemon=True).start()
     clean_up_old_update()
     shell.updater.check_in_background()
     log(f"SCC Broadcast Engine {VERSION} at http://127.0.0.1:{port}/ (data in {DATA_DIR})")

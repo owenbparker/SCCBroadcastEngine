@@ -211,6 +211,42 @@ def timeline(show, now=None):
     return out
 
 
+def graphic_rows(show, now=None):
+    """The GFX Engine's "Run of show" table (the Footer graphic's now / next /
+    later and its countdown to the next map): [label, value] rows."""
+    rows = [["Shown", ""]]
+    if not show or not show.get("segments"):
+        return rows
+    segs = show["segments"]
+    tl = timeline(show, now)
+    cur = show.get("current", -1)
+    title = lambda i: segs[i]["title"].upper() if 0 <= i < len(segs) else ""   # noqa: E731
+    # Before the show: what's coming first is "next".
+    now_i = cur if 0 <= cur < len(segs) else -1
+    nxt = now_i + 1 if now_i >= 0 else (0 if cur < 0 else len(segs))
+    rows = [["Shown", "1"], ["Now", title(now_i)], ["Next", title(nxt)], ["Later", title(nxt + 1)]]
+    rows += [[k + " text", f"{k.upper()} - {v}" if v else ""] for k, v in (("Now", title(now_i)), ("Next", title(nxt)), ("Later", title(nxt + 1)))]
+    clock = lambda t: datetime.datetime.fromtimestamp(t).strftime("%I:%M %p").lstrip("0")   # noqa: E731
+    rows += [[k + " time", clock(tl[i]["start"]) if 0 <= i < len(segs) else ""]
+             for k, i in (("Now", now_i), ("Next", nxt), ("Later", nxt + 1))]
+    rows += [["Now ends", str(round(tl[now_i]["end"])) if now_i >= 0 else ""],
+             ["Next at", str(round(tl[nxt]["start"])) if nxt < len(segs) else ""]]
+    # The next map (after the one being played): "MAP 2 IN" and when it starts.
+    first = cur + 1 if cur >= 0 else 0
+    # (a map is the segment that lasts as long as the game; a template without one: any of the map's)
+    is_map = (lambda x: x.get("map") and x.get("game")) if any(x.get("game") for x in segs) else (lambda x: x.get("map"))
+    nm = next((i for i in range(first, len(segs)) if is_map(segs[i])), None)
+    if nm is not None:
+        label, at = f"MAP {segs[nm]['map']}", tl[nm]["start"]
+    elif nxt < len(segs):
+        label, at = title(nxt), tl[nxt]["start"]
+    else:
+        label, at = "", 0
+    rows += [["Next map", label], ["Next map in", f"{label} IN" if label else ""], ["Next map at", str(round(at)) if at else ""],
+             ["Map", str(segs[now_i]["map"] or "") if now_i >= 0 else ""]]
+    return rows
+
+
 FORMAT = "scc-ros"
 FORMAT_VERSION = 1
 EXT = ".sccros"

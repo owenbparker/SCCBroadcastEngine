@@ -1691,3 +1691,95 @@ class OpponentLineupTests(unittest.TestCase):
             self.assertEqual((dict(t["Roster"][1:])["Team"], dict(t["Opponent"][1:])["Team"]), ("Away", "Home"))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class PastResultsTests(unittest.TestCase):
+    def test_for_a_team_newest_first_team_on_the_left(self):
+        from gfxengine import results
+        rs = results.clean([
+            {"label": "Week 1", "date": "2026-10-01", "team1": "SCC", "score1": "3", "team2": "FAL", "score2": "1"},
+            {"label": "Week 2", "date": "2026-10-08", "team1": "HUM", "score1": "2", "team2": "SCC", "score2": "0"},
+            {"label": "Week 2", "date": "2026-10-08", "team1": "FAL", "score1": "2", "team2": "HUM", "score2": "1"}])
+        rows = dict(results.rows(rs, "scc", lambda n: {"logo": f"{n}.png", "short": n}, "NACE RESULTS")[1:])
+        self.assertEqual((rows["Count"], rows["Record"], rows["Title"]), ("2", "1-1", "NACE RESULTS"))
+        self.assertEqual((rows["Match 1 label"], rows["Match 1 score"], rows["Match 1 opponent"], rows["Match 1 result"]),
+                         ("Week 2", "0-2", "HUM", "L"))
+        self.assertEqual((rows["Match 2 score"], rows["Match 2 opponent logo"], rows["Match 2 show"]), ("3-1", "FAL.png", "1"))
+        self.assertEqual(rows["Match 3 show"], "")
+
+    def test_import_with_or_without_titles(self):
+        from gfxengine import results
+        got = results.from_rows([["Date", "Week", "Home", "Score", "Away"], ["10/02/2026", "Week 1 - Game 1", "SCC", "3-1", "FAL"]])
+        self.assertEqual({k: got[0][k] for k in results.KEYS},
+                         {"label": "Week 1 - Game 1", "date": "2026-10-02", "team1": "SCC", "score1": "3", "team2": "FAL", "score2": "1"})
+        got = results.from_rows([["Week 2", "2026-10-09", "SCC", "2", "0", "HUM"]])
+        self.assertEqual((got[0]["team1"], got[0]["score1"], got[0]["score2"], got[0]["team2"]), ("SCC", "2", "0", "HUM"))
+        got = results.from_rows([["Week 3", "SCC", "1-2", "FAL"]])
+        self.assertEqual((got[0]["label"], got[0]["team1"], got[0]["score2"], got[0]["team2"]), ("Week 3", "SCC", "2", "FAL"))
+        merged = results.merge(got, results.from_rows([["Week 3", "SCC", "2-2", "FAL"]]))
+        self.assertEqual((len(merged), merged[0]["score1"]), (1, "2"))
+
+
+class MatchupTests(unittest.TestCase):
+    def test_spotlight_and_head_to_head(self):
+        from gfxengine import globalcfg, matchup, stats
+        g = globalcfg.clean({"left": {"name": "SCC", "short": "SCC"}, "right": {"name": "FAL"}, "spotlight": "right 2",
+                             "h2h": {"right": "2"}})
+        teams = {"left": {"name": "SCC", "game": "VALORANT", "players": [{"name": "Jazii", "ign": "Jazii#1", "country": "ca", "photo": "j.png"}]},
+                 "right": {"name": "FAL", "game": "VALORANT", "players": [{"name": "A", "ign": "A#1", "country": "", "photo": ""},
+                                                                          {"name": "Cale", "ign": "Cale#1", "country": "", "photo": "c.png"}]}}
+        sp = dict(matchup.spotlight_rows(g, teams.get, lambda c: f"flags/{c}.svg")[1:])
+        self.assertEqual((sp["Name"], sp["Headshot"], sp["Line"], sp["Left player 1"]), ("Cale", "c.png", "FAL VALORANT", "Jazii"))
+        f = {"SCORE LEFT": 5, "SCORE RIGHT": 3}
+        for side, names in (("LEFT", ["Jazii#1", "B#1"]), ("RIGHT", ["A#1", "Cale#1"])):
+            for n, nm in enumerate(names, 1):
+                f.update({f"{side} P{n} NAME": nm, f"{side} P{n} K": 10 * (3 - n), f"{side} P{n} D": 5, f"{side} P{n} A": 2})
+        data = stats.read("valorant", f)
+        from gfxengine.teams import player_named
+        hh = dict(matchup.h2h_rows(g, data, teams.get, player_named)[1:])
+        self.assertEqual((hh["Left name"], hh["Left headshot"], hh["Left row 1"], hh["Row 2 title"]), ("Jazii", "j.png", "20/5/2", "FK"))
+        self.assertEqual((hh["Right name"], hh["Right row 1"], hh["Right row 3"]), ("Cale", "10/5/2", "40%"))
+        none = dict(matchup.h2h_rows(globalcfg.clean({}), None, lambda s: None, player_named)[1:])
+        self.assertEqual((none["Left row 1"], none["Row 1 title"], none["Status"]), ("0/0/0", "K/D/A", ""))
+
+
+class NewPackGraphicsTests(unittest.TestCase):
+    NEW = ["Footer", "Back in bug", "Back soon bug", "Head chicklet", "Caster 1x lower third", "Caster 3x lower third",
+           "Recent results", "Head to head"]
+
+    def test_in_the_pack_linked_up_with_their_files(self):
+        with open(os.path.join(ROOT, "starter", "project.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        comps = {c["name"]: c for c in data["compositions"]}
+        for name in self.NEW:
+            self.assertIn(name, data["pack_new"])
+            self.assertIn(name, data["pack_history"])
+            for l in comps[name]["layers"]:
+                src = l.get("src") or ""
+                if src and "{{" not in src:
+                    self.assertTrue(os.path.isfile(os.path.join(ROOT, "starter", src)), (name, src))
+        text = lambda n: json.dumps(comps[n])   # noqa: E731
+        self.assertIn("{{Run of show!Now text}}", text("Footer"))
+        self.assertIn("{{countdown:Run of show!Next map at}}", text("Footer"))
+        self.assertIn("{{Global!Left logo}}", text("Back in bug"))
+        self.assertIn("{{clock}}", text("Back soon bug"))
+        self.assertIn("{{Spotlight!Headshot}}", text("Head chicklet"))
+        self.assertEqual(len([l for l in comps["Caster 3x lower third"]["layers"] if l.get("field", "").startswith("Caster")]), 6)
+        self.assertIn("{{Results!Match 4 score}}", text("Recent results"))
+        self.assertIn("{{Head to head!Right row 4}}", text("Head to head"))
+
+    def test_old_workspaces_get_them(self):
+        from gfxengine import pack
+        tmp = tempfile.mkdtemp()
+        try:
+            ws = Workspace(tmp, starter="")
+            ws.data["compositions"] = [dict(blank_comp("Schedule"), id="c1")]
+            added = pack.upgrade(ws, os.path.join(ROOT, "starter"))
+            for name in self.NEW:
+                self.assertIn(name, added)
+            comp = next(c for c in ws.data["compositions"] if c["name"] == "Footer")
+            files = [l["src"] for l in comp["layers"] if l.get("src", "").startswith("assets/")]
+            self.assertTrue(files and all(os.path.isfile(ws.asset_path(f)) for f in files))
+            ws.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
