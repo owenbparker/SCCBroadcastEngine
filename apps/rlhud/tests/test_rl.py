@@ -186,6 +186,14 @@ class ServerTests(unittest.TestCase):
                         self.assertEqual(r.status, 200, path)
                 post("/api/config", {"design": "newgerrit"})
                 self.assertIn("NEW GERRIT", page("/overlay"))
+                # Player cams during the replay: on by default, a Control toggle.
+                self.assertTrue(app.config.get()["show"]["replay_cams"])
+                self.assertIn("replay_cams", page("/overlay-newgerrit"))
+                self.assertIn('data-show="replay_cams"', page("/control"))
+                post("/api/config", {"show": {"replay_cams": False}})
+                self.assertFalse(app.config.get()["show"]["replay_cams"])
+                self.assertTrue(app.config.get()["show"]["players"])
+                post("/api/config", {"show": {"replay_cams": True}})
                 import rlhud.config as config_mod
                 import rlhud.replaystinger as rs_mod
                 old_dirs = (config_mod.STINGER_DIR, rs_mod.STINGER_DIR)

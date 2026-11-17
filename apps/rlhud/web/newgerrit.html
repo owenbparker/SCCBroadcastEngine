@@ -618,10 +618,14 @@
   }
   stinger.addEventListener("ended", () => stinger.classList.remove("on"));
   stinger.addEventListener("error", () => { stinger.classList.remove("on"); if (!replayLive && view.mode === "replay") goLive(); });
+  // Control's "Player cams during the replay" (on unless turned off).
+  function replayCams() { return ((S.config || {}).show || {}).replay_cams !== false; }
   function goLive() {
-    // (under the stinger: the HUD's lower parts cut away, the lower third flies in)
+    // (under the stinger: the HUD's lower parts cut away, the lower third flies in,
+    //  and the cams go too when they're turned off for replays)
     clearTimeout(cutTimer);
     replayLive = true;
+    if (!replayCams()) view.cams = false;
     document.body.classList.add("cut");
     view.hudAway = true; view.mode = "replay";
     paint();
@@ -672,6 +676,7 @@
     } else if (!goalNow && view.mode === "goal") {
       view.mode = "hud"; view.cams = false;
     }
+    if (view.mode === "replay" && replayLive) view.cams = replayCams();
     if (view.mode !== "replay" && Date.now() >= (view.backAt || 0)) view.hudAway = view.away;
     if (view.away) { view.hudAway = true; view.cams = false; view.lower = false; }
     paint();

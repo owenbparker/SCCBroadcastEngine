@@ -50,7 +50,7 @@ DEFAULTS = {
     # "sponsors/x.png"), each for this many seconds.
     "sponsors": [],
     "sponsor_seconds": 8,
-    "show": {"players": True, "sponsors": True, "target": True, "boost": True, "events": True},
+    "show": {"players": True, "sponsors": True, "target": True, "boost": True, "events": True, "replay_cams": True},
     # Player cams: SCC Player Cam (Rocket League, by in-game name), or a link
     # (VDO.Ninja) typed beside a player's in-game name, which wins; "hidden":
     # in-game names whose cam isn't shown.
