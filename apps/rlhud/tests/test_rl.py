@@ -440,3 +440,13 @@ class ShotSpeedTest(unittest.TestCase):
         g.apply("GoalScored", {"Scorer": {"Name": "A", "TeamNum": 0}, "BallLastTouch": {"Speed": 101.5}}, now=2)
         self.assertEqual(g.snapshot(now=3)["goal"]["speed"], 101.5)
 
+
+
+class BoostZeroTest(unittest.TestCase):
+    """The game leaves Boost out at 0: it reads as 0, so the boost stays on screen."""
+
+    def test_missing_boost_is_zero(self):
+        from rlhud.game import GameState
+        g = GameState()
+        g.apply("UpdateState", {"Players": [{"Name": "A", "TeamNum": 0}, {"Name": "B", "TeamNum": 1, "Boost": 0}]}, now=1)
+        self.assertEqual([p["boost"] for p in g.snapshot(now=1)["players"]], [0, 0])

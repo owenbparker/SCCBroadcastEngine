@@ -141,7 +141,7 @@ class GameState:
                 "team": p.get("TeamNum", 0), "score": p.get("Score", 0), "goals": p.get("Goals", 0),
                 "shots": p.get("Shots", 0), "assists": p.get("Assists", 0), "saves": p.get("Saves", 0),
                 "touches": p.get("Touches", 0), "demos": p.get("Demos", 0),
-                "boost": p.get("Boost"), "speed": round(self._speed(p.get("Speed"))),
+                "boost": p.get("Boost") or 0, "speed": round(self._speed(p.get("Speed"))),
                 "supersonic": bool(p.get("bSupersonic")), "demolished": bool(p.get("bDemolished")),
                 "has_car": p.get("bHasCar", True)})
         players.sort(key=lambda p: (p["team"], p["shortcut"] if p["shortcut"] is not None else 99, p["name"].lower()))
