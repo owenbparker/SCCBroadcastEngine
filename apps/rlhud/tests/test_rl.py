@@ -125,6 +125,7 @@ class GameTests(unittest.TestCase):
         self.assertEqual(g.snapshot(now=110)["events"], [])     # gone after a few seconds
         g.apply("GoalScored", {"GoalSpeed": 2500, "Scorer": {"Name": "DRALII", "TeamNum": 0}}, now=120)
         self.assertEqual(g.snapshot(now=121)["phase"], "goal")
+        self.assertEqual(g.snapshot(now=121)["goal"]["speed"], 90.0)   # (uu/s -> km/h)
         # The last goal stays (Gerrit 2026's bottom bar) after the goal itself has gone, until a new match.
         self.assertIsNone(g.snapshot(now=140)["goal"])
         self.assertEqual(g.snapshot(now=140)["last_goal"]["scorer"]["name"], "DRALII")
@@ -409,3 +410,33 @@ class LookAndCamTests(unittest.TestCase):
                 self.assertEqual(app._engine_snapshot()["fields"]["target_has_cam"], "")
             finally:
                 app.stop()
+
+
+class ShotSpeedTest(unittest.TestCase):
+    """The Stats API sends speeds in km/h; older feeds in uu/s. Both read right."""
+
+    def test_kmh_feed(self):
+        from rlhud.game import GameState
+        g = GameState()
+        g.apply("UpdateState", {"Players": [{"Name": "A", "TeamNum": 0, "Speed": 82}], "Game": {"Ball": {"Speed": 120}}}, now=1)
+        g.apply("GoalScored", {"GoalSpeed": 143.2, "Scorer": {"Name": "A", "TeamNum": 0}}, now=2)
+        s = g.snapshot(now=3)
+        self.assertEqual(s["goal"]["speed"], 143.2)
+        self.assertEqual(s["ball_speed"], 120)
+        self.assertEqual(s["players"][0]["speed"], 82)
+
+    def test_uu_feed(self):
+        from rlhud.game import GameState
+        g = GameState()
+        g.apply("UpdateState", {"Players": [{"Name": "A", "TeamNum": 0, "Speed": 2300}], "Game": {"Ball": {"Speed": 250}}}, now=1)
+        s = g.snapshot(now=1)
+        self.assertEqual(s["players"][0]["speed"], 83)
+        g.apply("GoalScored", {"GoalSpeed": 250, "Scorer": {"Name": "A", "TeamNum": 0}}, now=2)
+        self.assertEqual(g.snapshot(now=3)["goal"]["speed"], 9.0)   # (a slow roller, in uu/s)
+
+    def test_last_touch_when_no_goal_speed(self):
+        from rlhud.game import GameState
+        g = GameState()
+        g.apply("GoalScored", {"Scorer": {"Name": "A", "TeamNum": 0}, "BallLastTouch": {"Speed": 101.5}}, now=2)
+        self.assertEqual(g.snapshot(now=3)["goal"]["speed"], 101.5)
+

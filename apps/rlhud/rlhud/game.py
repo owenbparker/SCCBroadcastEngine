@@ -15,6 +15,21 @@ EVENT_SECONDS = 6          # how long an event's icon stays by the name
 GOAL_SECONDS = 8
 
 
+# Speeds: Rocket League's Stats API sends them in km/h, but older feeds (and
+# SOS-style plugins) sent Unreal units/s (1 uu/s = 0.036 km/h). Ball and car
+# speeds in km/h never pass about 250, so a value well above that is uu/s.
+UU_ABOVE = 300
+
+
+def kmh(value, uu=False):
+    """A speed from the game, in km/h (uu=True: this feed is known to send uu/s)."""
+    try:
+        v = abs(float(value or 0))
+    except (TypeError, ValueError):
+        return 0.0
+    return v * 0.036 if uu or v > UU_ABOVE else v
+
+
 def _player_ref(p):
     p = p or {}
     return {"name": p.get("Name") or "", "team": p.get("TeamNum"), "shortcut": p.get("Shortcut")}
@@ -38,6 +53,7 @@ class GameState:
         self.events = []           # recent statfeed events
         self.goal = None           # the last goal, for a few seconds
         self.ball_speed = 0
+        self._uu = False           # this feed sends speeds in uu/s (seen one over UU_ABOVE)
         self.updated = 0.0
         self.match_guid = ""
         self._event_id = 0
@@ -61,7 +77,7 @@ class GameState:
             elif event == "GoalScored":
                 scorer = _player_ref(data.get("Scorer"))
                 self.goal = {"scorer": scorer, "assister": _player_ref(data.get("Assister")) if data.get("Assister") else None,
-                             "speed": round(float(data.get("GoalSpeed") or 0) * 0.036, 1),   # uu/s -> km/h
+                             "speed": round(self._goal_speed(data), 1),   # km/h
                              "team": scorer["team"], "at": now}
                 self.phase = "goal"
             elif event == "GoalReplayStart":
@@ -91,11 +107,30 @@ class GameState:
                                         "at": now})
             elif event == "BallHit":
                 ball = data.get("Ball") or {}
-                self.ball_speed = round(float(ball.get("PostHitSpeed") or 0) * 0.036)
+                self.ball_speed = round(self._speed(ball.get("PostHitSpeed")))
             else:
                 return
             self.updated = now
             self.version += 1
+
+    def _speed(self, value):
+        try:
+            if abs(float(value or 0)) > UU_ABOVE:
+                self._uu = True
+        except (TypeError, ValueError):
+            pass
+        return kmh(value, self._uu)
+
+    def _goal_speed(self, data):
+        """The goal's speed: GoalSpeed, else the last touch's speed (BallLastTouch.Speed)."""
+        raw = data.get("GoalSpeed")
+        try:
+            raw = float(raw)
+        except (TypeError, ValueError):
+            raw = 0
+        if not raw:
+            raw = (data.get("BallLastTouch") or {}).get("Speed") or 0
+        return self._speed(raw)
 
     def _update(self, data):
         self.match_guid = data.get("MatchGuid") or self.match_guid
@@ -106,7 +141,7 @@ class GameState:
                 "team": p.get("TeamNum", 0), "score": p.get("Score", 0), "goals": p.get("Goals", 0),
                 "shots": p.get("Shots", 0), "assists": p.get("Assists", 0), "saves": p.get("Saves", 0),
                 "touches": p.get("Touches", 0), "demos": p.get("Demos", 0),
-                "boost": p.get("Boost"), "speed": round(float(p.get("Speed") or 0) * 0.036),
+                "boost": p.get("Boost"), "speed": round(self._speed(p.get("Speed"))),
                 "supersonic": bool(p.get("bSupersonic")), "demolished": bool(p.get("bDemolished")),
                 "has_car": p.get("bHasCar", True)})
         players.sort(key=lambda p: (p["team"], p["shortcut"] if p["shortcut"] is not None else 99, p["name"].lower()))
@@ -133,7 +168,7 @@ class GameState:
         self.target = _player_ref(tgt) if g.get("bHasTarget") and tgt.get("Name") else None
         ball = g.get("Ball") or {}
         if ball.get("Speed") is not None:
-            self.ball_speed = round(float(ball["Speed"]) * 0.036)
+            self.ball_speed = round(self._speed(ball["Speed"]))
         if self.phase == "none" and players:
             self.phase = "live"
 
