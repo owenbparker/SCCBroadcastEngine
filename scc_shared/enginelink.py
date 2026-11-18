@@ -404,7 +404,9 @@ class EngineLink:
             keys = ("name", "short", "logo", "color", "score")
             left, right = ({k: (g.get(s) or {}).get(k) for k in keys if k in (g.get(s) or {})} for s in ("left", "right"))
             _post(self.url + "/api/global", {"global": {"left": right, "right": left}, "engine": self.engine_id}, 5, key=self.key)
-            swapped = dict(g, left=dict(g.get("left") or {}, **right), right=dict(g.get("right") or {}, **left))
+            # (the rosters go with the teams: the engine finds them by name)
+            rl, rr = ({"players": (g.get(s) or {}).get("players") or []} for s in ("left", "right"))
+            swapped = dict(g, left=dict(g.get("left") or {}, **right, **rr), right=dict(g.get("right") or {}, **left, **rl))
             self._followed, self._followed_at = _global_key(swapped), time.time()   # (already swapped here)
             self.log(f"Swapped the sides in {self.name}'s Global configuration too")
             self._last_body = None
@@ -581,11 +583,14 @@ def _scores_only(series):
 def _global_key(g):
     """What of the engine's Global configuration a HUD takes in: each team's
     (name, short, logo, colour, series score), the tournament logo, the
-    sponsors and the series length."""
+    sponsors, the series length and the rosters' headshots."""
     team = lambda s: tuple(str((g.get(s) or {}).get(k) or "") for k in _TEAM_KEYS)
+    # (each side's roster headshots: a HUD's player photos)
+    photos = lambda s: json.dumps([[p.get("ign"), p.get("photo")] for p in (g.get(s) or {}).get("players") or []
+                                   if isinstance(p, dict)])
     return (team("left"), team("right"), str(g.get("tournament_logo") or ""),
             json.dumps([[sp.get("logo"), sp.get("secs")] for sp in g.get("sponsors") or [] if isinstance(sp, dict)]),
-            str(g.get("best_of") or ""))
+            str(g.get("best_of") or ""), photos("left"), photos("right"))
 
 
 def _swapped(old, new):

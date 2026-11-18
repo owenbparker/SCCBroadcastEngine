@@ -1,12 +1,12 @@
 /* The SCC 2027 VALORANT HUD (owen's Figma: Round Phase Full Overlay, Buy Phase,
    Buy Phase first 12 rounds, Death Left / Right, Ace Graphic, Listen In).
    Every position is the Figma one, on a 1920x1080 page.
-   Fonts: the design's DIN 2014 / DIN 2014 Narrow aren't free to ship, so
-   Barlow / Barlow Semi Condensed (OFL) stand in; Tungsten and Rubik as designed. */
+   Fonts as designed: DIN 2014 / DIN 2014 Narrow (ParaType, owen's licensed
+   copies, 2026-11-18), Tungsten and Rubik. */
 @font-face { font-family: "S27 Tungsten"; src: url("/hud/Resources/Tungsten-Bold.ttf"); }
-@font-face { font-family: "S27 Din"; src: url("fonts/Barlow-700.woff2"); font-weight: 700; }
-@font-face { font-family: "S27 Din"; src: url("fonts/Barlow-400.woff2"); font-weight: 400; }
-@font-face { font-family: "S27 Narrow"; src: url("fonts/BarlowSemiCondensed-700.woff2"); font-weight: 700; }
+@font-face { font-family: "S27 Din"; src: url("fonts/DIN2014-Bold.woff2"); font-weight: 700; }
+@font-face { font-family: "S27 Din"; src: url("fonts/DIN2014-Regular.woff2"); font-weight: 400; }
+@font-face { font-family: "S27 Narrow"; src: url("fonts/DIN2014-Narrow-Bold.woff2"); font-weight: 700; }
 @font-face { font-family: "S27 Rubik"; src: url("fonts/Rubik.woff2"); font-weight: 300 900; }
 
 :root {
@@ -89,7 +89,13 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .phase { transition: opacity .35s ease, transform .5s cubic-bezier(.2, .8, .2, 1); }
 #side-left.away { transform: translateX(-360px); }
 #side-right.away { transform: translateX(360px); }
-#maps.away, #event.away { opacity: 0; transform: translateY(-26px); }
+/* the maps and event strips come out from behind the top bar for the buy
+   phase and go back behind it 20 seconds into the round (scc2027.js setStrips) */
+#top { z-index: 5; }
+#sponsor { z-index: 4; }
+#maps, #event { transition: opacity .45s ease, transform .6s cubic-bezier(.2, .8, .2, 1); }
+#maps.tucked { opacity: 0; transform: translateX(631px); }
+#event.tucked { opacity: 0; transform: translateX(-440px); }
 #board.away { transform: translateY(470px); }
 #board.away-quick { transition: none; }
 
@@ -263,3 +269,16 @@ html.scc2027 .scc-duo { width: 310px !important; }
 html.scc2027 .scc-duo.left { left: 17px !important; }
 html.scc2027 .scc-duo.right { left: 1593px !important; }
 html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold); }
+
+/* the round win banner: the Default 2026 HUD's (web/hud: banner1.png, Extra.js animationrep) */
+@font-face { font-family: "S27 Gridnik"; src: url("/hud/Resources/FoundryGridnik-ExtraBold.otf"); }
+#rwin { left: 0; top: 0; width: 1920px; height: 450px; z-index: 6; visibility: hidden; pointer-events: none; }
+#rwin.on { visibility: visible; }
+#rwin .pic { position: absolute; left: 570px; top: 150px; width: 780px; height: 250px; clip-path: inset(0% 50%); transition: clip-path .2s ease; }
+#rwin.on .pic { clip-path: inset(0%); }
+#rwin .side, #rwin .team { position: absolute; top: 350px; height: 35px; font: 30px/35px "S27 Gridnik", sans-serif; color: #fff;
+  text-align: center; text-transform: uppercase; opacity: 0; transition: opacity .8s linear; }
+#rwin .side { left: 850px; width: 70px; }
+#rwin .team { left: 990px; width: 90px; }
+#rwin .logo { position: absolute; left: 945px; top: 355px; height: 30px; width: auto; opacity: 0; transition: opacity .8s linear; }
+#rwin.text .side, #rwin.text .team, #rwin.text .logo { opacity: 1; }

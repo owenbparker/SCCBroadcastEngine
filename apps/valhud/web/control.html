@@ -232,12 +232,21 @@
     <label>Top right text (SCC 2027)</label>
     <input id="event-text" spellcheck="false" placeholder="e.g. AURORA SERIES | PLAYOFFS | RD 1 (empty: the GFX Engine's event and stage)">
     <label class="toggle" style="margin-top:12px"><input type="checkbox" id="show-ace"> Ace graphic when a player gets all five kills (SCC 2027)</label>
+    <label>Ace graphic picture</label>
+    <div class="row" style="align-items:center">
+      <label class="note" style="margin:0">Left team <select id="ace-pic-left" style="width:auto">
+        <option value="photo">Player photos</option><option value="agent">Agents</option></select></label>
+      <label class="note" style="margin:0">Right team <select id="ace-pic-right" style="width:auto">
+        <option value="photo">Player photos</option><option value="agent">Agents</option></select></label>
+    </div>
+    <p class="note" style="margin:6px 0 0">Player photos are the headshots in the GFX Engine's Teams tab (matched by in-game ID);
+      a player without one shows their agent.</p>
   </section>
 
   <section data-page="editor">
     <h2>HUD colours</h2>
     <p class="note" style="margin-top:0">The Default 2026 HUD's two side colours. They still swap at half time, with the sides.
-      (SCC 2027 has its own: blue for the left team, red for the right.)</p>
+      (SCC 2027 has its own: blue for the left team, red for the right, swapping with the sides at round 13 and in overtime.)</p>
     <div class="row">
       <div><label>Defenders (teal)</label>
         <div class="row"><input type="color" class="swatch" id="defense-color"><input id="defense-hex" maxlength="7" spellcheck="false"></div></div>
@@ -631,6 +640,8 @@ $("hud-design").onchange = async e => {
 };
 $("event-text").onchange = e => post("/api/config", { event_text: e.target.value.trim() });
 $("show-ace").onchange = e => post("/api/config", { show: { ace: e.target.checked } });
+for (const side of ["left", "right"])
+  $(`ace-pic-${side}`).onchange = e => post("/api/config", { ace_pictures: { [side]: e.target.value } });
 
 // Players.
 for (const side of ["left", "right"]) {
@@ -708,10 +719,11 @@ function apply(s) {
   setIfIdle($("hud-design"), design);
   setIfIdle($("event-text"), cfg.event_text || "");
   $("show-ace").checked = cfg.show.ace !== false;
+  for (const side of ["left", "right"]) setIfIdle($(`ace-pic-${side}`), (cfg.ace_pictures || {})[side] === "agent" ? "agent" : "photo");
   $("hud-design-note").textContent = design === "scc2027"
     ? "Listen In and the Ace graphic come with it; the round tracker is on the buy-phase board."
     : "The HUD as it was before SCC 2027.";
-  for (const id of ["listen-left", "listen-right", "show-ace", "event-text"]) $(id).disabled = design !== "scc2027";
+  for (const id of ["listen-left", "listen-right", "show-ace", "event-text", "ace-pic-left", "ace-pic-right"]) $(id).disabled = design !== "scc2027";
   const rd = app.reader;
   $("reader").classList.toggle("reading", !!rd.enabled);
   $("reader").textContent = rd.enabled ? "Reading VALORANT — click to stop" : "Read VALORANT on this PC";

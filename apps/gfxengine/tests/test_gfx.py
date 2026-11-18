@@ -1548,6 +1548,49 @@ class EnginePairingTests(unittest.TestCase):
         self.assertEqual((g["left"]["name"], g["right"]["name"], g["left"]["score"]), ("St. Clair Saints", "Humber Hawks", 1))
         self.assertEqual((names(), len(swaps)), (("St. Clair Saints", "Humber Hawks"), 2))
 
+    def test_huds_get_the_rosters_headshots(self):
+        """Global as a HUD takes it has each side's roster with its headshots
+        (the VALORANT HUD's Ace graphic photo); a new headshot is followed, and
+        the rosters go with the teams on a HUD's Swap sides (not swapped back)."""
+        link = self._link()
+        link.EngineLink.RECHECK = 0.5
+        e, url = self._engine(8796)
+        e.teams.merge([{"name": "St. Clair Saints", "short": "SCC", "game": "VALORANT",
+                        "players": [{"name": "Ana", "ign": "Ace#NA1", "photo": "library/teams/players/ana.png"}]},
+                       {"name": "Humber Hawks", "short": "HUM", "game": "VALORANT",
+                        "players": [{"name": "Bo", "ign": "Bo", "photo": ""}]}])
+        e.set_global({"left": {"name": "St. Clair Saints", "short": "SCC"}, "right": {"name": "Humber Hawks", "short": "HUM"}})
+        got, swaps = [], []
+        cfg = {"left": {"name": "x"}, "right": {"name": "y"}}
+
+        def apply_global(g, fetch):
+            got.append(g)
+            for s in ("left", "right"):
+                cfg[s] = {"name": g[s]["name"], "players": g[s].get("players")}
+            return "teams"
+
+        def swap():
+            swaps.append(1)
+            cfg["left"], cfg["right"] = cfg["right"], cfg["left"]
+
+        hud = link.EngineLink("VALORANT HUD", "valorant", lambda: {"fields": {}, "series": {}}, apply_global,
+                              load=lambda: None, save=lambda d: None, swap=swap)
+        self.addCleanup(hud.stop)
+        hud.connect(url)
+        self.assertTrue(self._wait(lambda: got and got[-1]["left"].get("players")))
+        p = got[-1]["left"]["players"][0]
+        self.assertEqual((p["ign"], p["photo"]), ("Ace#NA1", "library/teams/players/ana.png"))
+        self.assertTrue(p["photo_url"].startswith("http://127.0.0.1:8796/library/teams/players/ana.png"))
+        # A new headshot in the Teams tab: taken in.
+        e.teams.merge([{"name": "Humber Hawks", "game": "VALORANT", "players": [{"name": "Bo", "ign": "Bo", "photo": "library/teams/players/bo.png"}]}])
+        self.assertTrue(self._wait(lambda: got[-1]["right"]["players"][0]["photo"].endswith("bo.png")))
+        # The HUD's own Swap sides: the rosters go with the teams, and it isn't swapped back.
+        swap()
+        self.assertTrue(hud.swap_global())
+        time.sleep(1.5)
+        self.assertEqual((cfg["left"]["name"], len(swaps)), ("Humber Hawks", 1))
+        self.assertEqual(e.hud_global()["left"]["players"][0]["ign"], "Bo")
+
     def test_huds_stay_with_their_engine(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("enginelink", os.path.join(ROOT, "..", "..", "scc_shared", "enginelink.py"))

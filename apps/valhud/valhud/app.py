@@ -2,6 +2,7 @@
 demo game), serves the overlay and control panel over HTTP."""
 
 import base64
+import hashlib
 import json
 import mimetypes
 import os
@@ -20,7 +21,7 @@ from . import appearance, game, mapbans, outputs, recolor, startpick
 from .teamsides import AttackFirst, Rosters, roster_flipped, swap_reading
 from .agentselect import AgentSelect, AgentSelectDemo
 from .cams import CamHub, cam_links
-from .config import DATA_DIR, LOGO_DIR, SPONSOR_DIR, WEB_DIR, web_file
+from .config import DATA_DIR, LOGO_DIR, PHOTO_DIR, SPONSOR_DIR, WEB_DIR, web_file
 from hudbuilder import embed as hud_builder
 from .demo import DemoGame
 from .enginelink import EngineLink, save_logo_bytes, save_sponsors
@@ -452,6 +453,8 @@ class HudApp:
                     log(f"Couldn't fetch the {side} logo from the GFX Engine: {e}", "warn")
             if str(t.get("score", "")).isdigit():   # (the series score: Global's is the one shown)
                 team["wins"] = int(t["score"])
+            if isinstance(t.get("players"), list):   # (its roster's headshots: the SCC 2027 Ace graphic's photo)
+                team["photos"] = self._engine_photos(t["players"], fetch, side)
             if team:
                 changes[side] = team
                 done.append(f"{side}: {team.get('name') or team.get('tricode') or 'logo'}")
@@ -480,6 +483,29 @@ class HudApp:
         self.config.update(changes)
         self.refresh(fetch=False)
         return ", ".join(done)
+
+    def _engine_photos(self, players, fetch, side):
+        """[[in-game ID, "photos/<file>"], ...] for the roster players with a
+        headshot, downloaded from the GFX Engine (each address once)."""
+        cache = self.__dict__.setdefault("_photo_files", {})
+        out = []
+        for p in players:
+            if not isinstance(p, dict):
+                continue
+            ign, src = str(p.get("ign") or p.get("name") or "").strip(), str(p.get("photo_url") or "")
+            if not ign or not src:
+                continue
+            name = cache.get(src)
+            if not name or not os.path.isfile(os.path.join(PHOTO_DIR, name)):
+                try:
+                    tag = hashlib.sha1(src.encode()).hexdigest()[:6]   # (one file a headshot, whoever else has that name)
+                    name = save_logo_bytes(PHOTO_DIR, f"engine-{ign.split('#')[0]}-{tag}", fetch(src))
+                    cache[src] = name
+                except Exception as e:
+                    log(f"Couldn't fetch {ign}'s headshot from the GFX Engine: {e}", "warn")
+                    continue
+            out.append([ign, f"photos/{name}"])
+        return out
 
     def set_role(self, role):
         if role not in ("gfx", "observer", None):

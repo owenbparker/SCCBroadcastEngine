@@ -23,6 +23,7 @@ DATA_DIR = (os.path.join(os.environ["SCCBE_DATA"], "valhud") if os.environ.get("
 WEB_DIR = os.path.join(RESOURCE_DIR, "web")
 LOGO_DIR = os.path.join(DATA_DIR, "logos")
 SPONSOR_DIR = os.path.join(DATA_DIR, "sponsors")   # uploaded sponsor logos (served as sponsors/...)
+PHOTO_DIR = os.path.join(DATA_DIR, "photos")       # players' headshots from the GFX Engine's Teams tab (photos/...)
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 
 DEFAULTS = {
@@ -80,6 +81,10 @@ DEFAULTS = {
     # SCC 2027: listen_in "left" / "right" puts that team's cams up
     # (Listen In); ace: the Ace graphic plays when a player gets all five.
     "show": {"timeouts": True, "scoreboard": False, "listen_in": "", "ace": True},
+    # SCC 2027: the Ace graphic's picture of each team's player: "photo" (their
+    # headshot from the GFX Engine's Teams tab, the agent when they have none)
+    # or "agent".
+    "ace_pictures": {"left": "photo", "right": "photo"},
     # Player webcams (SCC Player Cam): the spectated player's cam pops up
     # above the bottom of the screen.
     "cams": {"enabled": True,
@@ -167,6 +172,8 @@ def web_file(rel):
         candidates.append((LOGO_DIR, rel[len("assets/logos/"):]))
     if rel.startswith("sponsors/"):
         candidates.append((SPONSOR_DIR, rel[len("sponsors/"):]))
+    if rel.startswith("photos/"):
+        candidates.append((PHOTO_DIR, rel[len("photos/"):]))
     candidates.append((WEB_DIR, rel))
     # The scoreboard shares the HUD's agent, weapon and shield images.
     if rel.startswith("scoreboard/Resources/"):
