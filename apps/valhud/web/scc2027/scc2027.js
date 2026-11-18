@@ -163,18 +163,18 @@
   // Top bar.
   var top = el("phase", stage); top.id = "top";
   ui.topBox = top;
-  var tin = el("in", top);
-  el("edge l", tin); el("edge r", tin);
-  el("div", tin, { left: "203px" }); el("div", tin, { left: "463px" });
-  el("spk", tin);   // (the condensed bar's spike, in place of the clock)
+  // owen's "Main with Hole" / "Condensed with Hole" figs: two halves with a
+  // hole in the middle (890..1030) where the game's own timer shows; screen
+  // coordinates throughout.
+  ["l", "r"].forEach(function (k) { var h = el("half " + k, top); el("fill", h); el("edge", h); });
+  el("div l", top); el("div r", top);
   ui.top = {
-    logoL: el("logo l", tin, { left: "48px" }, "img"), logoR: el("logo r", tin, { left: "589px" }, "img"),
-    triL: text("tung", tin, 88, 18, 102, 22, "c", null, "tri"), subL: text("nar", tin, 84, 45, 110, 10, "c", null, "sub"),
-    triR: text("tung", tin, 474, 18, 102, 22, "c", null, "tri"), subR: text("nar", tin, 470, 45, 110, 10, "c", null, "sub"),
-    scoreL: text("nar", tin, 227, 28, 60, 33, "c", null, "score"), scoreR: text("nar", tin, 381, 28, 60, 33, "c", null, "score"),
-    rnd: text("nar", tin, 285, 11, 100, 10, "c", null, "rnd"),
-    clock: text("tung", tin, 285, 27, 100, 34, "c", null, "clock"),
-    pipsL: el("pips", tin, { left: "227px" }), pipsR: el("pips", tin, { left: "381px" })
+    logoL: el("logo l", top, null, "img"), logoR: el("logo r", top, null, "img"),
+    triL: text("tung", top, 714, 18, 100, 22, "c", null, "tri"), subL: text("nar", top, 709, 45, 110, 10, "c", null, "sub"),
+    triR: text("tung", top, 1100, 18, 100, 22, "c", null, "tri"), subR: text("nar", top, 1095, 45, 110, 10, "c", null, "sub"),
+    scoreL: text("nar", top, 860, 18, 60, 36, "c", null, "score"), scoreR: text("nar", top, 998, 18, 60, 36, "c", null, "score"),
+    rnd: text("nar", top, 910, 11, 100, 10, "c", null, "rnd"),
+    pipsL: el("pips v l", top), pipsR: el("pips v r", top)
   };
   ui.top.logoL.alt = ui.top.logoR.alt = "";
   ui.top.pipsL.style.setProperty("--c", COL.left);
@@ -711,9 +711,8 @@
     setPips(T.pipsR, need, Math.min(need, cfg.right.wins || 0));
     setText(T.rnd, "ROUND " + Math.max(1, m.round || (m.score.left || 0) + (m.score.right || 0) + 1));
     var planted = m.spike && m.spike.state === "planted";
-    setText(T.clock, g.connected || (s.app || {}).mode === "demo" ? clock(planted && m.spike.timer ? m.spike.timer : m.timer) : "");
-    toggle(T.clock, "spike", planted);
-    // Condensed (owen's "Condensed with Timer / Spike"): 20.5 seconds into
+    // (no clock: the game's own timer shows through the bar's hole)
+    // Condensed (owen's "Condensed with Hole"): 20.5 seconds into
     // the round, or once the spike is down; the full bar again in the buy phase.
     var cond = !BOARD_ONLY && wantCondensed(m, planted);
     toggle(ui.topBox, "cond", cond);
