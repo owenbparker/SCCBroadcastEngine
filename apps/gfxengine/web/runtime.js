@@ -939,6 +939,17 @@
   // What else a layer's look takes from the data (a tinted loop's colour...).
   const extraOf = layer => [...(layer.tint ? [layer.tint, layer.brightness, layer.speed] : []), layer.zoom].map(v => GFX.resolve(v ?? "")).join("|");
 
+  // Turning round and round for as long as it's on (a vMix title's RotateContinuous):
+  // layer.spin = turns a second, minus = anticlockwise. Uses the separate
+  // "rotate" property so it adds to the layer's own transform and its In/Out.
+  function spin(content, layer, opts) {
+    const turns = +layer.spin || 0;
+    if (!turns || opts.still || !content.animate) return;
+    content.style.transformOrigin = content.style.transformOrigin || "50% 50%";
+    content.animate([{ rotate: "0deg" }, { rotate: (turns > 0 ? 360 : -360) + "deg" }],
+      { duration: Math.max(100, 1000 / Math.abs(turns)), iterations: Infinity, easing: "linear" });
+  }
+
   function buildLayer(layer, values, opts) {
     const value = GFX.content(layer, values);
     const outer = el("div", "gfx-L", {
@@ -963,6 +974,7 @@
     if (zoom !== 1) { inner.style.overflow = "hidden"; content.style.transform = `scale(${zoom})`; content.style.transformOrigin = "50% 50%"; }
     inner.appendChild(content);
     outer.appendChild(inner);
+    spin(content, layer, opts);
     outer._value = value;
     outer._extra = extraOf(layer);
     outer._layer = layer;

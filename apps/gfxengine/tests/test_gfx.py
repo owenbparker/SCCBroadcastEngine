@@ -229,6 +229,54 @@ class PsdTests(unittest.TestCase):
 
 
 @unittest.skipUnless(media.ffmpeg_path(), "needs FFmpeg")
+class GtzipTests(unittest.TestCase):
+    def test_import(self):
+        # A vMix GT title: a group scaled into its box, a picture, solid colour, text, a spin.
+        from gfxengine.assets import Assets
+        tmp = tempfile.mkdtemp()
+        try:
+            ws = Workspace(os.path.join(tmp, "ws"), starter="")
+            assets = Assets(ws, None)
+            pic = io.BytesIO()
+            Image.new("RGBA", (40, 20), (200, 0, 0, 255)).save(pic, "PNG")
+            doc = ('<?xml version="1.0" encoding="utf-16"?>\r\n<Composition Width="1920" Height="1080">'
+                   '<Layer Name="Group" Dimensions="960,540,0" Location="100,50,0"><Layer.Composition>'
+                   '<Composition Width="1920" Height="1080">'
+                   '<Rectangle Name="Logo" Dimensions="400,200,0" Location="200,100,0"><Rectangle.Fill>'
+                   '<Brush Type="Bitmap" Color="#FFFF0000"><Brush.Bitmap><Bitmap Source="g1\\Logo.png" /></Brush.Bitmap></Brush>'
+                   '</Rectangle.Fill></Rectangle>'
+                   '<TextBlock Name="Team" Dimensions="300,60,0" Location="10,20,0" Text="Savage Steaks" FontFamily="Bauhaus 93" FontSize="48">'
+                   '<TextBlock.Fill><Brush Color="#FF112233" /></TextBlock.Fill></TextBlock>'
+                   '</Composition></Layer.Composition></Layer>'
+                   '<Ellipse Name="Dot" Dimensions="50,50,0" Location="5,5,0" Opacity="0.5"><Ellipse.Fill><Brush Color="#80FFFFFF" /></Ellipse.Fill></Ellipse>'
+                   '<Storyboard Type="Continuous"><Storyboard.Animations><RotateContinuous Object="Logo" Speed="0.2" Direction="Right" />'
+                   '</Storyboard.Animations></Storyboard></Composition>')
+            path = os.path.join(tmp, "upload")
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("document.xml", doc)
+                z.writestr("resources.xml", '<resources><resource filename="g1\\Logo.png"><source guid="abc-1">g1\\Logo.png</source></resource></resources>')
+                z.writestr("abc-1", pic.getvalue())
+            result = assets.add("Bracket.gtzip", path)        # (Assets drop too, not only Composer's Import)
+            ws.close()
+            comp = result["comps"][0]
+            self.assertEqual(comp["name"], "Bracket")
+            by = {l["name"]: l for l in comp["layers"]}
+            logo = by["Logo"]
+            self.assertEqual((logo["x"], logo["y"], logo["w"], logo["h"]), (200, 100, 200, 100))
+            self.assertEqual(logo["spin"], 0.2)
+            self.assertTrue(os.path.isfile(ws.asset_path(logo["src"])))
+            team = by["Team"]
+            self.assertEqual((team["type"], team["text"], team["field"], team["color"], team["size"]),
+                             ("text", "Savage Steaks", "Team", "#112233", 24))
+            self.assertEqual((team["x"], team["y"]), (105, 60))
+            dot = by["Dot"]
+            self.assertEqual((dot["type"], dot["radius"]), ("rect", 25))
+            self.assertAlmostEqual(dot["opacity"], 0.25, places=2)
+            self.assertEqual(result["missing_fonts"], ["Bauhaus 93"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class MediaTests(unittest.TestCase):
     def test_png_sequence_to_see_through_video_and_stinger_cut(self):
         tmp = tempfile.mkdtemp()

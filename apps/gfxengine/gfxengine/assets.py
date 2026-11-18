@@ -30,6 +30,7 @@ import zipfile
 
 from . import aerender
 from . import fonts as fontnames
+from . import gtimport
 from . import media
 from . import share
 from .log import log
@@ -186,7 +187,9 @@ class Assets:
                     os.remove(src_path)
         if kind == "aep":
             return self._aep(name, src_path, graphic, comp)
-        if graphic and (kind in ("video", "lottie") or ext == ".zip"):
+        if ext == ".gtzip" or (graphic and ext == ".zip" and gtimport.is_gt(src_path)):
+            graphic = True   # a vMix title is always a graphic (see gtimport)
+        elif graphic and (kind in ("video", "lottie") or ext == ".zip"):
             # Composer's Import of moving pictures: added as usual, then a graphic of each.
             result = self.add(name, src_path, fps=fps, then=self._graphic_of)
             for rel in result["assets"]:
