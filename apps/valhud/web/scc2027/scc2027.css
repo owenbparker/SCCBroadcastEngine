@@ -120,7 +120,6 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
   transition: top .4s ease; }
 .tab.watched { border-color: var(--gold);
   background: linear-gradient(rgba(240, 203, 116, .5), rgba(138, 117, 67, .5) 50%, rgba(240, 203, 116, .5)), rgba(17, 24, 35, .5); }
-.tab.low { box-shadow: inset 0 0 0 200px rgba(150, 20, 30, .28); }
 .tab .agent { top: -1px; width: 51px; height: 51px; border: 1px solid #fff; background: var(--c) center / cover no-repeat; }
 .L .tab .agent { left: -1px; border-radius: 25px 0 25px 0; }
 .R .tab .agent { right: -1px; border-radius: 0 25px 0 25px; }

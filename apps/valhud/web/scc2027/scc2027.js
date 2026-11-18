@@ -518,7 +518,7 @@
     toggle(t, "dead", dead);
     var o2 = m.observed;
     toggle(t, "watched", !!o2 && o2.team === p.team && o2.slot === p.slot && !dead);
-    toggle(t, "low", !dead && p.health > 0 && p.health < 20);
+    // (no low-health tint: a tab keeps its colours whatever the damage, owen 2026-11-18)
     bg(o.agent, agentArt(p.agent));
     setText(o.name, p.name || "");
     setAbilities(o.abil, p);
