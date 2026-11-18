@@ -176,6 +176,11 @@
   ui.top.pipsL.style.setProperty("--c", COL.left);
   ui.top.pipsR.style.setProperty("--c", COL.right);
   ui.planted = el("", stage); ui.planted.id = "planted";
+  // The round win banner: the Default 2026 HUD's for now (owen, 2026-11-18).
+  ui.rwin = el("", stage); ui.rwin.id = "rwin";
+  ui.rwinImg = el("pic", ui.rwin, null, "img"); ui.rwinImg.src = "/hud/Resources/Logos/banner1.png"; ui.rwinImg.alt = "";
+  ui.rwinSide = el("side", ui.rwin); ui.rwinLogo = el("logo", ui.rwin, null, "img"); ui.rwinLogo.alt = "";
+  ui.rwinTeam = el("team", ui.rwin);
   ui.banner = el("", stage); ui.banner.id = "banner";
   el("bar", ui.banner);
   ui.bannerText = text("nar", ui.banner, 8, 0, null, null, "c", null, "txt");
@@ -361,7 +366,6 @@
     clearTimeout(boardTimer);
     var tabsAway = function (away) {
       toggle(ui.side.left, "away", away); toggle(ui.side.right, "away", away);
-      toggle(ui.maps, "away", away); toggle(ui.event, "away", away);
     };
     if (first) {
       ui.board.classList.add("away-quick");
@@ -378,6 +382,26 @@
       toggle(ui.board, "away", true);
       boardTimer = setTimeout(function () { tabsAway(false); }, PANELS_MS);
     }
+  }
+
+  // The maps and event strips (owen, 2026-11-18): out from behind the top
+  // bar in the buy phase, back behind it 20 seconds into the round; out
+  // between maps too (no round being played).
+  var STRIPS_MS = 20000, combatAt = 0;
+  function wantStrips(m, cfg) {
+    if ((cfg.show || {}).scoreboard || m.phase === "buy") { combatAt = 0; return true; }
+    if (m.phase === "combat") {
+      // By the round clock (1:40 a round: out until 1:20); the spike down, in.
+      if (m.spike && m.spike.state === "planted") return false;
+      if (m.timer > 0 && m.timer <= 100) return 100 - m.timer < STRIPS_MS / 1000;
+      if (!combatAt) combatAt = Date.now();   // (no clock read: from when the round was seen)
+      return Date.now() - combatAt < STRIPS_MS;
+    }
+    combatAt = 0;
+    return m.phase !== "end";
+  }
+  function setStrips(on) {
+    toggle(ui.maps, "tucked", !on); toggle(ui.event, "tucked", !on);
   }
 
   // -------------------------------------------------------------- top
@@ -529,10 +553,22 @@
 
   // ---------------------------------------------------------------- ace
   var ace = { shown: {}, until: 0, timer: null };
+  // A player's headshot: the team's roster photos ([[in-game ID, path]]),
+  // matched by in-game ID with any Riot tag and case aside.
+  function playerPhoto(team, p) {
+    var key = function (v) { return String(v || "").split("#")[0].trim().toLowerCase(); };
+    var want = [key(p.name), key(p.riot_id)].filter(Boolean);
+    var hit = ((team || {}).photos || []).filter(function (r) { return want.indexOf(key(r[0])) >= 0; })[0];
+    return hit ? hit[1] : "";
+  }
   function showAce(s, info) {
     var cfg = s.config, p = s.game.players.filter(function (q) { return q.team === info.team && q.slot === info.slot; })[0] || {};
     ui.ace.style.setProperty("--c", COL[info.team] || COL.left);
-    bg(ui.aceWho, p.agent ? "/select/Resources/Agentes/" + encodeURIComponent(p.agent) + "/" + encodeURIComponent(p.agent) + ".png" : "");
+    // Their headshot from the GFX Engine's Teams tab (Control: Ace graphic
+    // picture), else their agent.
+    var photo = (cfg.ace_pictures || {})[info.team] === "agent" ? "" : playerPhoto(cfg[info.team], p);
+    toggle(ui.aceWho, "photo", !!photo);
+    bg(ui.aceWho, photo ? url(photo) : p.agent ? "/select/Resources/Agentes/" + encodeURIComponent(p.agent) + "/" + encodeURIComponent(p.agent) + ".png" : "");
     setText(ui.aceTeam, upper((cfg[info.team] || {}).name));
     if (!ui.aceLogo.parentNode || ui.aceLogo.parentNode !== ui.aceTeam) ui.aceTeam.appendChild(ui.aceLogo);
     img(ui.aceLogo, url((cfg[info.team] || {}).logo));
@@ -562,12 +598,30 @@
     else if (cfg.timeout_call === "left" || cfg.timeout_call === "right") {
       txt = "TIMEOUT · " + upper(cfg[cfg.timeout_call].tricode || cfg[cfg.timeout_call].name);
       c = COL[cfg.timeout_call];
-    } else if (m.phase === "end" && (m.round_winner === "left" || m.round_winner === "right")) {
-      txt = upper(cfg[m.round_winner].tricode) + " WIN" + (m.win_type ? " · " + upper(m.win_type) : "");
-      c = COL[m.round_winner];
     }
     toggle(ui.banner, "on", !!txt && !BOARD_ONLY);
     if (txt) { setText(ui.bannerText, txt); ui.banner.style.setProperty("--c", c); }
+  }
+
+  // A round won (a score went up, not on the page's first look): the old
+  // HUD's banner, opening from the middle, for 5 seconds.
+  var rwin = { score: null, timer: null, inner: null };
+  function checkRoundWin(s) {
+    var m = s.game.match, cfg = s.config, now = [m.score.left || 0, m.score.right || 0], was = rwin.score;
+    rwin.score = now;
+    if (!was || BOARD_ONLY) return;
+    var side = now[0] > was[0] ? "left" : now[1] > was[1] ? "right" : "";
+    if (!side || now[0] + now[1] !== was[0] + was[1] + 1) return;   // (one round: not a map reset or a correction)
+    ui.rwinSide.textContent = m.attackers === side ? "ATK" : "DEF";
+    img(ui.rwinLogo, url(cfg[side].logo));
+    ui.rwinTeam.textContent = upper(cfg[side].tricode || cfg[side].name);
+    var R = ui.rwin;
+    clearTimeout(rwin.timer); clearTimeout(rwin.inner);
+    R.classList.remove("on", "text");
+    void R.offsetWidth;
+    R.classList.add("on");
+    rwin.inner = setTimeout(function () { R.classList.add("text"); }, 100);
+    rwin.timer = setTimeout(function () { R.classList.remove("on", "text"); }, 5100);
   }
 
   // ------------------------------------------------------------- listen
@@ -597,10 +651,26 @@
 
   // -------------------------------------------------------------- apply
   var sent = {};
+  // The team colours go with the sides (owen, 2026-11-18): the left team is
+  // blue and the right red in the first half; they swap at round 13, and
+  // every round in overtime, as the sides do.
+  function sidesSwapped(round) {
+    if (round <= 12) return false;
+    if (round <= 24) return true;
+    return (round - 25) % 2 === 1;
+  }
   function applyState(s) {
     var g = s.game, m = g.match, cfg = s.config;
     var duo = Number(cfg.team_size) === 2;
     toggle(document.documentElement, "scc-2v2", duo);
+    var round = Math.max(1, m.round || (m.rounds || []).length + 1);
+    var swapped = !duo && (params.get("half") ? params.get("half") === "2" : sidesSwapped(round));
+    if (sent.swapped !== swapped) {
+      sent.swapped = swapped;
+      var root = document.documentElement.style;
+      root.setProperty("--left", swapped ? "var(--red)" : "var(--blue)");
+      root.setProperty("--right", swapped ? "var(--blue)" : "var(--red)");
+    }
 
     // Top bar.
     var T = ui.top;
@@ -617,6 +687,7 @@
     toggle(T.clock, "spike", planted);
     toggle(ui.planted, "on", planted && !BOARD_ONLY);
     setBanner(s);
+    checkRoundWin(s);
 
     // Maps, event, sponsors.
     setMaps(cfg);
@@ -625,6 +696,7 @@
     toggle(ui.event, "hidden", !ev || BOARD_ONLY);
     setSponsors(cfg.sponsors, cfg.sponsor_seconds);
     toggle(ui.event, "solo", ui.sponsor.classList.contains("hidden"));   // (no sponsor box to run under)
+    setStrips(wantStrips(m, cfg));
 
     // Players.
     g.players.forEach(function (p) {
@@ -649,7 +721,6 @@
       if (b2 !== sent.away) {
         sent.away = b2;
         toggle(ui.side.left, "away", b2); toggle(ui.side.right, "away", b2);
-        toggle(ui.maps, "away", b2); toggle(ui.event, "away", b2);
       }
     } else setBoard(board);
 

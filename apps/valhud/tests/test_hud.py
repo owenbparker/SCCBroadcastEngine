@@ -185,6 +185,40 @@ class DesignTests(unittest.TestCase):
             self.assertEqual((c["hud_design"], c["show"]["listen_in"], c["show"]["ace"]), ("scc2027", "", True))
 
 
+    def test_engine_photos(self):
+        # The roster's headshots from the GFX Engine: downloaded once each, kept
+        # by in-game ID; a player without one, or one that won't download, left out.
+        import tempfile
+        from unittest import mock
+        from valhud import app as appmod
+        png = b"\x89PNG\r\n\x1a\nfake"
+        fetched = []
+
+        def fetch(u):
+            fetched.append(u)
+            if "bad" in u:
+                raise OSError("gone")
+            return png
+
+        class Stub:
+            pass
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(appmod, "PHOTO_DIR", tmp):
+            players = [{"ign": "Ace#NA1", "photo_url": "http://e/ana.png"}, {"ign": "Bo", "photo_url": ""},
+                       {"ign": "Cy", "photo_url": "http://e/bad.png"}]
+            stub = Stub()
+            out = appmod.HudApp._engine_photos(stub, players, fetch, "left")
+            self.assertEqual([r[0] for r in out], ["Ace#NA1"])
+            self.assertTrue(out[0][1].startswith("photos/engine-Ace-") and out[0][1].endswith(".png"))
+            self.assertTrue(os.path.isfile(os.path.join(tmp, out[0][1][len("photos/"):])))
+            appmod.HudApp._engine_photos(stub, players, fetch, "left")
+            self.assertEqual(fetched.count("http://e/ana.png"), 1)   # (not again)
+        self.assertEqual(Config_default("ace_pictures"), {"left": "photo", "right": "photo"})
+
+
+def Config_default(key):
+    from valhud.config import DEFAULTS
+    return DEFAULTS[key]
+
 class ColourTests(unittest.TestCase):
     def test_recolour(self):
         from valhud import recolor

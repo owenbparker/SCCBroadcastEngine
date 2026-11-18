@@ -253,6 +253,17 @@ class Engine:
     def global_config(self):
         return globalcfg.clean(copy.deepcopy(self.ws.snapshot().get("global")))
 
+    def hud_global(self):
+        """Global as the game HUDs take it: with each side's roster (name,
+        in-game ID, headshot) from the Teams tab, for their player photos
+        (the VALORANT HUD's Ace graphic)."""
+        g = self.global_config()
+        for side in ("left", "right"):
+            team = self.teams.find(g[side]["name"], g[side]["game"]) or {}
+            g[side]["players"] = [{"name": p.get("name", ""), "ign": p.get("ign", ""), "photo": p.get("photo", "")}
+                                  for p in team.get("players") or []]
+        return g
+
     def data_snapshot(self):
         """The tables graphics read: the data sources, "Global", and what game HUDs send."""
         snap = self.sources.snapshot()
@@ -1233,12 +1244,15 @@ def make_handler(engine):
                     engine.check_paired((q.get("engine") or [""])[0])
                 except Paired as e:
                     return self._json({"error": str(e), "code": e.code, "id": engine.id}, 409)
-                g = engine.global_config()
+                g = engine.hud_global()
                 host = self.headers.get("Host") or f"localhost:{engine.settings.get()['http_port']}"
                 for side in ("left", "right"):
                     logo = g[side]["logo"]
                     g[side]["logo_url"] = (f"http://{host}/{quote(logo)}" if logo and not re.match(r"https?://", logo)
                                            else logo)
+                    for p in g[side]["players"]:
+                        p["photo_url"] = (f"http://{host}/{quote(p['photo'])}" if p["photo"] and not re.match(r"https?://", p["photo"])
+                                          else p["photo"])
                 logo = g["tournament_logo"]
                 g["tournament_logo_url"] = (f"http://{host}/{quote(logo)}" if logo and not re.match(r"https?://", logo)
                                             else logo)
@@ -1443,7 +1457,7 @@ def make_handler(engine):
                 elif path == "/api/ingest":
                     engine.check_paired(body.get("engine"))
                     engine.ingest(body, self.client_address[0])
-                    result = {"ok": True, "global": engine.global_config(), "id": engine.id, "name": engine.name(),
+                    result = {"ok": True, "global": engine.hud_global(), "id": engine.id, "name": engine.name(),
                               "protocol": LINK_PROTOCOL}
                 # --- on air ---
                 elif path == "/api/companion":
