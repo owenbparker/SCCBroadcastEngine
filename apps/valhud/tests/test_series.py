@@ -97,6 +97,48 @@ class SeriesTests(unittest.TestCase):
         self.series.round_kills(s)
         self.assertEqual(s["players"][0]["round_kills"], 0)
 
+    def test_spent_in_the_buy_phase(self):
+        s = state(1, 0)
+        s["match"]["phase"] = "buy"
+        s["match"]["round"] = 2
+        s["players"][0]["credits"] = 3900
+        self.series.round_kills(s)
+        self.assertEqual(s["players"][0]["spent"], 0)
+        s["players"][0]["credits"] = 400
+        self.series.round_kills(s)
+        self.assertEqual(s["players"][0]["spent"], 3500)
+        s["players"][0]["credits"] = 1400   # (sold something back)
+        self.series.round_kills(s)
+        self.assertEqual(s["players"][0]["spent"], 2500)
+        s["match"]["phase"] = "combat"
+        self.series.round_kills(s)
+        self.assertEqual(s["players"][0]["spent"], 0)
+
+    def test_ace(self):
+        s = state(0, 0)
+        s["match"]["phase"] = "combat"
+        s["match"]["round"] = 1
+        s["players"][6]["kills"] = 1   # (not a new map)
+        self.series.round_kills(s)
+        self.assertNotIn("ace", s["match"])
+        s["players"][2]["kills"] = 5
+        self.series.round_kills(s)
+        self.assertEqual(s["match"]["ace"], {"team": "left", "slot": 3, "round": 1, "n": 1})
+        s["match"]["phase"] = "end"
+        self.series.round_kills(s)
+        self.assertEqual(s["match"]["ace"]["slot"], 3)   # (until the next round)
+        s["match"]["round"] = 2
+        s["match"]["phase"] = "buy"
+        self.series.round_kills(s)
+        self.assertNotIn("ace", s["match"])
+        # The map's second ace (a 2v2: two kills is everyone).
+        self.cfg.update({"team_size": 2})
+        s["match"]["phase"] = "combat"
+        self.series.round_kills(s)
+        s["players"][6]["kills"] = 3
+        self.series.round_kills(s)
+        self.assertEqual(s["match"]["ace"], {"team": "right", "slot": 2, "round": 2, "n": 2})
+
     def test_first_kills(self):
         s = state(0, 0)
         p1, p6 = s["players"][0], s["players"][5]

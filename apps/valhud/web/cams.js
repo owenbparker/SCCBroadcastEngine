@@ -175,31 +175,58 @@
     framesUsed = {};
   }
 
-  function renderDuo(s, pubs, links) {
+  function renderDuo(s, pubs, links, taken) {
     if (!duoBoxesMade()) return;
-    var cfg = s.config, o = s.game.match.observed, demo = (s.app || {}).mode === "demo";
     duoBoxes.forEach(function (b) {
-      var player = s.game.players.filter(function (p) { return p.team === b.side && p.slot === b.slot; })[0] || {};
-      var link = links[b.side + b.slot];
-      if (link) frame("duo" + b.side + b.slot, b.cam, link, b.logo);
-      var cam = !link && pubs.filter(function (p) { return p.player && p.player.team === b.side && p.player.slot === b.slot; })[0];
-      var peer = cam && peers[cam.id];
-      if (peer && peer.video.parentNode !== b.cam) moveVideo(peer.video, b.cam, b.logo);
-      // (a cam no longer this player's goes back with the others)
-      Array.prototype.forEach.call(b.cam.querySelectorAll("video"), function (v) {
-        if (!peer || v !== peer.video) moveVideo(v, videos);
-      });
-      var live = !!link || !!(peer && peer.video.readyState >= 2);
-      if (peer) peer.video.classList.toggle("on", live);
-      var art = demo && player.agent
-        ? "url('/hud/Resources/Agentes/" + encodeURIComponent(player.agent) + "/" + encodeURIComponent(player.agent) + ".png')"
-        : cfg[b.side] && cfg[b.side].logo ? 'url("' + url(cfg[b.side].logo) + '")' : "none";
-      if (b.logo.dataset.art !== art) { b.logo.dataset.art = art; b.logo.style.backgroundImage = art; }
-      b.logo.classList.toggle("agent", demo && !!player.agent);
-      b.logo.style.display = live ? "none" : "";
-      b.el.classList.toggle("on", !!o && o.team === b.side && o.slot === b.slot);
-      b.el.classList.toggle("dead", player.alive === false);
+      // (a player whose cam is up on the page's own tiles, e.g. Listen In, shows no cam here)
+      var mine = !(taken && taken[b.side + b.slot]);
+      fillBox(b, s, mine ? pubs : [], mine ? links : {}, "duo" + b.side + b.slot);
     });
+  }
+
+  // One box with one player's cam: their cam link, else their Player Cam,
+  // else the team's logo (the demo: the agent). b: {side, slot, el, cam, logo}.
+  function fillBox(b, s, pubs, links, where) {
+    var cfg = s.config, o = s.game.match.observed, demo = (s.app || {}).mode === "demo";
+    var player = s.game.players.filter(function (p) { return p.team === b.side && p.slot === b.slot; })[0] || {};
+    var link = links[b.side + b.slot];
+    if (link) frame(where, b.cam, link, b.logo);
+    var cam = !link && pubs.filter(function (p) { return p.player && p.player.team === b.side && p.player.slot === b.slot; })[0];
+    var peer = cam && peers[cam.id];
+    if (peer && peer.video.parentNode !== b.cam) moveVideo(peer.video, b.cam, b.logo);
+    // (a cam no longer this player's goes back with the others)
+    Array.prototype.forEach.call(b.cam.querySelectorAll("video"), function (v) {
+      if (!peer || v !== peer.video) moveVideo(v, videos);
+    });
+    var live = !!link || !!(peer && peer.video.readyState >= 2);
+    if (peer) peer.video.classList.toggle("on", live);
+    var art = demo && player.agent
+      ? "url('/hud/Resources/Agentes/" + encodeURIComponent(player.agent) + "/" + encodeURIComponent(player.agent) + ".png')"
+      : cfg[b.side] && cfg[b.side].logo ? 'url("' + url(cfg[b.side].logo) + '")' : "none";
+    if (b.logo.dataset.art !== art) { b.logo.dataset.art = art; b.logo.style.backgroundImage = art; }
+    b.logo.classList.toggle("agent", demo && !!player.agent);
+    b.logo.style.display = live ? "none" : "";
+    b.el.classList.toggle("on", !!o && o.team === b.side && o.slot === b.slot);
+    b.el.classList.toggle("dead", player.alive === false);
+  }
+
+  // A page's own cam tiles (window.sccCamTiles(): the SCC 2027 look's
+  // Listen In, every player of a team at once). Tiles no longer listed
+  // give their cams back.
+  var lastTiles = [];
+  function renderTiles(s, pubs, links) {
+    var tiles = typeof window.sccCamTiles === "function" ? (window.sccCamTiles() || []) : [];
+    lastTiles.forEach(function (t) {
+      if (tiles.indexOf(t) >= 0) return;
+      Array.prototype.forEach.call(t.cam.querySelectorAll("video"), function (v) { moveVideo(v, videos); });
+    });
+    lastTiles = tiles.slice();
+    tiles.forEach(function (t) { fillBox(t, s, pubs, links, "tile" + t.side + t.slot); });
+  }
+  function tileSeats() {
+    var out = {};
+    lastTiles.forEach(function (t) { out[t.side + t.slot] = true; });
+    return out;
   }
 
   var peers = {};     // cam (publisher) id -> { pc, video, started }
@@ -323,7 +350,8 @@
 
     if (Number(cfg.team_size) === 2) {
       box.classList.remove("on");
-      renderDuo(s, on ? pubs : [], links);
+      renderTiles(s, on ? pubs : [], links);
+      renderDuo(s, on ? pubs : [], links, tileSeats());
       return sweepFrames();
     }
     // (back from 2v2: the cams return to the pop-up box)
@@ -344,6 +372,7 @@
     Object.keys(links).forEach(function (seat) {
       frame("pop", videos, links[seat]).classList.toggle("on", links[seat] === link);
     });
+    renderTiles(s, on ? pubs : [], links);
     sweepFrames();
     // The demo match: everyone has a stand-in cam (so the cam and its
     // kill tag can be seen without real ones).

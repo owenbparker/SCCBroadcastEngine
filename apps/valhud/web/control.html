@@ -216,13 +216,28 @@
       <button id="call-right">Timeout: right team</button>
       <button id="tech-pause">Technical pause</button>
       <button id="show-scoreboard" title="Keeps the scoreboard overlay (/scoreboard) on screen; otherwise it shows itself in the buy phase">Show scoreboard</button>
+      <button id="listen-left" title="SCC 2027: Listen In, the left team's five player cams with their names (LIVE COMMS)">Listen in: left team</button>
+      <button id="listen-right" title="SCC 2027: Listen In, the right team's five player cams with their names (LIVE COMMS)">Listen in: right team</button>
     </div>
     <label class="toggle" style="margin-top:12px"><input type="checkbox" id="show-timeouts"> Timeout diamonds under the score</label>
   </section>
 
   <section data-page="editor">
+    <h2>HUD design</h2>
+    <div class="row" style="align-items:center">
+      <select id="hud-design" style="flex:0 0 220px" title="The look of the in-game HUD (/overlay) and the buy-phase scoreboard (/scoreboard)">
+        <option value="scc2027">SCC 2027</option><option value="default2026">Default 2026</option></select>
+      <span class="note" id="hud-design-note" style="margin:0"></span>
+    </div>
+    <label>Top right text (SCC 2027)</label>
+    <input id="event-text" spellcheck="false" placeholder="e.g. AURORA SERIES | PLAYOFFS | RD 1 (empty: the GFX Engine's event and stage)">
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="show-ace"> Ace graphic when a player gets all five kills (SCC 2027)</label>
+  </section>
+
+  <section data-page="editor">
     <h2>HUD colours</h2>
-    <p class="note" style="margin-top:0">The HUD's two side colours. They still swap at half time, with the sides.</p>
+    <p class="note" style="margin-top:0">The Default 2026 HUD's two side colours. They still swap at half time, with the sides.
+      (SCC 2027 has its own: blue for the left team, red for the right.)</p>
     <div class="row">
       <div><label>Defenders (teal)</label>
         <div class="row"><input type="color" class="swatch" id="defense-color"><input id="defense-hex" maxlength="7" spellcheck="false"></div></div>
@@ -606,6 +621,16 @@ $("scan-names").onclick = async () => {
 $("tech-pause").onclick = () => post("/api/config", { tech_pause: !state.config.tech_pause, timeout_call: "" });
 $("show-scoreboard").onclick = () => post("/api/config", { show: { scoreboard: !state.config.show.scoreboard } });
 $("show-timeouts").onchange = e => post("/api/config", { show: { timeouts: e.target.checked } });
+["left", "right"].forEach(side => {
+  $("listen-" + side).onclick = () => post("/api/config", { show: { listen_in: state.config.show.listen_in === side ? "" : side } });
+});
+$("hud-design").onchange = async e => {
+  await post("/api/config", { hud_design: e.target.value });
+  const preview = document.querySelector("#preview iframe");
+  if (preview) preview.src = "/overlay";   // (the preview shows the new look)
+};
+$("event-text").onchange = e => post("/api/config", { event_text: e.target.value.trim() });
+$("show-ace").onchange = e => post("/api/config", { show: { ace: e.target.checked } });
 
 // Players.
 for (const side of ["left", "right"]) {
@@ -677,6 +702,16 @@ function apply(s) {
   $("tech-pause").classList.toggle("on", cfg.tech_pause);
   $("show-scoreboard").classList.toggle("on", cfg.show.scoreboard);
   $("show-timeouts").checked = cfg.show.timeouts !== false;
+  $("listen-left").classList.toggle("on", cfg.show.listen_in === "left");
+  $("listen-right").classList.toggle("on", cfg.show.listen_in === "right");
+  const design = cfg.hud_design === "default2026" ? "default2026" : "scc2027";
+  setIfIdle($("hud-design"), design);
+  setIfIdle($("event-text"), cfg.event_text || "");
+  $("show-ace").checked = cfg.show.ace !== false;
+  $("hud-design-note").textContent = design === "scc2027"
+    ? "Listen In and the Ace graphic come with it; the round tracker is on the buy-phase board."
+    : "The HUD as it was before SCC 2027.";
+  for (const id of ["listen-left", "listen-right", "show-ace", "event-text"]) $(id).disabled = design !== "scc2027";
   const rd = app.reader;
   $("reader").classList.toggle("reading", !!rd.enabled);
   $("reader").textContent = rd.enabled ? "Reading VALORANT — click to stop" : "Read VALORANT on this PC";

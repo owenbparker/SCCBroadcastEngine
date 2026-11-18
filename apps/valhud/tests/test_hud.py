@@ -138,12 +138,51 @@ class ServerTests(unittest.TestCase):
                 post("/api/config", {"defense_color": "#3a7bff"})
                 self.assertIn("'#3a7bff'", css())
                 self.assertIn("#ff4e5d", css())   # the other colour untouched
+                # HUD design: SCC 2027 by default; Default 2026 is the templates.
+                page = urllib.request.urlopen("http://127.0.0.1:8795/overlay?fit=1", timeout=5)
+                self.assertTrue(page.geturl().endswith("/scc2027/index.html?fit=1"))
+                body = page.read()
+                self.assertIn(b"scc2027.js", body)
+                self.assertIn(b"/cams.js", body)
+                page = urllib.request.urlopen("http://127.0.0.1:8795/scoreboard", timeout=5)
+                self.assertTrue(page.geturl().endswith("/scc2027/index.html?part=board"))
+                for name in ("scc2027.js", "scc2027.css", "fonts/Rubik.woff2", "assets/nace-ace.png", "assets/listen-bg.jpg"):
+                    self.assertTrue(urllib.request.urlopen(f"http://127.0.0.1:8795/scc2027/{name}", timeout=5).read())
+                self.assertIn("/Console.html", urllib.request.urlopen(
+                    "http://127.0.0.1:8795/overlay?design=default2026", timeout=5).geturl())
+                post("/api/config", {"hud_design": "default2026"})
                 for path in ("/overlay", "/scoreboard"):
                     page = urllib.request.urlopen(f"http://127.0.0.1:8795{path}", timeout=5)
                     self.assertIn("/Console.html", page.geturl())
                     self.assertIn(b"/driver.js", page.read())
+                self.assertIn("/scc2027/", urllib.request.urlopen(
+                    "http://127.0.0.1:8795/overlay?design=scc2027", timeout=5).geturl())
             finally:
                 app.stop()
+
+
+class DesignTests(unittest.TestCase):
+    def test_overlay_location(self):
+        from valhud.app import overlay_location
+        self.assertEqual(overlay_location({}, False), "/scc2027/index.html")
+        self.assertEqual(overlay_location({"hud_design": "scc2027"}, True, "fit=1"), "/scc2027/index.html?fit=1&part=board")
+        self.assertEqual(overlay_location({"hud_design": "default2026"}, False, "fit=1"), "/hud/Console.html?fit=1")
+        self.assertEqual(overlay_location({"hud_design": "default2026"}, True), "/scoreboard/Console.html")
+        self.assertEqual(overlay_location({"hud_design": "nonsense"}, False), "/scc2027/index.html")
+        self.assertEqual(overlay_location({}, False, "design=default2026"), "/hud/Console.html?design=default2026")
+
+    def test_settings_kept(self):
+        # An existing config (from before SCC 2027) keeps everything it had.
+        import json
+        import tempfile
+        from valhud.config import Config
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "config.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"left": {"name": "Saints"}, "show": {"timeouts": False}, "sponsors": ["sponsors/a.png"]}, f)
+            c = Config(path).get()
+            self.assertEqual((c["left"]["name"], c["show"]["timeouts"], c["sponsors"]), ("Saints", False, ["sponsors/a.png"]))
+            self.assertEqual((c["hud_design"], c["show"]["listen_in"], c["show"]["ace"]), ("scc2027", "", True))
 
 
 class ColourTests(unittest.TestCase):

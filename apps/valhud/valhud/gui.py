@@ -44,7 +44,7 @@ def smoke_test(port):
     results, ok = [], True
     for path in ("/start", "/control", "/observer", "/overlay", "/scoreboard", "/update.js", "/api/state", "/api/log",
                  "/hud.csv", "/hud/Main.js", "/hud/Resources/HUD-1.png", "/hud/Resources/Agentes/Jett/Jett.png",
-                 "/fonts/Inter.ttf"):
+                 "/fonts/Inter.ttf", "/scc2027/index.html", "/scc2027/scc2027.js", "/scc2027/fonts/Rubik.woff2"):
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
                 results.append(f"OK   {path} ({len(r.read())} bytes)")

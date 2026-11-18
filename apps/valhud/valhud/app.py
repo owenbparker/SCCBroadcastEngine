@@ -464,6 +464,10 @@ class HudApp:
         if bo in (1, 3, 5, 7) and bo != int(self.config.get().get("best_of") or 3):
             changes["best_of"] = bo
             done.append(f"best of {bo}")
+        # Its event and stage (the SCC 2027 look's top right strip).
+        for key in ("event", "stage"):
+            if isinstance(g.get(key), str) and g.get(key) != self.config.get().get(key):
+                changes[key] = g[key]
         # Its sponsors, in the HUD's sponsor rotation.
         sponsors, secs = save_sponsors(g, fetch, SPONSOR_DIR, "sponsors/", log)
         if sponsors:
@@ -719,6 +723,22 @@ def parse_range(header, size):
     return (start, end) if start <= end < size else None
 
 
+DESIGNS = {"scc2027": "SCC 2027", "default2026": "Default 2026"}
+
+
+def overlay_location(cfg, board, query=""):
+    """Where /overlay (board False) or /scoreboard (board True) goes for the
+    HUD design picked in Control, or the one asked for with ?design=."""
+    asked = (parse_qs(query).get("design") or [""])[0]
+    design = asked if asked in DESIGNS else cfg.get("hud_design") or "scc2027"
+    if design not in DESIGNS:
+        design = "scc2027"
+    if design == "scc2027":
+        q = "&".join(x for x in [query, "part=board" if board else ""] if x)
+        return "/scc2027/index.html" + (f"?{q}" if q else "")
+    return f"/{'scoreboard' if board else 'hud'}/Console.html" + (f"?{query}" if query else "")
+
+
 def check_gfx(text):
     """Observer client: is the GFX PC's HUD reachable at this address?"""
     from .overlay_window import gfx_base_url
@@ -858,11 +878,13 @@ def make_handler(app):
                     return self._send('{"error":"forbidden"}', status=403)
                 self._send(json.dumps({"huds": find_gfx(app.config.get()["http_port"])}))
             elif path in ("/overlay", "/scoreboard", "/hud", "/hud/", "/scoreboard/"):
-                # The overlays are the templates in web/hud and web/scoreboard
-                # (their images load relative to their own folder).
-                folder = "scoreboard" if path.startswith("/scoreboard") else "hud"
+                # The HUD design picked in Control (?design= to see another):
+                # SCC 2027 is one page (web/scc2027; /scoreboard is its buy-phase
+                # board alone); Default 2026 is the templates in web/hud and
+                # web/scoreboard (their images load relative to their own folder).
+                board = path.startswith("/scoreboard")
                 self.send_response(302)
-                self.send_header("Location", f"/{folder}/Console.html" + (f"?{url.query}" if url.query else ""))
+                self.send_header("Location", overlay_location(app.config.get(), board, url.query))
                 self.end_headers()
             elif path in ("/agent-select", "/agent-select/"):
                 # The chosen look (?look= to see another).
