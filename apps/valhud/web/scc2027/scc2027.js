@@ -474,6 +474,7 @@
     }
     var gridEnd = xs[cols - 1] + 32 + 9, width = gridEnd + 14;
     T.style.width = px(width);
+    toggle(T, "wide", cols > 12);   // (the 24-round look: owen's Buy Phase file)
     T.style.left = px(Math.round(960 - width / 2));
     SIDES.forEach(function (side, n) {
       var team = el("team", T, { top: px(14 + n * 50) });
