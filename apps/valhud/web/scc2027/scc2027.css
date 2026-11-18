@@ -135,7 +135,7 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .ult svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .ult .icon { left: 11.5px; top: 11.5px; width: 18px; height: 18px; background: center / contain no-repeat; opacity: .55; }
 .ult.ready .icon { opacity: 1; }
-.ult.ready svg { filter: drop-shadow(0 0 4px #fff); }
+.ult.ready svg { filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .9)); }
 .tab .creds { top: 57px; height: 14px; font-size: 20px; gap: 6px; }
 .cred-icon { position: static !important; width: 15px; height: 15px; flex: 0 0 auto; }
 .tab .gun { top: 55px; height: 18px; background: center / contain no-repeat; }

@@ -121,7 +121,9 @@
     if (u._key !== key) {
       u._key = key;
       var c = 20.5, r = 18, gap = 0.32, step = 2 * Math.PI / max, out = "";
-      for (var i = 0; i < max; i++) {
+      // Full ult: one solid white ring (owen's "Full Ult" treatment).
+      if (points >= max) out = '<circle cx="' + c + '" cy="' + c + '" r="' + r + '" fill="none" stroke="#fff" stroke-width="4"/>';
+      else for (var i = 0; i < max; i++) {
         var a0 = -Math.PI / 2 + i * step + gap / 2, a1 = a0 + step - gap;
         out += '<path d="M' + (c + r * Math.cos(a0)).toFixed(2) + " " + (c + r * Math.sin(a0)).toFixed(2) +
           " A" + r + " " + r + " 0 0 1 " + (c + r * Math.cos(a1)).toFixed(2) + " " + (c + r * Math.sin(a1)).toFixed(2) +
