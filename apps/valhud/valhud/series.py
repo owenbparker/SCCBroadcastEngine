@@ -81,6 +81,10 @@ class Series:
         self.first_kills = {}      # (team, slot) -> rounds they got the first kill in, this map
         self._fk_round = None      # the round whose first kill's been given (or seen too late to tell)
         self._round_n = 0          # counts each new round / buy phase (round_kills starts again)
+        self._buy_round = None     # the buy phase _buy_credits is for
+        self._buy_credits = {}     # (team, slot) -> the most credits seen this buy phase
+        self._aces = []            # (round count, team, slot) of this map's aces
+        self._ace_now = None       # (round count, the match's "ace") while that round lasts
 
     # --- Map Bans -> maps -----------------------------------------------------
 
@@ -142,6 +146,49 @@ class Series:
                 self._round_kills[(p["team"], p["slot"])] = start = p["kills"]
             p["round_kills"] = max(0, p["kills"] - start) if m.get("phase") != "buy" else 0
         self._first_kill(state)
+        self._spent(state)
+        self._ace(state)
+
+    def _spent(self, state):
+        """Credits spent this buy phase, as "spent" (the SCC 2027 board): the
+        most a player had in this buy phase, less what they have now."""
+        m = state["match"]
+        if m.get("phase") != "buy":
+            self._buy_credits = {}
+            for p in state["players"]:
+                p["spent"] = 0
+            return
+        if self._buy_round != self._round_n:
+            self._buy_round, self._buy_credits = self._round_n, {}
+        for p in state["players"]:
+            seat, credits = (p["team"], p["slot"]), int(p.get("credits") or 0)
+            most = max(self._buy_credits.get(seat, 0), credits)
+            self._buy_credits[seat] = most
+            p["spent"] = most - credits
+
+    def _ace(self, state):
+        """An ace: one player with all five kills of a round (a 2v2: both).
+        The match gets "ace": {team, slot, round, n} (n: the map's nth ace)
+        until the next round, for the SCC 2027 look's Ace graphic."""
+        m, players = state["match"], state["players"]
+        if not any(p["kills"] for p in players):
+            self._aces, self._ace_now = [], None   # (a new map)
+        rnd = self._round_n
+        if self._ace_now and self._ace_now[0] != rnd:
+            self._ace_now = None
+        try:
+            size = 2 if int(self.config.get().get("team_size") or 5) == 2 else 5
+        except (TypeError, ValueError, AttributeError):
+            size = 5
+        for p in players:
+            if p.get("round_kills", 0) >= size and m.get("phase") != "buy" and not any(a[0] == rnd for a in self._aces):
+                self._aces.append((rnd, p["team"], p["slot"]))
+                self._ace_now = (rnd, {"team": p["team"], "slot": p["slot"], "round": m.get("round") or 0,
+                                       "n": len(self._aces)})
+        if self._ace_now:
+            m["ace"] = dict(self._ace_now[1])
+        else:
+            m.pop("ace", None)
 
     def _first_kill(self, state):
         """First kills: the player who gets the round's first kill (the first

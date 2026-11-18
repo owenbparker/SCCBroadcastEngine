@@ -69,8 +69,17 @@ DEFAULTS = {
     # Names from Scan names (the Tab scoreboard, read carefully), by team and
     # agent, until the next agent select: [{"team", "agent", "name"}].
     "scanned_names": [],
+    # The HUD's look (Control > HUD design): "scc2027" (SCC 2027, from
+    # owen's Figma files, 2026-11-18) or "default2026" (the HUD as it was:
+    # the templates in web/hud and web/scoreboard).
+    "hud_design": "scc2027",
+    # SCC 2027: the text in the top right strip ("" = the GFX Engine's
+    # event and stage, e.g. "AURORA SERIES | PLAYOFFS").
+    "event_text": "",
     # Timeout diamonds under the score; keep the scoreboard overlay on screen.
-    "show": {"timeouts": True, "scoreboard": False},
+    # SCC 2027: listen_in "left" / "right" puts that team's cams up
+    # (Listen In); ace: the Ace graphic plays when a player gets all five.
+    "show": {"timeouts": True, "scoreboard": False, "listen_in": "", "ace": True},
     # Player webcams (SCC Player Cam): the spectated player's cam pops up
     # above the bottom of the screen.
     "cams": {"enabled": True,
