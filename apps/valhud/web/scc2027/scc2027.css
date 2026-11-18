@@ -292,10 +292,13 @@ html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold);
 
 /* the round win banner: the Default 2026 HUD's (web/hud: banner1.png, Extra.js animationrep) */
 @font-face { font-family: "S27 Gridnik"; src: url("/hud/Resources/FoundryGridnik-ExtraBold.otf"); }
-/* Round win: owen's "Round Win Graphic SCC" fig, 1573 x 467, centred. A
+/* Round win: owen's "Round Win Graphic SCC" fig, 1573 x 467. A
    #F9C229 flash opens from the middle and fades into the panel, then the
    crest, ROUND WIN and the yellow bar with the winning team come in. */
-#rwin { left: 174px; top: 130px; width: 1573px; height: 467px; z-index: 6; visibility: hidden; pointer-events: none; transition: opacity .35s ease; }
+/* (drawn at the fig's size, then scaled to the Default 2026 banner's
+   780 px width at 570,150, owen: "match the sizing of the previous one") */
+#rwin { left: 570px; top: 159px; width: 1573px; height: 467px; transform: scale(.4959); transform-origin: 0 0;
+  z-index: 6; visibility: hidden; pointer-events: none; transition: opacity .35s ease; }
 #rwin.on { visibility: visible; }
 #rwin.out { opacity: 0; }
 #rwin .bg { left: 0; top: 42px; width: 1573px; height: 381px; background: url("assets/roundwin-bg.png") center / 100% 100% no-repeat; opacity: 0; }
