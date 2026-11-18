@@ -122,7 +122,9 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
   background: linear-gradient(rgba(240, 203, 116, .5), rgba(138, 117, 67, .5) 50%, rgba(240, 203, 116, .5)), rgba(17, 24, 35, .5); }
 .tab .agent { top: -1px; width: 51px; height: 51px; border: 1px solid #fff; background: var(--c) center / cover no-repeat; }
 .L .tab .agent { left: -1px; border-radius: 25px 0 25px 0; }
-.R .tab .agent { right: -1px; border-radius: 0 25px 0 25px; }
+/* the right team's agents face the other way (owen, 2026-11-18): the box is
+   mirrored, so its corners are given mirrored too */
+.R .tab .agent { right: -1px; border-radius: 25px 0 25px 0; transform: scaleX(-1); }
 .tab .name { top: 17px; height: 14px; font-size: 20px; width: 110px; }
 .tab .abil { top: 14px; width: 21px; height: 21px; background: center / contain no-repeat; }
 .tab .abil.none { opacity: .35; }
@@ -203,7 +205,7 @@ html.scc2027 #scc-cam.s27-off { opacity: 0 !important; transform: translateY(24p
 .box.who.watched { border-color: var(--gold); }
 .box .agent { top: 0; width: 74px; height: 50px; background: var(--c) center 20% / cover no-repeat; }
 .L.box .agent { left: 0; border-radius: 4px 0 0 4px; -webkit-mask: linear-gradient(90deg, #000 70%, transparent); mask: linear-gradient(90deg, #000 70%, transparent); }
-.R.box .agent { right: 0; border-radius: 0 4px 4px 0; -webkit-mask: linear-gradient(270deg, #000 70%, transparent); mask: linear-gradient(270deg, #000 70%, transparent); }
+.R.box .agent { right: 0; border-radius: 4px 0 0 4px; -webkit-mask: linear-gradient(90deg, #000 70%, transparent); mask: linear-gradient(90deg, #000 70%, transparent); transform: scaleX(-1); }
 .box .name { top: 18px; height: 14px; font-size: 20px; width: 190px; }
 .box .kda { top: 18px; height: 14px; font-size: 20px; width: 110px; }
 .box .abil { top: 7px; width: 30px; height: 30px; background: center / contain no-repeat; }
