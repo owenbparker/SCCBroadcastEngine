@@ -160,11 +160,13 @@
 
   // Top bar.
   var top = el("phase", stage); top.id = "top";
+  ui.topBox = top;
   var tin = el("in", top);
   el("edge l", tin); el("edge r", tin);
   el("div", tin, { left: "203px" }); el("div", tin, { left: "463px" });
+  el("spk", tin);   // (the condensed bar's spike, in place of the clock)
   ui.top = {
-    logoL: el("logo", tin, { left: "48px" }, "img"), logoR: el("logo", tin, { left: "589px" }, "img"),
+    logoL: el("logo l", tin, { left: "48px" }, "img"), logoR: el("logo r", tin, { left: "589px" }, "img"),
     triL: text("tung", tin, 88, 18, 102, 22, "c", null, "tri"), subL: text("nar", tin, 84, 45, 110, 10, "c", null, "sub"),
     triR: text("tung", tin, 474, 18, 102, 22, "c", null, "tri"), subR: text("nar", tin, 470, 45, 110, 10, "c", null, "sub"),
     scoreL: text("nar", tin, 227, 28, 60, 33, "c", null, "score"), scoreR: text("nar", tin, 381, 28, 60, 33, "c", null, "score"),
@@ -403,6 +405,15 @@
   function setStrips(on) {
     toggle(ui.maps, "tucked", !on); toggle(ui.event, "tucked", !on);
   }
+
+  var condensed = false;
+  function wantCondensed(m, planted) {
+    if (params.get("condensed")) return params.get("condensed") === "1";
+    if (m.phase === "combat") condensed = planted || (m.timer > 0 && m.timer <= 100 ? 100 - m.timer >= COND_AT : condensed);
+    else if (m.phase !== "end") condensed = false;   // (the round's end keeps it as it was)
+    return condensed;
+  }
+  var COND_AT = 20.5;
 
   // -------------------------------------------------------------- top
   function setPips(box, need, won) {
@@ -685,7 +696,12 @@
     var planted = m.spike && m.spike.state === "planted";
     setText(T.clock, g.connected || (s.app || {}).mode === "demo" ? clock(planted && m.spike.timer ? m.spike.timer : m.timer) : "");
     toggle(T.clock, "spike", planted);
-    toggle(ui.planted, "on", planted && !BOARD_ONLY);
+    // Condensed (owen's "Condensed with Timer / Spike"): 20.5 seconds into
+    // the round, or once the spike is down; the full bar again in the buy phase.
+    var cond = !BOARD_ONLY && wantCondensed(m, planted);
+    toggle(ui.topBox, "cond", cond);
+    toggle(ui.topBox, "planted", planted);
+    toggle(ui.planted, "on", planted && !cond && !BOARD_ONLY);
     setBanner(s);
     checkRoundWin(s);
 
