@@ -249,6 +249,7 @@ html.scc2027 #scc-cam.s27-off { opacity: 0 !important; transform: translateY(24p
    teams play the next half in, red over blue */
 #tracker .half { top: 36px; width: 1px; height: 68px; margin-left: .5px; background: linear-gradient(var(--red), var(--blue)); }
 #tracker.wide .grid { border-radius: 5px; }
+#tracker.wide .team, #tracker.wide .team::after { border-radius: 0; }   /* (square in the 24-round look, owen) */
 
 /* ------------------------------------------------------------- Ace */
 #ace { left: 381px; top: 650px; width: 1158px; height: 430px; opacity: 0; transform: translateY(60px);
