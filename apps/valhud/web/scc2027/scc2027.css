@@ -292,13 +292,29 @@ html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold);
 
 /* the round win banner: the Default 2026 HUD's (web/hud: banner1.png, Extra.js animationrep) */
 @font-face { font-family: "S27 Gridnik"; src: url("/hud/Resources/FoundryGridnik-ExtraBold.otf"); }
-#rwin { left: 0; top: 0; width: 1920px; height: 450px; z-index: 6; visibility: hidden; pointer-events: none; }
+/* Round win: owen's "Round Win Graphic SCC" fig, 1573 x 467, centred. A
+   #F9C229 flash opens from the middle and fades into the panel, then the
+   crest, ROUND WIN and the yellow bar with the winning team come in. */
+#rwin { left: 174px; top: 130px; width: 1573px; height: 467px; z-index: 6; visibility: hidden; pointer-events: none; transition: opacity .35s ease; }
 #rwin.on { visibility: visible; }
-#rwin .pic { position: absolute; left: 570px; top: 150px; width: 780px; height: 250px; clip-path: inset(0% 50%); transition: clip-path .2s ease; }
-#rwin.on .pic { clip-path: inset(0%); }
-#rwin .side, #rwin .team { position: absolute; top: 350px; height: 35px; font: 30px/35px "S27 Gridnik", sans-serif; color: #fff;
-  text-align: center; text-transform: uppercase; opacity: 0; transition: opacity .8s linear; }
-#rwin .side { left: 850px; width: 70px; }
-#rwin .team { left: 990px; width: 90px; }
-#rwin .logo { position: absolute; left: 945px; top: 355px; height: 30px; width: auto; opacity: 0; transition: opacity .8s linear; }
-#rwin.text .side, #rwin.text .team, #rwin.text .logo { opacity: 1; }
+#rwin.out { opacity: 0; }
+#rwin .bg { left: 0; top: 42px; width: 1573px; height: 381px; background: url("assets/roundwin-bg.png") center / 100% 100% no-repeat; opacity: 0; }
+#rwin .flash { left: 0; top: 42px; width: 1573px; height: 381px; transform: scaleX(0); border-radius: 10px;
+  background: linear-gradient(90deg, rgba(249, 194, 41, 0), #F9C229 20%, #F9C229 79.8%, rgba(249, 194, 41, 0)); }
+#rwin .crest { left: 704px; top: 0; width: 165px; height: 165px; background: url("assets/roundwin-logo.png") center / contain no-repeat; opacity: 0; transform: scale(.6); }
+#rwin .word { font-size: 200px; color: #fff; opacity: 0; transform: translateY(30px); }
+#rwin .bar { left: 116px; top: 377px; width: 1370px; height: 90px; transform: scaleX(0);
+  background: linear-gradient(90deg, rgba(249, 194, 41, 0), #F9C229 20%, #F9C229 80%, rgba(249, 194, 41, 0)); }
+#rwin .who { left: 116px; top: 377px; width: 1370px; height: 90px; display: flex; align-items: center; justify-content: center; gap: 28px;
+  font: 52px/1 "S27 Gridnik", sans-serif; color: var(--navy); text-transform: uppercase; opacity: 0; transition: opacity .4s linear; }
+#rwin .who span, #rwin .who img { position: static; }
+#rwin .who .side { min-width: 110px; text-align: right; }
+#rwin .who .team { min-width: 110px; text-align: left; }
+#rwin .who .logo { height: 58px; width: auto; }
+#rwin.on .flash { animation: rwFlash .75s ease-out forwards; }
+#rwin.on .bg { opacity: 1; transition: opacity .3s ease .25s; }
+#rwin.on .crest { opacity: 1; transform: none; transition: opacity .3s ease .35s, transform .45s cubic-bezier(.2, 1.4, .4, 1) .35s; }
+#rwin.on .word { opacity: 1; transform: none; transition: opacity .3s ease .4s, transform .45s cubic-bezier(.2, .8, .2, 1) .4s; }
+#rwin.on .bar { transform: none; transition: transform .35s cubic-bezier(.2, .8, .2, 1) .5s; }
+#rwin.text .who { opacity: 1; }
+@keyframes rwFlash { 0% { transform: scaleX(0); opacity: 1; } 35% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }

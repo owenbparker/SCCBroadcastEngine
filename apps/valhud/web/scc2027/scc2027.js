@@ -178,11 +178,16 @@
   ui.top.pipsL.style.setProperty("--c", COL.left);
   ui.top.pipsR.style.setProperty("--c", COL.right);
   ui.planted = el("", stage); ui.planted.id = "planted";
-  // The round win banner: the Default 2026 HUD's for now (owen, 2026-11-18).
+  // The round win graphic: owen's "Round Win Graphic SCC" fig (1573 x 467),
+  // a #F9C229 flash, then the panel; the winning team in the yellow bar as
+  // in the Default 2026 HUD (side, logo, tricode).
   ui.rwin = el("", stage); ui.rwin.id = "rwin";
-  ui.rwinImg = el("pic", ui.rwin, null, "img"); ui.rwinImg.src = "/hud/Resources/Logos/banner1.png"; ui.rwinImg.alt = "";
-  ui.rwinSide = el("side", ui.rwin); ui.rwinLogo = el("logo", ui.rwin, null, "img"); ui.rwinLogo.alt = "";
-  ui.rwinTeam = el("team", ui.rwin);
+  el("bg", ui.rwin); el("flash", ui.rwin); el("crest", ui.rwin);
+  setText(text("nar", ui.rwin, 329, 192, 916, 138, "c", null, "word"), "ROUND WIN");
+  el("bar", ui.rwin);
+  var rwinWho = el("who", ui.rwin);
+  ui.rwinSide = el("side", rwinWho, null, "span"); ui.rwinLogo = el("logo", rwinWho, null, "img"); ui.rwinLogo.alt = "";
+  ui.rwinTeam = el("team", rwinWho, null, "span");
   ui.banner = el("", stage); ui.banner.id = "banner";
   el("bar", ui.banner);
   ui.bannerText = text("nar", ui.banner, 8, 0, null, null, "c", null, "txt");
@@ -618,25 +623,31 @@
     if (txt) { setText(ui.bannerText, txt); ui.banner.style.setProperty("--c", c); }
   }
 
-  // A round won (a score went up, not on the page's first look): the old
-  // HUD's banner, opening from the middle, for 5 seconds.
-  var rwin = { score: null, timer: null, inner: null };
+  // A round won (a score went up, not on the page's first look): the round
+  // win graphic for 5 seconds.
+  var rwin = { score: null, timer: null, inner: null, out: null };
   function checkRoundWin(s) {
-    var m = s.game.match, cfg = s.config, now = [m.score.left || 0, m.score.right || 0], was = rwin.score;
+    var m = s.game.match, now = [m.score.left || 0, m.score.right || 0], was = rwin.score;
     rwin.score = now;
     if (!was || BOARD_ONLY) return;
     var side = now[0] > was[0] ? "left" : now[1] > was[1] ? "right" : "";
     if (!side || now[0] + now[1] !== was[0] + was[1] + 1) return;   // (one round: not a map reset or a correction)
+    showRoundWin(s, side, false);
+  }
+  function showRoundWin(s, side, hold) {
+    var m = s.game.match, cfg = s.config;
     ui.rwinSide.textContent = m.attackers === side ? "ATK" : "DEF";
     img(ui.rwinLogo, url(cfg[side].logo));
     ui.rwinTeam.textContent = upper(cfg[side].tricode || cfg[side].name);
     var R = ui.rwin;
-    clearTimeout(rwin.timer); clearTimeout(rwin.inner);
-    R.classList.remove("on", "text");
+    clearTimeout(rwin.timer); clearTimeout(rwin.inner); clearTimeout(rwin.out);
+    R.classList.remove("on", "text", "out");
     void R.offsetWidth;
     R.classList.add("on");
-    rwin.inner = setTimeout(function () { R.classList.add("text"); }, 100);
-    rwin.timer = setTimeout(function () { R.classList.remove("on", "text"); }, 5100);
+    rwin.inner = setTimeout(function () { R.classList.add("text"); }, 750);
+    if (hold) return;
+    rwin.out = setTimeout(function () { R.classList.add("out"); }, 4700);
+    rwin.timer = setTimeout(function () { R.classList.remove("on", "text", "out"); }, 5100);
   }
 
   // ------------------------------------------------------------- listen
@@ -765,6 +776,7 @@
   function previews(s) {
     if (previewed) return;
     previewed = true;
+    if (params.get("rwin")) showRoundWin(s, params.get("rwin") === "right" ? "right" : "left", true);
     if (params.get("ace")) {
       var o = s.game.match.observed || { team: "left", slot: 1 };
       showAce(s, { team: o.team, slot: o.slot, n: 1, round: s.game.match.round });
