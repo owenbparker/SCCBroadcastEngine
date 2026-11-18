@@ -1006,6 +1006,105 @@ def _drop_shadow_fields(update):
 
 # --- capturing the game window ----------------------------------------------
 
+# Which window is read. Set from the Control page's "Game window" (config
+# "capture"): {"title": "", "exe": ""} finds VALORANT by itself; a title
+# (and the program it belongs to) reads that window; "screen": n (1, 2, ...)
+# reads that whole screen.
+PICK = {"title": "", "exe": "", "screen": 0}
+VALORANT_EXE = "valorant-win64-shipping.exe"
+
+
+def set_pick(capture):
+    capture = capture or {}
+    PICK.update({"title": str(capture.get("title") or ""), "exe": str(capture.get("exe") or ""),
+                 "screen": int(capture.get("screen") or 0)})
+
+
+def _exe_of(hwnd):
+    """The file name of the program that owns the window ("" if unknown)."""
+    import ctypes
+    import os
+    from ctypes import wintypes
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    pid = wintypes.DWORD(0)
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    handle = kernel32.OpenProcess(0x1000, False, pid.value)   # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(1024)
+        if kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            return os.path.basename(buf.value)
+        return ""
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def game_windows():
+    """Every window a game could be in: visible, not minimised, titled and at
+    least 200x200, biggest first: [{"hwnd", "title", "exe", "width",
+    "height", "x", "y", "screen", "valorant"}]. In real pixels."""
+    if sys.platform != "win32":
+        return []
+    import ctypes
+    from ctypes import wintypes
+    from scc_shared import dpi
+    user32 = ctypes.windll.user32
+    out = []
+    own = os.getpid()
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(hwnd, _):
+        n = user32.GetWindowTextLengthW(hwnd)
+        if not n or not user32.IsWindowVisible(hwnd):
+            return True
+        pid = wintypes.DWORD(0)
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == own:
+            return True   # this app's own windows
+        buf = ctypes.create_unicode_buffer(n + 1)
+        user32.GetWindowTextW(hwnd, buf, n + 1)
+        rect = wintypes.RECT()
+        user32.GetClientRect(hwnd, ctypes.byref(rect))
+        point = wintypes.POINT(0, 0)
+        user32.ClientToScreen(hwnd, ctypes.byref(point))
+        out.append({"hwnd": hwnd, "title": buf.value.strip(), "width": rect.right, "height": rect.bottom,
+                    "x": point.x, "y": point.y, "minimised": bool(user32.IsIconic(hwnd))})
+        return True
+
+    with dpi.real_pixels():
+        user32.EnumWindows(each, 0)
+        screens = dpi.monitors()
+        for w in out:
+            w["exe"] = _exe_of(w["hwnd"])
+            w["screen"] = dpi.screen_of(w["x"] + w["width"] // 2, w["y"] + w["height"] // 2, screens)
+            w["valorant"] = w["exe"].lower() == VALORANT_EXE or w["title"] == WINDOW_TITLE
+    out = [w for w in out if w["title"] and w["title"] != "Program Manager" and (w["valorant"] or (not w["minimised"] and w["width"] >= 200 and w["height"] >= 200))]
+    out.sort(key=lambda w: (not w["valorant"], -w["width"] * w["height"]))
+    return out
+
+
+def _find_window():
+    """(window, None) for the window to read, or (None, reason)."""
+    found = game_windows()
+    if PICK["title"]:
+        title, exe = PICK["title"], PICK["exe"].lower()
+        hits = ([w for w in found if w["title"] == title and (not exe or w["exe"].lower() == exe)]
+                or [w for w in found if title.casefold() in w["title"].casefold()])
+        if not hits:
+            return None, (f"The game window you picked (“{title}”) isn't open: open it, or pick another "
+                          "window under Game window")
+        return hits[0], None
+    hits = [w for w in found if w["valorant"]]
+    if not hits:
+        return None, "VALORANT window not found (if it's open, pick it under Game window)"
+    # The biggest (a game can have small helper windows with the same name).
+    hits.sort(key=lambda w: (w["minimised"], -w["width"] * w["height"]))
+    return hits[0], None
+
+
 def capture_valorant(top=None):
     """(image, None) with the VALORANT window's client area (only its top
     `top` rows, in 1080p terms, if given), or (None, reason).
@@ -1013,71 +1112,88 @@ def capture_valorant(top=None):
     While VALORANT is on top it's copied off the screen. When another window
     covers it (someone tabbed into the HUD or a browser on this PC), the
     screen shows that window instead, so VALORANT's own picture is asked for
-    (PrintWindow): it keeps being read wherever the focus is."""
+    (PrintWindow): it keeps being read wherever the focus is.
+
+    Everything is in real pixels (scc_shared/dpi.py), so it reads VALORANT on
+    any screen, whatever each screen's display scaling."""
+    from scc_shared import dpi
+    with dpi.real_pixels():
+        return _capture(top)
+
+
+def _capture(top):
     import ctypes
-    from ctypes import wintypes
     user32 = ctypes.windll.user32
-    found = []
-
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    def each(hwnd, _):
-        n = user32.GetWindowTextLengthW(hwnd)
-        if n and user32.IsWindowVisible(hwnd):
-            buf = ctypes.create_unicode_buffer(n + 1)
-            user32.GetWindowTextW(hwnd, buf, n + 1)
-            if buf.value.strip() == WINDOW_TITLE:
-                found.append(hwnd)
-        return True
-
-    user32.EnumWindows(each, 0)
-    if not found:
-        return None, "VALORANT window not found"
-    hwnd = found[0]
+    if PICK["screen"]:
+        from scc_shared import dpi
+        screens = dpi.monitors()
+        n = PICK["screen"]
+        if not 1 <= n <= len(screens):
+            return None, f"Screen {n} isn't connected: pick another under Game window"
+        left, top_, right, bottom = screens[n - 1]
+        height = bottom - top_
+        rows = height if top is None else min(height, max(1, round(top * height / REF_H)))
+        box = (left, top_, right, top_ + rows)
+        CAPTURE["window"] = f"Screen {n} ({right - left}x{height}), whole screen"
+        image = _grab_box(box, True)
+        if _is_black(image):
+            return None, _black_reason(None)
+        image.info["full_height"] = height
+        return image, None
+    win, reason = _find_window()
+    if win is None:
+        CAPTURE["window"] = ""
+        return None, reason
+    hwnd = win["hwnd"]
+    CAPTURE["window"] = (f"“{win['title']}”" + (f" on screen {win['screen']}" if win["screen"] else "")
+                         + f" ({win['width']}x{win['height']})")
     if user32.IsIconic(hwnd):
         return None, ("VALORANT is minimised: set its Display Mode to Windowed Fullscreen so it keeps "
                       "drawing while you're in another window")
-    rect = wintypes.RECT()
-    user32.GetClientRect(hwnd, ctypes.byref(rect))
-    width, height = rect.right, rect.bottom
+    width, height = win["width"], win["height"]
     if width < 200 or height < 200:
         return None, "VALORANT window is too small"
-    point = wintypes.POINT(0, 0)
-    user32.ClientToScreen(hwnd, ctypes.byref(point))
+    x, y = win["x"], win["y"]
     rows = height if top is None else min(height, max(1, round(top * height / REF_H)))
-    box = (point.x, point.y, point.x + width, point.y + rows)
-    uncovered = _uncovered(hwnd, point.x, point.y, width, rows)
+    box = (x, y, x + width, y + rows)
+    uncovered = _uncovered(hwnd, x, y, width, rows)
     image = None if uncovered else _print_window(hwnd, width, height)
     if image is not None:
         if rows < height:
             image = image.crop((0, 0, width, rows))
     else:
-        # On top (or Windows wouldn't give its picture): what's on screen.
-        # Some PCs (windowed fullscreen drawn straight to the display, HDR,
-        # some GPU drivers) give Windows' ordinary screen copy a black game:
-        # then it's taken off the graphics card (DXGI desktop duplication).
-        image = None
-        if not CAPTURE["gdi_black"]:
-            from PIL import ImageGrab
-            image = ImageGrab.grab(box, all_screens=True)
-        if image is None or (uncovered and _is_black(image)):
-            dx = _dxgi_grab(box)
-            if dx is not None and not _is_black(dx):
-                if not CAPTURE.get("gdi_black"):
-                    log("VALORANT comes out black in Windows' screen copy on this PC: "
-                        "reading it straight off the graphics card instead")
-                CAPTURE["gdi_black"], CAPTURE["method"] = True, "graphics card"
-                image = dx
-            elif image is None:
-                from PIL import ImageGrab
-                image = ImageGrab.grab(box, all_screens=True)
+        image = _grab_box(box, uncovered)
     if uncovered and _is_black(image):
         return None, _black_reason(hwnd)
     image.info["full_height"] = height
     return image, None
 
 
+def _grab_box(box, uncovered):
+    """The screen area box, as on screen. Some PCs (windowed fullscreen drawn
+    straight to the display, HDR, some GPU drivers) give Windows' ordinary
+    screen copy a black game: then it's taken off the graphics card (DXGI
+    desktop duplication)."""
+    from PIL import ImageGrab
+    image = None
+    if not CAPTURE["gdi_black"]:
+        image = ImageGrab.grab(box, all_screens=True)
+    if image is None or (uncovered and _is_black(image)):
+        dx = _dxgi_grab(box)
+        if dx is not None and not _is_black(dx):
+            if not CAPTURE.get("gdi_black"):
+                log("VALORANT comes out black in Windows' screen copy on this PC: "
+                    "reading it straight off the graphics card instead")
+            CAPTURE["gdi_black"], CAPTURE["method"] = True, "graphics card"
+            image = dx
+        elif image is None:
+            image = ImageGrab.grab(box, all_screens=True)
+    return image
+
+
 # How the game's being captured (for the status line and the log).
-CAPTURE = {"gdi_black": False, "method": "screen", "dxgi_error": None, "dxgi_failed_at": 0.0, "black_logged": False}
+CAPTURE = {"gdi_black": False, "method": "screen", "dxgi_error": None, "dxgi_failed_at": 0.0, "black_logged": False,
+           "window": ""}
 
 
 def _is_black(image):
@@ -1294,6 +1410,7 @@ class ScreenReader:
     def info(self):
         return {"available": self.available, "enabled": self.enabled, "status": self.status if self.available else self.reason,
                 "detail": getattr(self, "detail", "") if self.enabled else "",
+                "window": CAPTURE.get("window", ""),
                 "spectate": self.spectate, "spectate_status": self.spectate_status if self.available else self.reason,
                 "age": round(time.time() - self.read_at, 1) if self.read_at else None}
 
@@ -1430,7 +1547,10 @@ class ScreenReader:
             raise ValueError(reason)
         frame = Frame(image)
         if not scoreboard_open(frame):
-            raise ValueError("Open the Tab scoreboard in VALORANT (it's up in the buy phase), then scan")
+            where = CAPTURE.get("window")
+            raise ValueError("Open the Tab scoreboard in VALORANT (it's up in the buy phase), then scan"
+                             + (f". Reading {where}: if that's not the game, pick it under Live Game > Game window"
+                                if where else ""))
         update = read_frame(image, None, self.agents)
         self._learn_agents(update)
         top_agents = {(p["team"], p["slot"]): self.agents.get((p["team"], p["slot"])) or p.get("agent")

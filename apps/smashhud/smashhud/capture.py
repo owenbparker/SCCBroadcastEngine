@@ -105,7 +105,8 @@ class Source:
         self._lock = threading.Lock()
 
     def grab(self):
-        with self._lock:
+        from scc_shared import dpi   # real pixels on every screen, whatever its scaling
+        with self._lock, dpi.real_pixels():
             try:
                 if self.kind == "device":
                     return self._device()

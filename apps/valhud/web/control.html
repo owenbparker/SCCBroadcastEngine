@@ -342,6 +342,11 @@
     <h2>Live data</h2>
     <button id="reader" class="read-btn">Read VALORANT on this PC</button>
     <div class="note" id="reader-status" style="margin:8px 0 10px"></div>
+    <div class="row" style="margin-bottom:10px;align-items:center">
+      <label for="game-window" style="flex:0 0 auto;margin:0">Game window</label>
+      <select id="game-window" style="flex:1;min-width:0" title="The window the reader reads. Automatic finds VALORANT on any screen; pick it by hand if it's not found."></select>
+      <button type="button" id="game-window-refresh" style="flex:0 0 auto">Refresh list</button>
+    </div>
     <div class="row" style="margin-bottom:10px">
       <button id="reader-save" style="flex:0 0 auto" title="Saves the VALORANT screen as the reader sees it, with what it read, to the frames folder (to send for tuning)">Save frame</button>
       <button id="reader-report" style="flex:0 0 auto" title="Zips everything to send in after a show: the frames the reader saved by itself when it couldn't read something, your saved frames and the log">Problem report</button>
@@ -548,6 +553,42 @@ function applySponsors(cfg) {
   drawSponsors();
 }
 
+// Game window: which window (or whole screen) the reader reads.
+let gameWindows = null;
+function pickKey(c) { c = c || {}; return c.screen ? `screen:${c.screen}` : c.title ? `win:${c.title}\u001f${c.exe || ""}` : "auto"; }
+function renderGameWindows(cfg) {
+  const sel = $("game-window");
+  if (document.activeElement === sel) return;
+  const cur = (cfg && cfg.capture) || {};
+  const opts = [["auto", "Find VALORANT by itself (any screen)"]];
+  const list = (gameWindows && gameWindows.windows) || [];
+  for (const w of list) {
+    const where = w.screen ? `screen ${w.screen}, ` : "";
+    opts.push([`win:${w.title}\u001f${w.exe}`, `${w.valorant ? "★ " : ""}${w.title} (${where}${w.width}x${w.height}${w.exe ? ", " + w.exe : ""})`]);
+  }
+  for (let i = 1; i <= ((gameWindows && gameWindows.screens) || 0); i++) opts.push([`screen:${i}`, `Whole screen ${i}${i === 1 ? " (main)" : ""}`]);
+  const key = pickKey(cur);
+  if (!opts.some(o => o[0] === key)) opts.splice(1, 0, [key, cur.screen ? `Whole screen ${cur.screen} (not connected)` : `${cur.title} (not open now)`]);
+  const html = opts.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join("");
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  sel.value = key;
+}
+function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+async function loadGameWindows() {
+  try { gameWindows = await (await fetch("/api/reader/windows", { cache: "no-store" })).json(); } catch (e) { gameWindows = null; }
+  renderGameWindows(state && state.config);
+}
+$("game-window-refresh").onclick = loadGameWindows;
+$("game-window").onfocus = loadGameWindows;
+$("game-window").onchange = () => {
+  const v = $("game-window").value;
+  let capture = { title: "", exe: "", screen: 0 };
+  if (v.startsWith("screen:")) capture.screen = Number(v.slice(7));
+  else if (v.startsWith("win:")) { const [t, x] = v.slice(4).split("\u001f"); capture.title = t; capture.exe = x || ""; }
+  $("game-window").blur();
+  post("/api/config", { capture });
+};
+loadGameWindows();
 $("reader-save").onclick = () => post("/api/reader/save", {});
 $("reader-report").onclick = () => post("/api/report", {});
 $("scan-names").onclick = async () => {
@@ -593,6 +634,7 @@ $("colors-reset").onclick = () => post("/api/config", { defense_color: COLOR_DEF
 
 function apply(s) {
   applySponsors(s.config);
+  renderGameWindows(s.config);
   applyCams(s);
   applySelect(s);
   for (const k of ["defense", "attack"]) {
@@ -640,7 +682,7 @@ function apply(s) {
   $("reader").textContent = rd.enabled ? "Reading VALORANT — click to stop" : "Read VALORANT on this PC";
   $("reader").disabled = !rd.available;
   $("reader-status").textContent = !rd.available ? rd.status
-    : rd.enabled ? `${rd.status}${rd.age != null ? ` (last read ${rd.age}s ago)` : ""}. ${rd.detail ? rd.detail + " " : ""}Keep the top bar visible; open the Tab scoreboard (e.g. in the buy phase) to read names, credits, weapons, ults and K/D/A.`
+    : rd.enabled ? `${rd.status}${rd.window ? ` from ${rd.window}` : ""}${rd.age != null ? ` (last read ${rd.age}s ago)` : ""}. ${rd.detail ? rd.detail + " " : ""}Keep the top bar visible; open the Tab scoreboard (e.g. in the buy phase) to read names, credits, weapons, ults and K/D/A.`
     : "Off. Turn on when VALORANT (spectating) runs on this PC.";
   const riot = app.riot || {};
   $("riot-status").textContent = riot.received != null && riot.received < 30

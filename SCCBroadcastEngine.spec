@@ -53,7 +53,7 @@ for package in ("imageio_ffmpeg", "psd_tools", "zstandard"):
     datas, binaries, hidden = datas + d, binaries + b, hidden + h
 hidden += ["openpyxl", "cryptography", "numpy", "cv2"]
 # Code every part shares (one copy: the engine link).
-hidden += ["scc_shared", "scc_shared.enginelink"]
+hidden += ["scc_shared", "scc_shared.enginelink", "scc_shared.dpi"]
 if sys.platform == "win32":
     # pywebview's Windows window (Edge WebView2) is loaded at runtime.
     hidden += ["webview.platforms.winforms", "webview.platforms.edgechromium", "clr"]
