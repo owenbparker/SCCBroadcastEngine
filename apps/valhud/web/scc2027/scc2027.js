@@ -496,7 +496,7 @@
           cell.classList.add("won");
           cell.style.setProperty("--c", COL[side]);
           var icon = WIN_ICON[r.win_type] ? r.win_type : "Elimination";
-          cell.style.setProperty("--icon", 'url("/scoreboard/Resources/Logos/' + icon + '.png")');
+          cell.style.setProperty("--icon", 'url("assets/win-' + icon + '.png")');
         }
       });
       if (c + 1 === now) el("now", T, { left: px(cx - 3) });
