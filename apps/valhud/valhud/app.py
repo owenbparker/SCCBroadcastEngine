@@ -25,6 +25,7 @@ from hudbuilder import embed as hud_builder
 from .demo import DemoGame
 from .enginelink import EngineLink, save_logo_bytes, save_sponsors
 from .log import log, since
+from . import reader as reader_mod
 from .reader import ScreenReader
 from .series import Series
 from .riotclient import RiotClient, map_from_id as riot_map_name
@@ -56,6 +57,7 @@ class HudApp:
         self.builder = None         # Custom design: HUD Builder, built in (hudbuilder/embed.py)
         self.updater = Updater()
         self.reader = ScreenReader(self._reader_update)
+        reader_mod.set_pick(config.get().get("capture"))   # Control > Live data > Game window
         # Keeps what the reader sees (about a frame a second, and every reading)
         # so a match can be replayed later: recordings/ next to the app.
         from .recorder import MatchRecorder
@@ -326,6 +328,7 @@ class HudApp:
 
     def refresh(self, fetch=True):
         cfg = self.config.get()
+        reader_mod.set_pick(cfg.get("capture"))
         raw = self.source.fetch() if fetch else self.source.state
         state = game.with_overrides(raw, cfg)
         # Names not typed or scanned: the ones read in agent select, by agent.
@@ -841,6 +844,14 @@ def make_handler(app):
                 if not _is_local(self.client_address[0]):
                     return self._send('{"error":"forbidden"}', status=403)
                 self._send(json.dumps(check_gfx((parse_qs(url.query).get("url") or [""])[0])))
+            elif path == "/api/reader/windows":
+                # Control > Live data > Game window: the open windows to pick from.
+                if not _is_local(self.client_address[0]):
+                    return self._send('{"error":"forbidden"}', status=403)
+                from scc_shared import dpi
+                wins = [{k: w[k] for k in ("title", "exe", "width", "height", "screen", "valorant")}
+                        for w in reader_mod.game_windows()]
+                self._send(json.dumps({"windows": wins, "screens": len(dpi.monitors())}))
             elif path == "/api/observer/find":
                 # Observer client: the GFX PCs running the HUD on this network.
                 if not _is_local(self.client_address[0]):

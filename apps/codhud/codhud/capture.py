@@ -178,6 +178,13 @@ class Capture:
         self._look_after = 0.0
 
     def grab(self, cfg, now):
+        """In real pixels on every screen, whatever its display scaling
+        (scc_shared/dpi.py)."""
+        from scc_shared import dpi
+        with dpi.real_pixels():
+            return self._grab(cfg, now)
+
+    def _grab(self, cfg, now):
         cap = cfg["capture"]
         if sys.platform != "win32":
             return None, "Reading the game needs Windows"

@@ -38,6 +38,10 @@ DEFAULTS = {
     "output_dir": "output",
     # Read the match off the VALORANT spectator screen on this PC.
     "screen_reader": False,
+    # Which window the reader reads (Control > Live data > Game window): no
+    # title = find VALORANT by itself; a title (and its program) = that
+    # window; screen n (1, 2, ...) = that whole screen.
+    "capture": {"title": "", "exe": "", "screen": 0},
     # How long live data (from /api/ingest) counts as current, in seconds.
     "live_timeout": 10,
 

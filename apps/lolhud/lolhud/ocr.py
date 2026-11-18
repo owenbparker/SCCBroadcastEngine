@@ -206,7 +206,14 @@ def _bitmap_to_image(ctypes, gdi32, mdc, bmp, width, height):
 
 def capture_league(full=False, top=None):
     """The League window's client area as an image (just the top bar unless
-    full), or (None, reason)."""
+    full), or (None, reason). In real pixels on every screen, whatever its
+    display scaling (scc_shared/dpi.py)."""
+    from scc_shared import dpi
+    with dpi.real_pixels():
+        return _capture_league(full, top)
+
+
+def _capture_league(full=False, top=None):
     ctypes, wintypes, user32, gdi32 = _win32()
     hwnd = user32.FindWindowW(None, WINDOW_TITLE) or user32.FindWindowW(WINDOW_CLASS, None)
     if not hwnd:
