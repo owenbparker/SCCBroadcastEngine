@@ -2,6 +2,7 @@
 
     .psd .psb        Photoshop: layers, text kept as text (see psdimport)
     .ora             OpenRaster (Krita, MyPaint, Pinta...): its layers as pictures
+    .gtzip           vMix GT title: pictures, text as fields, spins (see gtimport)
     .png .jpg ...    one picture, as a graphic of its own
     video, Lottie, After Effects
                      one layer playing it (made in assets: media_comp)
@@ -17,6 +18,7 @@ import zipfile
 
 from .log import log
 from .project import ANIM_NONE, blank_comp, new_id
+from .gtimport import import_gtzip, is_gt
 from .psdimport import auto_animate, guess_kind, import_psd
 
 AFFINITY = ("To bring in an Affinity file, save it as a Photoshop file first: in Affinity, File > Export > PSD, "
@@ -36,7 +38,7 @@ SAVE_AS_PSD = {
     ".sketch": "Sketch files can't be read directly: export the artboard as PNG or SVG, then import that.",
     ".fig": "Figma files can't be read directly: export the frame as PNG or SVG, then import that.",
 }
-LAYERED = (".psd", ".psb", ".ora")
+LAYERED = (".psd", ".psb", ".ora", ".gtzip")
 PICTURES = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".bmp")
 ACCEPT = LAYERED + PICTURES + tuple(SAVE_AS_PSD)
 
@@ -61,10 +63,12 @@ def import_file(path, workspace, name):
         return import_psd(path, workspace, title)
     if ext == ".ora":
         return import_ora(path, workspace, title), []
+    if ext == ".gtzip" or (ext == ".zip" and is_gt(path)):
+        return import_gtzip(path, workspace, title)
     if ext in PICTURES:
         return import_picture(path, workspace, title, ext), []
     raise ValueError(f"{os.path.basename(name)} can't be imported as a graphic: use a .psd (Photoshop, "
-                     "or saved as Photoshop from Affinity, Krita, GIMP, Procreate ...), .ora or a picture.")
+                     "or saved as Photoshop from Affinity, Krita, GIMP, Procreate ...), .ora, a vMix .gtzip or a picture.")
 
 
 def _layer(name, x, y, w, h, src, opacity=1, visible=True, blend="normal"):
