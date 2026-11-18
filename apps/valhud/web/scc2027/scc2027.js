@@ -561,8 +561,8 @@
     bg(r.agent, agentArt(p.agent));
     setText(r.name, p.name || "");
     setText(r.kda, [p.kills, p.deaths, p.assists].map(function (n) { return n || 0; }).join("/"));
-    var o2 = m.observed;
-    toggle(r.wbox, "watched", !!o2 && o2.team === p.team && o2.slot === p.slot);
+    // (no spectated-player outline on the buy-phase board: the observer is
+    // often not on a POV there, owen)
     toggle(r.wbox, "dead", dead);
   }
 

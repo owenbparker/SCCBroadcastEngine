@@ -204,7 +204,6 @@ html.scc2027 #scc-cam.s27-off { opacity: 0 !important; transform: translateY(24p
 .box.who::before { content: ""; position: absolute; inset: 0; border-radius: 4px; background: var(--c); opacity: .2; }
 .box.who.L::before { -webkit-mask: linear-gradient(90deg, #000, transparent 50%); mask: linear-gradient(90deg, #000, transparent 50%); }
 .box.who.R::before { -webkit-mask: linear-gradient(270deg, #000, transparent 50%); mask: linear-gradient(270deg, #000, transparent 50%); }
-.box.who.watched { border-color: var(--gold); }
 .box .agent { top: 0; width: 74px; height: 50px; background: transparent center 20% / cover no-repeat; }
 .L.box .agent { left: 0; border-radius: 4px 0 0 4px; -webkit-mask: linear-gradient(90deg, #000 70%, transparent); mask: linear-gradient(90deg, #000 70%, transparent); }
 .R.box .agent { right: 0; border-radius: 4px 0 0 4px; -webkit-mask: linear-gradient(90deg, #000 70%, transparent); mask: linear-gradient(90deg, #000 70%, transparent); transform: scaleX(-1); }
