@@ -458,7 +458,10 @@
   // ------------------------------------------------------------ tracker
   function setTracker(cfg, m) {
     var rounds = m.rounds || [], played = rounds.length, now = Math.max(1, m.round || played + 1);
-    var cols = Math.max(now, played) <= 12 ? 12 : Math.max(24, Math.ceil(Math.max(now, played) / 2) * 2);
+    // The full 24-round schedule from round 1 (owen); a 2v2 keeps 12 until it
+    // goes past them. Overtime adds pairs of rounds after 24.
+    var last = Math.max(now, played), duo = Number(cfg.team_size) === 2;
+    var cols = duo && last <= 12 ? 12 : Math.max(24, Math.ceil(last / 2) * 2);
     var to = cfg.timeouts || {};
     var key = JSON.stringify([cols, now, rounds, to, cfg.left.tricode, cfg.right.tricode, cfg.left.logo, cfg.right.logo]);
     if (ui.tracker._key === key) return;
