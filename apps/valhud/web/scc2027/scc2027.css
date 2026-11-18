@@ -55,6 +55,20 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 #top .rnd > i { margin-right: -.19em; }
 #top .clock { left: 285px; width: 100px; top: 27px; height: 34px; font-size: 48px; }
 #top .clock.spike > i { color: var(--red); }
+/* the condensed bar (owen's "Condensed with Timer / Spike", 710,0 501x72):
+   no names, bigger logos, the clock or the spike in the middle */
+#top { transition: left .5s cubic-bezier(.2, .8, .2, 1), width .5s cubic-bezier(.2, .8, .2, 1), opacity .35s ease; }
+#top .in > * { transition: transform .5s cubic-bezier(.2, .8, .2, 1), opacity .3s ease; }
+#top.cond { left: 710px; width: 501px; }
+#top.cond .tri, #top.cond .sub { opacity: 0; }
+#top.cond .logo.l { transform: translate(-1.5px, -.5px) scale(1.35); }
+#top.cond .logo.r { transform: translate(-171px, -.5px) scale(1.35); }
+#top.cond .div, #top.cond .rnd, #top.cond .clock { transform: translateX(-85px); }
+#top.cond .score, #top.cond .pips { transform: translateX(-82.5px); }
+#top .spk { left: 225px; top: 12px; width: 51px; height: 46px; background: url("assets/spike-condensed.png") center / contain no-repeat;
+  opacity: 0; }
+#top.cond.planted .spk { opacity: 1; animation: s27-pulse 1s ease-in-out infinite alternate; }
+#top.cond.planted .rnd, #top.cond.planted .clock { opacity: 0; }
 .pips { top: 11px; height: 10px; width: 60px; display: flex !important; justify-content: center; gap: 6px; }
 .pips > b { position: static; width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 1px solid #fff; }
 .pips > b.won { background: var(--c); }
