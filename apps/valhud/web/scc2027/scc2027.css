@@ -106,13 +106,15 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 #maps { left: -6px; top: 1px; width: 682px; height: 22px; border-radius: 25px; background: var(--navy); border: 1px solid #fff; }
 #maps .m { top: 3px; height: 15px; font-size: 14px; gap: 6px; display: flex; }
 #maps .m img { position: static; height: 15px; width: auto; max-width: 24px; object-fit: contain; }
-#event { left: 1256px; top: 0; width: 473px; height: 23px; background: var(--navy); border: 1px solid #fff; border-top: 0; }
-#event.solo { width: 450px; border-radius: 0 0 10px 0; }
-#event .t { left: 0; width: 433px; top: 7px; height: 9px; font-size: 12px; letter-spacing: .03em; }
-#sponsor { left: 1689px; top: 1px; width: 229px; height: 89px; background: var(--navy); border: 1px solid #fff;
-  border-radius: 0 0 0 10px; }
-#sponsor::before { content: ""; position: absolute; left: -10px; top: -2px; width: 241px; height: 1px; background: #fff; }
-#sponsor .logo { left: 24px; top: 22px; width: 181px; height: 45px; transition: opacity .4s ease; }
+/* event strip + sponsor box: owen's "Sponsor Rotation Full" fig (one outline
+   round both, the strip running into the box) and "... Condensed" (the box
+   alone once the strip tucks away); under the top bar in the stack */
+#event { left: 1255px; top: 0; width: 435px; height: 25px; background: var(--navy); border: 1px solid #fff; border-top: 0; border-right: 0;
+  border-radius: 0 0 0 10.5px; }
+#event.solo { width: 475px; border-right: 1px solid #fff; border-radius: 0 0 10.5px 10.5px; }
+#event .t { left: 0; width: 474px; top: 8px; height: 8px; font-size: 12px; }
+#sponsor { left: 1688px; top: 0; width: 231px; height: 92px; background: var(--navy); border: 1px solid #fff; border-radius: 0 0 0 11px; }
+#sponsor .logo { left: 31px; top: 28px; width: 168px; height: 33px; transition: opacity .4s ease; }
 #sponsor .logo.white { background: #fff; -webkit-mask: var(--img) center / contain no-repeat; mask: var(--img) center / contain no-repeat; }
 #sponsor .logo.colour { background: var(--img) center / contain no-repeat; }
 
@@ -123,7 +125,8 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 /* the maps and event strips come out from behind the top bar for the buy
    phase and go back behind it 20 seconds into the round (scc2027.js setStrips) */
 #top { z-index: 5; }
-#sponsor { z-index: 4; }
+#event { z-index: 4; }
+#sponsor { z-index: 3; }
 #maps, #event { transition: opacity .45s ease, transform .6s cubic-bezier(.2, .8, .2, 1); }
 #maps.tucked { opacity: 0; transform: translateX(631px); }
 #event.tucked { opacity: 0; transform: translateX(-440px); }
