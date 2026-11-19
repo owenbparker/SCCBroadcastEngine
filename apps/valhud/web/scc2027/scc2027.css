@@ -71,7 +71,7 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 #top .score { font-size: 52px; }
 #top .rnd { font-size: 15px; letter-spacing: .19em; }
 #top .rnd > i { margin-right: -.19em; }
-#top .pips.v { top: 13px; width: 10px; height: 46px; flex-direction: column; justify-content: flex-start; gap: 8px; }
+#top .pips.v { top: 13px; width: 10px; height: 46px; flex-direction: column; justify-content: safe center; gap: 8px; }
 #top .pips.v.l { left: 846px; }
 #top .pips.v.r { left: 1063px; }
 #top .pips.v > b { background: var(--navy); border-width: 1.4px; }
