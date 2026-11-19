@@ -23,7 +23,7 @@
   var styleEl = null, front = null, back = null;
   var POLL_MS = 1000;
 
-  function blank() { return { rules: {}, added: [], fonts: [] }; }
+  function blank() { return { rules: {}, added: [], fonts: [], settings: {} }; }
   function key() { return sub ? baseKey + ":" + sub : baseKey; }
   function asset(name) { return "/hudedit/asset/" + encodeURIComponent(name); }
   function num(v, d) { return typeof v === "number" && isFinite(v) ? v : d; }
@@ -49,6 +49,12 @@
       if (r.bg) d.push(r.svg ? "fill:" + r.bg : "background-color:" + r.bg);
       if (r.radius != null) d.push("border-radius:" + r.radius + "px");
       if (r.size) d.push("font-size:" + r.size + "px");
+      if (r.noanim) d.push("transition:none", "animation:none");
+      else {
+        if (r.dur != null) d.push("transition-duration:" + r.dur + "s", "animation-duration:" + r.dur + "s");
+        if (r.delay != null) d.push("transition-delay:" + r.delay + "s", "animation-delay:" + r.delay + "s");
+        if (r.ease) { var e = EASE[r.ease] || r.ease; d.push("transition-timing-function:" + e, "animation-timing-function:" + e); }
+      }
       if (r.img && r.imgKind === "img") d.push('content:url("' + asset(r.img) + '")', "object-fit:contain");
       if (r.img && r.imgKind === "bg") d.push('background-image:url("' + asset(r.img) + '")');
       if (r.color) t.push("color:" + r.color);
@@ -63,6 +69,7 @@
     return out.join("\n");
   }
   function imp(s) { return s + " !important"; }
+  var EASE = { snappy: "cubic-bezier(.2,.8,.2,1)", bounce: "cubic-bezier(.2,1.4,.4,1)" };
 
   function layer(tag, z) {
     var el = document.createElement(tag);
@@ -152,7 +159,9 @@
   }
 
   function setEdits(doc, fromServer) {
-    edits = { rules: doc.rules || {}, added: doc.added || [], fonts: doc.fonts || [] };
+    var before = JSON.stringify(edits.settings || {});
+    edits = { rules: doc.rules || {}, added: doc.added || [], fonts: doc.fonts || [], settings: doc.settings || {} };
+    if (JSON.stringify(edits.settings) !== before) settingsChanged();
     if (fromServer) {
       rev = doc.rev || 0;
       savedJson = JSON.stringify(edits);
@@ -216,7 +225,26 @@
     }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["href"] });
   }
 
+  // A page's own settings (timings, when parts come in and out) and the
+  // states it can be shown in while editing (HudEdit.settings / .states).
+  var declared = [], stateList = [], forced = "", listeners = [];
+  function settingsChanged() { listeners.forEach(function (f) { try { f(); } catch (e) { } }); }
+  function getSetting(k, d) {
+    var v = (edits.settings || {})[k];
+    if (v === undefined || v === null || v === "") {
+      var dec = declared.filter(function (x) { return x.key === k; })[0];
+      return dec && dec.def !== undefined ? dec.def : d;
+    }
+    return v;
+  }
+
   window.HudEdit = {
+    settings: function (list) { declared = list || []; if (editing && ui) say("selected", info()); },
+    states: function (list) { stateList = list || []; if (editing && ui) say("selected", info()); },
+    get: getSetting,
+    state: function () { return forced; },
+    onChange: function (f) { listeners.push(f); },
+    editing: editing,
     setDesign: function (id) {
       id = String(id || "").toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
       if (id === sub) return;
@@ -349,7 +377,8 @@
   }
 
   function info() {
-    var s = selected, base = { dirty: dirty(), rev: rev, fonts: fontList(), canUndo: history.length > 1, canRedo: future.length > 0 };
+    var s = selected, base = { dirty: dirty(), rev: rev, fonts: fontList(), canUndo: history.length > 1, canRedo: future.length > 0,
+      declared: declared, settings: edits.settings || {}, states: stateList, state: forced, revealAll: revealAll };
     if (!s) return Object.assign(base, { selected: null });
     if (s.added) {
       var a = findAdded(s.added);
@@ -379,12 +408,54 @@
           font: firstFamily(ts.fontFamily), size: Math.round(parseFloat(ts.fontSize) * 10) / 10,
           weight: parseInt(ts.fontWeight, 10) || 400, spacing: parseFloat(ts.letterSpacing) || 0,
           bg: rgbHex(el instanceof SVGElement ? cs.fill : cs.backgroundColor), radius: parseFloat(cs.borderTopLeftRadius) || 0,
-          opacity: parseFloat(cs.opacity)
+          opacity: parseFloat(cs.opacity),
+          motion: motionText(cs)
         },
         parent: el.parentElement && el.parentElement !== document.body && !skipEl(el.parentElement) ? selectorFor(el.parentElement) : null
       });
     }
     return Object.assign(base, { selected: out });
+  }
+
+  function motionText(cs) {
+    var out = [];
+    var props = cs.transitionProperty.split(","), durs = cs.transitionDuration.split(","), dels = cs.transitionDelay.split(",");
+    props.forEach(function (p, i) {
+      var d = parseFloat(durs[i % durs.length]) || 0, l = parseFloat(dels[i % dels.length]) || 0;
+      if (d > 0 && p.trim() !== "none") out.push(p.trim() + " " + d + "s" + (l ? " after " + l + "s" : ""));
+    });
+    if (cs.animationName && cs.animationName !== "none") out.push("animation " + cs.animationName + " " + cs.animationDuration);
+    return out.join(", ");
+  }
+
+  // "Show every part": everything hidden right now shown (while editing only).
+  var revealAll = false, revealTimer = null;
+  function revealPass() {
+    if (!revealAll) return;
+    var all = document.body.querySelectorAll("*");
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (skipEl(el) || ours(el)) continue;
+      var cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity) === 0) {
+        var was = el.getAttribute("style");
+        if (cs.display === "none") el.style.setProperty("display", el instanceof SVGElement ? "inline" : "block", "important");
+        if (cs.visibility === "hidden") el.style.setProperty("visibility", "visible", "important");
+        if (parseFloat(cs.opacity) === 0) el.style.setProperty("opacity", "1", "important");
+        revealed.push({ el: el, style: was });
+      }
+    }
+  }
+  var revealed = [];
+  function setReveal(on) {
+    revealAll = !!on;
+    clearInterval(revealTimer);
+    for (var i = revealed.length - 1; i >= 0; i--) {
+      var p = revealed[i];
+      if (p.style == null) p.el.removeAttribute("style"); else p.el.setAttribute("style", p.style);
+    }
+    revealed = [];
+    if (revealAll) { revealPass(); revealTimer = setInterval(revealPass, 500); }
   }
 
   function fontList() {
@@ -721,6 +792,14 @@
       edits.fonts = (edits.fonts || []).filter(function (f) { return f.family !== m.family; }).concat([{ family: m.family, file: m.file }]);
       changed(true);
     } else if (t === "view") { view = m.scale || 1; drawSelection(); }
+    else if (t === "state") { forced = m.id || ""; setTimeout(function () { say("changed", Object.assign(info(), { tree: tree() })); }, 700); say("selected", info()); }
+    else if (t === "reveal") { setReveal(m.on); setTimeout(function () { say("changed", Object.assign(info(), { tree: tree() })); }, 100); }
+    else if (t === "setting") {
+      edits.settings = edits.settings || {};
+      if (m.value === null || m.value === undefined) delete edits.settings[m.key]; else edits.settings[m.key] = m.value;
+      settingsChanged();
+      changed(true);
+    }
     else if (t === "reload") { load().then(function () { say("tree", tree()); }); }
     else if (t === "discard") { setEdits(JSON.parse(savedJson)); history = [savedJson]; future = []; say("changed", Object.assign(info(), { tree: tree() })); }
   }

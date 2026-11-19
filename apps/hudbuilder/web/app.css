@@ -266,3 +266,8 @@ body.embedded .engine-card, body.embedded #ed-game { display: none !important; }
 #he-props .warn { color: var(--x-accent); }
 .he-versions { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
 .he-ver { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--x-fill); }
+.he-states { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; z-index: 2; }
+.he-chip.on { background: var(--x-accent) !important; color: var(--x-on-accent) !important; }
+.he-reveal { margin-left: auto; color: #ddd; }
+.he-setting.changed label > span, .he-setting.changed .check { color: var(--x-accent); }
+.he-setting p { margin: 2px 0 0; }
