@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import appearance, game, mapbans, outputs, recolor, startpick
-from .teamsides import AttackFirst, Rosters, roster_flipped, swap_reading
+from .teamsides import AttackFirst, AutoSides, Rosters, norm as _norm, roster_flipped, swap_reading
 from .agentselect import AgentSelect, AgentSelectDemo
 from .cams import CamHub, cam_links
 from .config import DATA_DIR, LOGO_DIR, PHOTO_DIR, SPONSOR_DIR, WEB_DIR, web_file
@@ -94,8 +94,10 @@ class HudApp:
         self.riot = RiotClient(self._reader_update, config, DATA_DIR, log)
         self.riot.on_json = self._riot_json
         self.riot_roster, self.riot_at, self._riot_select_at = None, 0.0, 0.0
-        self._riot_sides = set()     # the teams the Riot Client's agent select has players for
+        self._known_names = {}       # team name (normalised) -> {name (normalised): the name as written}
+        self._sel = self._select_fresh()   # which source each team's agent select cards come from
         self.rosters = Rosters()     # players' names seen on each team (which side is which in agent select)
+        self.autosides = AutoSides()  # one in-game name a team: the teams put on their sides by themselves
         self._attack_first = AttackFirst()
         self.riot.start()
         self.map_art = mapbans.MapArt()
@@ -151,12 +153,21 @@ class HudApp:
         players (who attacks first set the wrong way round): turned round,
         and who attacks first put right for the rest of it."""
         cfg = self.config.get()
-        if not self.rosters.flipped(reading, cfg):
+        # (the in-game names typed for each team, or the GFX Engine roster's,
+        # say it surely; else the names seen on each team before)
+        by_side = {side: [p.get("name") for p in reading.get("players") or [] if p.get("team") == side]
+                   for side in ("left", "right")}
+        verdict = self.autosides.verdict(by_side, cfg) if cfg.get("auto_sides", True) else None
+        if verdict == "same" or (verdict is None and not self.rosters.flipped(reading, cfg)):
             return reading
+        if verdict == "swapped":
+            self.autosides.status = "Agent select: each team's in-game names were on the other side, so who attacks first was turned round"
         flip = {"left": "right", "right": "left"}
         now = flip.get(cfg.get("attack_first"), "right")
         self.config.update({"attack_first": now})
-        self._riot_sides = {flip.get(t, t) for t in self._riot_sides}
+        self._sel = {"owner": {flip.get(side, side): v for side, v in self._sel["owner"].items()},
+                     **{k: {(src, flip.get(side, side)): v for (src, side), v in self._sel[k].items()}
+                        for k in ("count", "ahead", "lent")}}
         log(f"Agent select: the names on each side are the other team's players, so "
             f"{cfg[now]['name'] or now} attacks first (set in Series & maps)", "warn")
         # (what's been read so far is turned round too)
@@ -164,6 +175,141 @@ class HudApp:
             ps = self.agent_select.state["players"]
             ps["left"], ps["right"] = ps["right"], ps["left"]
         return swap_reading(reading)
+
+    # Agent select comes from two places: the observer's screen (the cards as
+    # the game draws them, read with portraits and text recognition) and the
+    # Riot Client (exact Riot IDs, and agents where its account can see them).
+    # Their seat orders differ, so each team's cards come from one of them
+    # (its "owner"): whichever has that team's players first, handed over to
+    # the other when the other plainly sees more of that team's agents. The
+    # other still lends what it has: the Riot Client's exact names (matched by
+    # agent, or by the name read off the screen) and agents the owner hasn't
+    # got for a player both have. (Before, once the Riot Client had a team the
+    # screen was shut out of it for two minutes, so a team whose picks the
+    # Riot Client didn't show stayed empty.)
+
+    SELECT_FRESH = 5.0   # seconds a source's reading of a team counts for
+
+    @staticmethod
+    def _select_fresh():
+        return {"owner": {}, "count": {}, "ahead": {}, "lent": {}}
+
+    def _select_merge(self, reading, src):
+        """A reading from `src` ("screen" / "riot") cut down to the teams it
+        owns, the other source's lent names and agents added."""
+        from .teamsides import _close, _ign
+        now = time.time()
+        sel = self._sel
+        if reading.get("active") and not self.agent_select.state["active"]:
+            sel = self._sel = self._select_fresh()   # (a new agent select)
+        if reading.get("active") is False:
+            # (one source ending it while the other still has it going: not yet)
+            others = [side for side, owner in sel["owner"].items() if owner != src
+                      and now - sel["count"].get((owner, side), (0, 0))[1] < self.SELECT_FRESH]
+            if others and src not in sel["owner"].values():
+                return {}
+            return reading
+        if "players" not in reading:
+            return reading
+        keep = []
+        for side in ("left", "right"):
+            mine = [dict(p) for p in reading["players"] if p.get("team") == side]
+            if not mine:
+                continue
+            n = sum(1 for p in mine if p.get("agent"))
+            sel["count"][(src, side)] = (n, now)
+            sel["lent"][(src, side)] = [(p.get("name") or "", p.get("agent") or "", bool(p.get("locked"))) for p in mine]
+            owner = sel["owner"].setdefault(side, src)
+            if owner != src:
+                on, ot = sel["count"].get((owner, side), (0, 0.0))
+                ahead = sel["ahead"][(src, side)] = sel["ahead"].get((src, side), 0) + 1 if n > on else 0
+                if n > on and (ahead >= 2 or now - ot >= self.SELECT_FRESH):
+                    log(f"Agent select: the {side} team's cards now come from the "
+                        f"{'Riot Client' if src == 'riot' else 'screen'} (it sees {n} agents, the other {on})", "warn")
+                    sel["owner"][side] = src
+                    with self.agent_select._lock:
+                        self.agent_select.state["players"][side] = [
+                            {"agent": "", "locked": False, "name": ""} for _ in range(5)]
+                else:
+                    self._select_lend(side, src)
+                    continue
+            # The other source's names and agents for these players.
+            other = "screen" if src == "riot" else "riot"
+            lent = sel["lent"].get((other, side)) if now - sel["count"].get((other, side), (0, 0.0))[1] < 120 else None
+            for p in mine:
+                for name, agent, locked in lent or ():
+                    same_agent = agent and agent == p.get("agent")
+                    same_name = name and p.get("name") and _close(_ign(name), _ign(p["name"]))
+                    if not (same_agent or same_name):
+                        continue
+                    if name and (other == "riot" or not p.get("name")):
+                        p["name"] = name        # (the Riot ID, exact)
+                    if agent and not p.get("agent") and same_name:
+                        p["agent"], p["locked"] = agent, locked
+                    break
+                if src == "screen" and p.get("name"):
+                    p["name"] = self._known_name(side, p["name"])
+            keep += mine
+        return dict(reading, players=keep) if keep else {k: v for k, v in reading.items() if k != "players"}
+
+    def _known_name(self, side, read):
+        """A name read off the agent select screen, as one of the team's
+        players is known to write it (the GFX Engine roster's in-game IDs, the
+        typed in-game name, the Riot IDs and names seen in its matches) when
+        it's plainly theirs: text recognition cuts long names short
+        ("snappypikachL") and slips letters ("HelicoptaMonl<E")."""
+        import difflib
+        from .teamsides import _ign
+        cfg = self.config.get()
+        team = _norm((cfg.get(side) or {}).get("name"))
+        known = dict(self._known_names.get(team) or {})
+        for n in list(self.autosides.global_igns.get(team) or []) + [self.autosides.typed(cfg, side)]:
+            if n:
+                known.setdefault(_ign(n), n.split("#")[0])
+        r = _ign(read)
+        if len(r) < 2 or not known or r in known:
+            return known.get(r, read)
+        scores = []
+        for k, shown in known.items():
+            if len(r) >= 3 and k.startswith(r) and len(k) > len(r):
+                score = 0.9   # (cut short)
+            else:
+                score = difflib.SequenceMatcher(None, r, k).ratio()
+            scores.append((score, shown))
+        scores.sort(reverse=True)
+        best = scores[0]
+        if best[0] >= 0.8 and (len(scores) == 1 or best[0] - scores[1][0] >= 0.15):
+            return best[1]
+        return read
+
+    def _learn_names(self, state, cfg):
+        """Each team's players' names as seen in the match (by team name)."""
+        for p in state.get("players") or []:
+            team = _norm((cfg.get(p.get("team")) or {}).get("name"))
+            name = str(p.get("name") or "").split("#")[0].strip()
+            if team and len(_norm(name)) >= 3:
+                book = self._known_names.setdefault(team, {})
+                if len(book) < 40:
+                    book[_norm(name)] = name
+
+    def _select_lend(self, side, src):
+        """`src` doesn't own `side`: what it has goes into the owner's cards now
+        (a Riot ID for the card on the same agent or with that name read; an
+        agent for a card with that name and no agent)."""
+        from .teamsides import _close, _ign
+        lent = self._sel["lent"].get((src, side)) or []
+        with self.agent_select._lock:
+            for card in self.agent_select.state["players"][side]:
+                for name, agent, locked in lent:
+                    same_agent = agent and agent == card["agent"]
+                    same_name = name and card["name"] and _close(_ign(name), _ign(card["name"]))
+                    if not (same_agent or same_name):
+                        continue
+                    if name and (src == "riot" or not card["name"]):
+                        card["name"] = name[:32]
+                    if agent and not card["agent"] and same_name:
+                        card["agent"], card["locked"] = agent, locked
+                    break
 
     def _select_sides(self, reading):
         """The agent select screen shows DEFENDERS left and ATTACKERS right:
@@ -265,24 +411,10 @@ class HudApp:
                 reading = swap_reading(reading)   # (read before who attacks first changed)
             if source == "riot":
                 self._riot_select_at = time.time()
-                sides = {p.get("team") for p in reading.get("players") or []}
-                if sides or not reading.get("active", True):
-                    self._riot_sides = sides
-            # (once the Riot Client's given this agent select, the screen's
-            # readings are left out until it ends: two sources' seat orders
-            # mixed would pair names with the wrong agents. A team the Riot
-            # Client doesn't have, e.g. its account only sees its own team,
-            # still comes off the screen.)
-            riot_on = time.time() - self._riot_select_at < 5 + (120 if self.agent_select.source == "riot"
-                                                                and self.agent_select.state["active"] else 0)
-            if source != "riot" and riot_on:
-                players = [p for p in reading.get("players") or [] if p.get("team") not in self._riot_sides]
-                reading = {k: v for k, v in reading.items() if k in ("map",) and not self.agent_select.state["map"]}
-                if players:
-                    reading["players"] = players
-                source = "riot"   # (still the Riot Client's agent select, with the screen filling in)
-            if reading:
+            if reading.get("players"):
                 reading = self._select_flip(reading)
+            reading = self._select_merge(reading, "riot" if source == "riot" else "screen")
+            if reading:
                 self.agent_select_update(reading, "riot" if source == "riot" else "screen")
             if not update.get("match") and not update.get("players") and "spectating" not in update:
                 if self.mode == "live":
@@ -336,6 +468,9 @@ class HudApp:
         # Names not typed or scanned: the ones read in agent select, by agent.
         picks = self.agent_select.view([])["players"]
         roster = self.riot_roster if time.time() - self.riot_at < 30 else None
+        if self._auto_sides(raw, roster, state, cfg, fetch):
+            cfg = self.config.get()
+            state = game.with_overrides(raw, cfg)
         if roster and roster_flipped(roster, state):
             # (its teams come from who attacks first: the top bar's agents
             # say they're the other way round)
@@ -377,6 +512,7 @@ class HudApp:
                     p["name"] = match[0]
         if self.mode == "live" and fetch and state["connected"]:
             self.rosters.learn(state, cfg)
+            self._learn_names(state, cfg)
         text, at, agent, side = self.spectating
         if time.time() - at < self.SPECTATING_FOR:
             # The card's portrait (agent and side) is certain; the name is
@@ -401,6 +537,41 @@ class HudApp:
         if fetch:
             self._log_changes(state)
         return state
+
+    def _auto_sides(self, raw, roster, state, cfg, fetch):
+        """In the match: the other team's names (the typed in-game name, or
+        the GFX Engine roster's) on each side of the screen several reads
+        running -> the teams swap sides (logos, series wins, maps, timeouts:
+        Swap sides). Returns True when they did."""
+        if not (self.mode == "live" and fetch and raw.get("connected") and cfg.get("auto_sides", True)
+                and self.role != "observer"):
+            return False
+        seen = {side: [p.get("name") for p in raw["players"] if p["team"] == side and p.get("name")]
+                for side in ("left", "right")}
+        if roster:
+            # (the Riot Client's names, on the side of the screen their agents are)
+            r = roster
+            if roster_flipped(roster, state):
+                r = {"left": roster.get("right") or [], "right": roster.get("left") or []}
+            for side in ("left", "right"):
+                seen[side] += [q.get("name") for q in r.get(side) or [] if q.get("name")]
+        if not self.autosides.in_match(seen, cfg, time.time()):
+            return False
+        who = self.autosides.typed(cfg, "left") or f"{cfg['left']['name'] or 'the left team'}'s players"
+        self.autosides.status = f"{who} seen on the right side of the game: teams swapped sides"
+        log(f"Auto sides: {who} are on the right side of the game, so the teams swap sides "
+            f"({cfg['right']['name'] or 'right team'} on the left)", "warn")
+        self.swap_sides()
+        return True
+
+    def set_team_ign(self, side, ign):
+        """One player's in-game name for the team on `side` (kept by team name)."""
+        cfg = self.config.get()
+        team = _norm((cfg.get(side) or {}).get("name"))
+        if side not in ("left", "right") or not team:
+            raise ValueError("Give the team a name first")
+        self.config.update({"team_igns": {team: str(ign or "").strip()[:40]}})
+        self.autosides._wrong = 0
 
     def _log_changes(self, state):
         connected = state["connected"]
@@ -454,6 +625,8 @@ class HudApp:
                     log(f"Couldn't fetch the {side} logo from the GFX Engine: {e}", "warn")
             if str(t.get("score", "")).isdigit():   # (the series score: Global's is the one shown)
                 team["wins"] = int(t["score"])
+            if isinstance(t.get("players"), list) and t.get("name"):
+                self.autosides.set_roster(t["name"], t["players"])   # (its in-game IDs put the team on its side)
             if isinstance(t.get("players"), list):   # (its roster's headshots: the SCC 2027 Ace graphic's photo)
                 team["photos"] = self._engine_photos(t["players"], fetch, side)
             if team:
@@ -590,6 +763,10 @@ class HudApp:
             # (not read yet: the series' current map)
             maps, i = cfg.get("maps") or [], int(cfg.get("current_map") or 0)
             snap["agent_select"]["map"] = (maps[i].get("name") or "") if 0 <= i < len(maps) else ""
+        snap["auto_sides"] = {"on": bool(cfg.get("auto_sides", True)), "status": self.autosides.status,
+                              **{side: {"ign": self.autosides.typed(cfg, side),
+                                        "roster": len(self.autosides.global_igns.get(_norm(cfg[side].get("name"))) or [])}
+                                 for side in ("left", "right")}}
         pool, team_a = mapbans.settings(cfg)
         snap["map_bans"] = {"maps": mapbans.ALL_MAPS, "vct_pool": mapbans.VCT_POOL, "pool": pool, "team_a": team_a,
                             "bo1": mapbans.steps(cfg, "bo1"), "bo3": mapbans.steps(cfg, "bo3")}
@@ -718,7 +895,7 @@ class HudApp:
                 "attack_first": cfg.get("attack_first"), "team_size": cfg.get("team_size"),
                 "current_map": cfg.get("current_map"), "maps": cfg.get("maps"),
                 "teams": {side: (cfg.get(side) or {}).get("name") for side in ("left", "right")},
-                "riot": self.riot.info(), "riot_roster": self.riot_roster, "riot_sides": sorted(self._riot_sides),
+                "riot": self.riot.info(), "riot_roster": self.riot_roster, "select_owner": dict(self._sel["owner"]),
                 "names_seen": {k: sorted(v) for k, v in self.rosters.names.items()},
                 "reader": self.reader.info(), "feed": self.feed.info()}, indent=1, default=str))
             z.writestr("log-recent.txt", "\n".join(f"[{e['time']}] {e['level'].upper():5} {e['message']}" for e in since(0)))
@@ -1032,6 +1209,8 @@ def make_handler(app):
                         app.set_mode("demo")   # the demo match again, with the new team size
                 elif path == "/api/swap":
                     app.swap_sides()
+                elif path == "/api/team-ign":
+                    app.set_team_ign(body.get("side"), body.get("ign"))
                 elif path == "/api/sponsor":
                     saved = app.save_sponsor(body.get("filename"), body["data"])
                     return self._send(json.dumps({"path": saved}))

@@ -67,6 +67,11 @@ DEFAULTS = {
     "tech_pause": False,
     # Player names to show, per team, in slot order (overrides the feed).
     "player_names": {"left": ["", "", "", "", ""], "right": ["", "", "", "", ""]},
+    # One player's in-game name a team, by team name (normalised): seen in
+    # agent select or the match on the other side, the teams swap sides by
+    # themselves (auto_sides).
+    "team_igns": {},
+    "auto_sides": True,
     # Names from Scan names (the Tab scoreboard, read carefully), by team and
     # agent, until the next agent select: [{"team", "agent", "name"}].
     "scanned_names": [],

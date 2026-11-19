@@ -58,7 +58,8 @@ class AppTests(unittest.TestCase):
                 {"team": "defenders", "slot": 1, "agent": "Sage"}]}})
             v = app.agent_select.view([])
             self.assertEqual((v["players"]["left"][0]["agent"], v["players"]["left"][0]["name"]), ("Jett", "TenZ"))
-            self.assertEqual(v["source"], "riot")
+            # (the team the Riot Client hasn't got comes off the screen)
+            self.assertEqual(v["players"]["right"][0]["agent"], "Sage")
             self.assertLess(app.app_info()["riot"]["received"], 5)
 
 

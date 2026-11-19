@@ -108,3 +108,82 @@ class AttackFirst:
         else:
             self.side, self.count = attackers, 1
         return self.side if self.count >= self.NEEDED else None
+
+
+def _ign(name):
+    """A name to compare: the Riot ID's tag left off ("Bearrett#NA1" -> "bearrett")."""
+    return norm(str(name or "").split("#")[0])
+
+
+class AutoSides:
+    """Puts the teams on their sides by themselves: one player's in-game name
+    a team (typed on the Teams page, kept by team name so it stays with the
+    team when sides swap or the next match loads) and the in-game IDs of the
+    team's roster in the GFX Engine's Teams tab.
+
+    verdict() says whether the names seen on each side are the right team's
+    ("same"), the other team's ("swapped"), or can't be told (None)."""
+
+    NEEDED = 3        # in-match reads in a row that say "swapped" before the teams swap
+    HOLD = 15.0       # seconds after a swap before another
+
+    def __init__(self):
+        self.global_igns = {}   # team name (normalised) -> the GFX Engine roster's in-game IDs
+        self._wrong, self._swapped_at = 0, float("-inf")
+        self.status = ""        # what it last did, for the control panel
+
+    def set_roster(self, team_name, players):
+        team = norm(team_name)
+        if team:
+            self.global_igns[team] = [str(p.get("ign") or "").strip() for p in players
+                                      if isinstance(p, dict) and str(p.get("ign") or "").strip()]
+
+    @staticmethod
+    def typed(cfg, side):
+        team = norm((cfg.get(side) or {}).get("name"))
+        return str((cfg.get("team_igns") or {}).get(team) or "").strip() if team else ""
+
+    def known(self, cfg):
+        """{"left": {names}, "right": {names}}, or None when nothing's known."""
+        teams = {side: norm((cfg.get(side) or {}).get("name")) for side in SIDES}
+        if not all(teams.values()) or teams["left"] == teams["right"]:
+            return None
+        out = {}
+        for side in SIDES:
+            names = {_ign(self.typed(cfg, side))} | {_ign(n) for n in self.global_igns.get(teams[side]) or []}
+            out[side] = {n for n in names if len(n) >= 3}
+        both = out["left"] & out["right"]   # (a name on both rosters tells nothing)
+        out = {side: out[side] - both for side in SIDES}
+        return out if out["left"] or out["right"] else None
+
+    def verdict(self, by_side, cfg):
+        """by_side: {"left": [names seen], "right": [...]}."""
+        known = self.known(cfg)
+        if not known:
+            return None
+
+        def hits(names, keys):
+            return sum(1 for n in names or [] if len(_ign(n)) >= 3 and any(_close(_ign(n), k) for k in keys))
+
+        same = hits(by_side.get("left"), known["left"]) + hits(by_side.get("right"), known["right"])
+        other = hits(by_side.get("left"), known["right"]) + hits(by_side.get("right"), known["left"])
+        if other and not same or other >= same + 2:
+            return "swapped"
+        if same and not other or same >= other + 2:
+            return "same"
+        return None
+
+    def in_match(self, by_side, cfg, now):
+        """A read of the match's names: True when the teams should swap sides
+        now (the other team's names seen on each side several reads running)."""
+        v = self.verdict(by_side, cfg)
+        if v == "same":
+            self._wrong = 0
+            return False
+        if v != "swapped" or now - self._swapped_at < self.HOLD:
+            return False
+        self._wrong += 1
+        if self._wrong < self.NEEDED:
+            return False
+        self._wrong, self._swapped_at = 0, now
+        return True

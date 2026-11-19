@@ -448,7 +448,9 @@ function teamForm(side) {
       <button type="button" onclick="document.getElementById('${side}-upload').click()" style="flex:0 0 auto">Upload…</button>
       <input type="file" id="${side}-upload" accept="image/*" hidden></div>
     <label>Series wins</label>
-    <div class="wins"><button data-w="-1">−</button><b id="${side}-wins">0</b><button data-w="1">+</button></div>`;
+    <div class="wins"><button data-w="-1">−</button><b id="${side}-wins">0</b><button data-w="1">+</button></div>
+    <label title="Seen in agent select or the match on the other side, the teams swap sides by themselves: logos, series wins, maps, timeouts and who attacks first">One player's in-game name</label>
+    <input id="${side}-ign" placeholder="e.g. Bearrett" maxlength="40"><small class="note" id="${side}-ign-note"></small>`;
 }
 for (const el of document.querySelectorAll(".team")) {
   const side = el.dataset.side;
@@ -457,6 +459,7 @@ for (const el of document.querySelectorAll(".team")) {
     post("/api/config", { [side]: { [input.dataset.k]: input.value } })));
   el.querySelectorAll("[data-w]").forEach(b => b.addEventListener("click", () =>
     post("/api/config", { [side]: { wins: Math.max(0, state.config[side].wins + Number(b.dataset.w)) } })));
+  $(`${side}-ign`).addEventListener("change", e => post("/api/team-ign", { side, ign: e.target.value.trim() }));
   $(`${side}-upload`).addEventListener("change", e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -688,6 +691,10 @@ function apply(s) {
     const el = document.querySelector(`.team[data-side=${side}]`);
     el.querySelectorAll("[data-k]").forEach(input => setIfIdle(input, cfg[side][input.dataset.k]));
     $(`${side}-wins`).textContent = cfg[side].wins;
+    const auto = s.auto_sides || {}, a = auto[side] || {};
+    setIfIdle($(`${side}-ign`), a.ign || "");
+    $(`${side}-ign-note`).textContent = (a.roster ? `+ ${a.roster} in-game ID${a.roster === 1 ? "" : "s"} from the GFX Engine's Teams tab. ` : "") +
+      (side === "left" && auto.status ? auto.status : "");
     $(`${side}-logo-img`).src = "/" + cfg[side].logo;
     $(`to-${side}`).textContent = cfg.timeouts[side];
     $(`call-${side}`).classList.toggle("on", cfg.timeout_call === side);
