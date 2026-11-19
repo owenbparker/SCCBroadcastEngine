@@ -37,6 +37,7 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .dinr > i { font-family: "S27 Din", sans-serif; font-weight: 400; transform: translateY(.06em); }
 .nar > i { font-family: "S27 Narrow", sans-serif; font-weight: 700; transform: translateY(.06em); }
 .rub > i { font-family: "S27 Rubik", sans-serif; font-weight: 400; transform: translateY(.03em); }
+.rubl > i { font-family: "S27 Rubik", sans-serif; font-weight: 300; transform: translateY(.03em); }
 .rubm > i { font-family: "S27 Rubik", sans-serif; font-weight: 500; transform: translateY(.03em); }
 
 /* ---------------------------------------------------------------- top bar */
@@ -108,10 +109,7 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 #banner .bar { left: 0; top: 0; bottom: 0; width: 8px; border-radius: 9px 0 0 9px; background: var(--c, #fff); }
 #banner .txt { left: 8px; right: 0; top: 0; bottom: 0; font-size: 20px; letter-spacing: .12em; }
 
-/* maps (top left) and event (top right), as in the round phase screenshot */
-#maps { left: -6px; top: 1px; width: 682px; height: 22px; border-radius: 25px; background: var(--navy); border: 1px solid #fff; }
-#maps .m { top: 3px; height: 15px; font-size: 14px; gap: 6px; display: flex; }
-#maps .m img { position: static; height: 15px; width: auto; max-width: 24px; object-fit: contain; }
+/* the event strip (top right), as in the round phase screenshot */
 /* event strip + sponsor box: owen's "Sponsor Rotation Full" fig (one outline
    round both, the strip running into the box) and "... Condensed" (the box
    alone once the strip tucks away); under the top bar in the stack */
@@ -128,7 +126,7 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .phase { transition: opacity .35s ease, transform .5s cubic-bezier(.2, .8, .2, 1); }
 #side-left.away { transform: translateX(-360px); }
 #side-right.away { transform: translateX(360px); }
-/* the maps and event strips come out from behind the top bar for the buy
+/* the event strip comes out from behind the top bar for the buy
    phase and go back behind it 20 seconds into the round (scc2027.js setStrips) */
 #top { z-index: 5; }
 #event { z-index: 3; }
@@ -137,8 +135,7 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 #sponsor::before { content: ""; position: absolute; left: -1px; top: 0; width: 12px; height: 23px; background: var(--navy); }
 #event.tucked ~ #sponsor::before, #event.hidden ~ #sponsor::before { opacity: 0; }
 #sponsor::before { transition: opacity .3s ease; }
-#maps, #event { transition: opacity .45s ease, transform .6s cubic-bezier(.2, .8, .2, 1); }
-#maps.tucked { opacity: 0; transform: translateX(631px); }
+#event { transition: opacity .45s ease, transform .6s cubic-bezier(.2, .8, .2, 1); }
 #event.tucked { opacity: 0; transform: translateX(400px); }
 #board.away { transform: translateY(470px); }
 #board.away-quick { transition: none; }
@@ -202,24 +199,25 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 #teamIzquierda, #teamDerecha { left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
 
 /* ---------------------------------------------------- spectated player cam */
-html.scc2027 #scc-cam { left: 477px; top: 766px; width: 312px; height: 175px; }
+/* owen's "New Camera Placement" fig (2026-11-19): 278 x 156 at 477,849 */
+html.scc2027 #scc-cam { left: 477px; top: 849px; width: 278px; height: 156px; }
 html.scc2027 #scc-cam .scc-frame { background: #000; box-shadow: inset 0 0 0 1px #fff; }
 html.scc2027 #scc-cam video, html.scc2027 #scc-cam iframe, html.scc2027 #scc-cam .scc-dummy {
   left: 1px; top: 1px; width: calc(100% - 2px); height: calc(100% - 2px); }
-html.scc2027 #scc-cam .scc-band { left: 1px; right: 1px; bottom: 1px; height: 40px; background: rgba(17, 24, 35, .25);
-  font-family: "S27 Narrow", sans-serif; font-weight: 700; font-size: 24px; }
-html.scc2027 #scc-cam .scc-bar { flex: 0 0 72px; margin-right: 0; background: none; }
+html.scc2027 #scc-cam .scc-band { left: 1px; right: 1px; bottom: 1px; height: 36px; background: rgba(17, 24, 35, .5);
+  font-family: "S27 Narrow", sans-serif; font-weight: 700; font-size: 21px; }
+html.scc2027 #scc-cam .scc-bar { flex: 0 0 64px; margin-right: 0; background: none; }
 html.scc2027 #scc-cam .scc-name { transform: translateY(.04em); }
-html.scc2027 #scc-cam .scc-kda { font-family: "S27 Din", sans-serif; font-weight: 400; font-size: 20px; padding: 0 22px 0 10px;
+html.scc2027 #scc-cam .scc-kda { font-family: "S27 Din", sans-serif; font-weight: 400; font-size: 18px; padding: 0 20px 0 10px;
   transform: translateY(.06em); letter-spacing: 0; }
-html.scc2027 #scc-cam .s27-agent { left: 1px; bottom: 1px; width: 50px; height: 50px; border: 1px solid #fff; border-radius: 0 0 25px 0;
+html.scc2027 #scc-cam .s27-agent { left: 1px; bottom: 1px; width: 45px; height: 45px; border: 1px solid #fff; border-radius: 0 0 22px 0;
   background: var(--side) center / cover no-repeat; z-index: 2; position: absolute; }
-html.scc2027 #scc-cam .scc-kills { left: 1px; bottom: 50px; height: 37px; width: 51px; padding: 0 0 0 8px; gap: 3px; z-index: 1;
-  border-radius: 0 25px 0 0; transform: translateY(12px);
-  background: linear-gradient(90deg, var(--side), rgba(0, 0, 0, 0) 90%); font-family: "S27 Rubik", sans-serif; font-size: 22px; }
+html.scc2027 #scc-cam .scc-kills { left: 1px; bottom: 45px; height: 33px; width: 46px; padding: 0 0 0 7px; gap: 3px; z-index: 1;
+  border-radius: 0 22px 0 0; transform: translateY(12px);
+  background: linear-gradient(90deg, var(--side), rgba(0, 0, 0, 0) 90%); font-family: "S27 Rubik", sans-serif; font-size: 20px; }
 html.scc2027 #scc-cam .scc-kills.on { transform: none; }
 html.scc2027 #scc-cam .scc-kills svg { display: none; }
-html.scc2027 #scc-cam .scc-kills::before { content: ""; width: 19px; height: 19px; flex: 0 0 19px; background: #fff;
+html.scc2027 #scc-cam .scc-kills::before { content: ""; width: 17px; height: 17px; flex: 0 0 17px; background: #fff;
   -webkit-mask: url("assets/target.png") center / contain no-repeat; mask: url("assets/target.png") center / contain no-repeat; }
 html.scc2027 #scc-cam .scc-kills span { position: static; transform: none; }
 html.scc2027 #scc-cam.s27-off { opacity: 0 !important; transform: translateY(24px) !important; }
@@ -278,6 +276,12 @@ html.scc2027 #scc-cam.s27-off { opacity: 0 !important; transform: translateY(24p
 #tracker .now { top: 15px; width: 38px; height: 94px; border: 1px solid var(--gold); }
 /* the line where the sides swap (owen's Buy Phase file): the colours the
    teams play the next half in, red over blue */
+/* the series' maps, after the rounds (owen's "SCC Round with MAPS / MAP WINS" figs) */
+#tracker .map { top: 21px; width: 144px; height: 83px; border: 1px solid #acacac; background: #0d121a center / cover no-repeat; overflow: hidden; }
+#tracker .map::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(13, 18, 26, .15), rgba(13, 18, 26, .55)); }
+#tracker .map .logo { left: 60px; top: 12px; width: 23px; height: 24px; object-fit: contain; }
+#tracker .map .big { font-size: 20px; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+#tracker .map .small { font-size: 10px; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
 #tracker .half { top: 36px; width: 1px; height: 68px; margin-left: .5px; background: linear-gradient(var(--right), var(--left)); }
 
 /* ------------------------------------------------------------- Ace */
@@ -334,16 +338,18 @@ html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold);
 #rwin .bg { left: 0; top: 42px; width: 1573px; height: 381px; background: url("assets/roundwin-bg.png") center / 100% 100% no-repeat; opacity: 0; }
 #rwin .flash { left: 0; top: 42px; width: 1573px; height: 381px; transform: scaleX(0); border-radius: 10px;
   background: linear-gradient(90deg, rgba(249, 194, 41, 0), #F9C229 20%, #F9C229 79.8%, rgba(249, 194, 41, 0)); }
-#rwin .crest { left: 704px; top: 0; width: 165px; height: 165px; background: url("assets/roundwin-logo.png") center / contain no-repeat; opacity: 0; transform: scale(.6); }
+#rwin .crest { left: 704px; top: 0; width: 165px; height: 165px; background: url("assets/roundwin-logo.png") center / contain no-repeat;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .45)); opacity: 0; transform: scale(.6); }
 #rwin .word { font-size: 200px; color: #fff; opacity: 0; transform: translateY(30px); }
 #rwin .bar { left: 116px; top: 377px; width: 1370px; height: 90px; transform: scaleX(0);
   background: linear-gradient(90deg, rgba(249, 194, 41, 0), #F9C229 20%, #F9C229 80%, rgba(249, 194, 41, 0)); }
 #rwin .who { left: 116px; top: 377px; width: 1370px; height: 90px; display: flex; align-items: center; justify-content: center; gap: 28px;
   font: 52px/1 "S27 Gridnik", sans-serif; color: var(--navy); text-transform: uppercase; opacity: 0; transition: opacity .4s linear; }
 #rwin .who span, #rwin .who img { position: static; }
-#rwin .who .side { min-width: 110px; text-align: right; }
-#rwin .who .team { min-width: 110px; text-align: left; }
-#rwin .who .logo { height: 58px; width: auto; }
+#rwin .who .how.hidden { display: none; }
+/* (dots between the team, the side and how they won) */
+#rwin .who span + span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--navy); margin: 0 28px 0 0; vertical-align: middle; transform: translateY(-.1em); }
 #rwin.on .flash { animation: rwFlash .75s ease-out forwards; }
 #rwin.on .bg { opacity: 1; transition: opacity .3s ease .25s; }
 #rwin.on .crest { opacity: 1; transform: none; transition: opacity .3s ease .35s, transform .45s cubic-bezier(.2, 1.4, .4, 1) .35s; }
