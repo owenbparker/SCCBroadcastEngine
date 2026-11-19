@@ -364,7 +364,7 @@
   var boardTimes = { total: null, from: 0, until: 0 };
   function wantBoard(m, cfg) {
     if ((cfg.show || {}).scoreboard) return true;
-    if (m.phase === "buy") return true;
+    if (m.phase === "buy") return !!SET("board.buy_phase", true);
     if (m.phase === "combat" || m.phase === "end") return false;
     var total = (m.score.left || 0) + (m.score.right || 0), now = Date.now();
     if (boardTimes.total !== null && total > boardTimes.total) { boardTimes.from = now + 6600; boardTimes.until = now + 34500; }
@@ -390,10 +390,10 @@
     }
     if (on) {
       tabsAway(true);
-      boardTimer = setTimeout(function () { toggle(ui.board, "away", false); }, PANELS_MS);
+      boardTimer = setTimeout(function () { toggle(ui.board, "away", false); }, SET("board.swap", PANELS_MS / 1000) * 1000);
     } else {
       toggle(ui.board, "away", true);
-      boardTimer = setTimeout(function () { tabsAway(false); }, PANELS_MS);
+      boardTimer = setTimeout(function () { tabsAway(false); }, SET("board.swap", PANELS_MS / 1000) * 1000);
     }
   }
 
@@ -408,12 +408,43 @@
   //  - condensed bar: COND_S into the round or at the plant; full again in
   //    the buy phase.
   var STRIPS_S = 20, COND_S = 20.5, HOLD_MS = 1200;
+
+  // HUD Builder > Game HUDs (owen, 2026-11-19): these timings are settings
+  // there (saved live, no code change), and the editor's Show buttons put
+  // the HUD in any of its states to see and change every part.
+  var HE = window.HudEdit || null;
+  function SET(k, d) { return HE && HE.get ? HE.get(k, d) : d; }
+  function EDIT_STATE() { return HE && HE.state ? HE.state() : ""; }
+  var AUTO = [["auto", "By the round (normal)"], ["full", "Always full"], ["condensed", "Always small"]];
+  if (HE && HE.settings) HE.settings([
+    { group: "Top bar", key: "top.mode", label: "Top bar", type: "choice", def: "auto", options: AUTO, help: "Full in the buy phase, small once the round is under way." },
+    { group: "Top bar", key: "top.condense_at", label: "Goes small this long into the round", type: "num", def: COND_S, unit: "s", min: 0, step: 0.5 },
+    { group: "Top bar", key: "top.condense_on_plant", label: "Goes small when the spike is planted", type: "bool", def: true },
+    { group: "Top bar", key: "round.settle", label: "A new phase counts once it's held for", type: "num", def: HOLD_MS / 1000, unit: "s", min: 0, step: 0.1, help: "Stops the bar going in and out on a stray read." },
+    { group: "Maps and event strips", key: "strips.mode", label: "Strips", type: "choice", def: "auto", options: [["auto", "By the round (normal)"], ["shown", "Always out"], ["hidden", "Always tucked away"]] },
+    { group: "Maps and event strips", key: "strips.tuck_at", label: "Tuck away this long into the round", type: "num", def: STRIPS_S, unit: "s", min: 0, step: 0.5 },
+    { group: "Maps and event strips", key: "strips.tuck_on_plant", label: "Tuck away when the spike is planted", type: "bool", def: true },
+    { group: "Scoreboard", key: "board.buy_phase", label: "Scoreboard up in the buy phase", type: "bool", def: true },
+    { group: "Scoreboard", key: "board.swap", label: "Player tabs and scoreboard swap over in", type: "num", def: 0.45, unit: "s", min: 0, step: 0.05 },
+    { group: "Round win and Ace", key: "rwin.on", label: "Show the round win banner", type: "bool", def: true },
+    { group: "Round win and Ace", key: "rwin.seconds", label: "Round win stays up for", type: "num", def: 4.7, unit: "s", min: 1, step: 0.1 },
+    { group: "Round win and Ace", key: "ace.seconds", label: "Ace stays up for", type: "num", def: 7, unit: "s", min: 1, step: 0.5 }
+  ]);
+  if (HE && HE.states) HE.states([
+    { id: "everything", label: "Everything", help: "Every part at once: scoreboard, player tabs, strips, spike, round win, Ace" },
+    { id: "round", label: "Round in play", help: "Full top bar, strips out, player tabs" },
+    { id: "condensed", label: "Top bar small", help: "The bar 20 s into a round" },
+    { id: "planted", label: "Spike planted" },
+    { id: "buy", label: "Buy phase", help: "The scoreboard up" },
+    { id: "rwin", label: "Round win" },
+    { id: "ace", label: "Ace" }
+  ]);
   var rd = { phase: "", raw: "", rawAt: 0, startAt: 0, cond: false, strips: true };
   function trackRound(m, now) {
     var raw = m.phase === "buy" ? "buy" : m.phase === "combat" || m.phase === "end" ? "combat" : "";
     if (raw !== rd.raw) { rd.raw = raw; rd.rawAt = now; }
     var was = rd.phase;
-    if (raw && raw !== rd.phase && (now - rd.rawAt >= HOLD_MS || !rd.phase)) rd.phase = raw;
+    if (raw && raw !== rd.phase && (now - rd.rawAt >= SET("round.settle", HOLD_MS / 1000) * 1000 || !rd.phase)) rd.phase = raw;
     if (rd.phase === "combat" && was !== "combat") {
       // Under way from when it was first read so; joined mid-round (nothing
       // before it), by the round's clock if it reads 1:40 or under.
@@ -422,12 +453,14 @@
     if (rd.phase === "buy" || !rd.phase) { rd.cond = false; rd.strips = true; rd.startAt = 0; }
     else {
       var t = (now - rd.startAt) / 1000;
-      if (bomb.on || t >= COND_S) rd.cond = true;
-      if (bomb.on || t >= STRIPS_S) rd.strips = false;
+      if ((bomb.on && SET("top.condense_on_plant", true)) || t >= SET("top.condense_at", COND_S)) rd.cond = true;
+      if ((bomb.on && SET("strips.tuck_on_plant", true)) || t >= SET("strips.tuck_at", STRIPS_S)) rd.strips = false;
     }
   }
   function wantStrips(m, cfg) {
     if ((cfg.show || {}).scoreboard) return true;
+    var mode = SET("strips.mode", "auto");
+    if (mode === "shown" || mode === "hidden") return mode === "shown";
     return rd.strips;
   }
   function setStrips(on) {
@@ -435,6 +468,8 @@
   }
   function wantCondensed() {
     if (params.get("condensed")) return params.get("condensed") === "1";
+    var mode = SET("top.mode", "auto");
+    if (mode === "full" || mode === "condensed") return mode === "condensed";
     return rd.cond;
   }
 
@@ -652,8 +687,24 @@
     setText(ui.aceLine, info.n ? ordinal(info.n) + " ACE OF THE MAP" : "ROUND " + (info.round || ""));
     ui.ace.classList.add("on");
     clearTimeout(ace.timer);
-    ace.until = Date.now() + 7000;
-    ace.timer = setTimeout(function () { ui.ace.classList.remove("on"); }, 7000);
+    var aceMs = SET("ace.seconds", 7) * 1000;
+    ace.until = Date.now() + aceMs;
+    ace.timer = setTimeout(function () { ui.ace.classList.remove("on"); }, aceMs);
+  }
+  // The round win and the Ace held up while HUD Builder shows them.
+  var shownByEditor = { rwin: false, ace: false };
+  function editorShows(s, st) {
+    var wantR = st === "rwin" || st === "everything", wantA = st === "ace" || st === "everything";
+    if (wantR && !shownByEditor.rwin) showRoundWin(s, "left", true);
+    if (!wantR && shownByEditor.rwin) { clearTimeout(rwin.inner); ui.rwin.classList.remove("on", "text", "out"); }
+    shownByEditor.rwin = wantR;
+    if (wantA && !shownByEditor.ace) {
+      var o = s.game.match.observed || { team: "left", slot: 1 };
+      showAce(s, { team: o.team || "left", slot: o.slot || 1, n: 1, round: s.game.match.round });
+      clearTimeout(ace.timer);
+    }
+    if (!wantA && shownByEditor.ace) ui.ace.classList.remove("on");
+    shownByEditor.ace = wantA;
   }
   function checkAce(s) {
     var a = s.game.match.ace, cfg = s.config, first = !ace.ready;
@@ -688,6 +739,7 @@
     if (!was || BOARD_ONLY) return;
     var side = now[0] > was[0] ? "left" : now[1] > was[1] ? "right" : "";
     if (!side || now[0] + now[1] !== was[0] + was[1] + 1) return;   // (one round: not a map reset or a correction)
+    if (!SET("rwin.on", true)) return;
     showRoundWin(s, side, false);
   }
   function showRoundWin(s, side, hold) {
@@ -702,8 +754,9 @@
     R.classList.add("on");
     rwin.inner = setTimeout(function () { R.classList.add("text"); }, 750);
     if (hold) return;
-    rwin.out = setTimeout(function () { R.classList.add("out"); }, 4700);
-    rwin.timer = setTimeout(function () { R.classList.remove("on", "text", "out"); }, 5100);
+    var rwMs = SET("rwin.seconds", 4.7) * 1000;
+    rwin.out = setTimeout(function () { R.classList.add("out"); }, rwMs);
+    rwin.timer = setTimeout(function () { R.classList.remove("on", "text", "out"); }, rwMs + 400);
   }
 
   // ------------------------------------------------------------- listen
@@ -770,10 +823,12 @@
     trackBomb(m, now);
     // Condensed (owen's "Condensed with Hole"): 20.5 seconds into
     // the round, or once the spike is down; the full bar again in the buy phase.
-    var cond = !BOARD_ONLY && wantCondensed();
+    var st = EDIT_STATE();   // (HUD Builder's Show buttons, only while editing)
+    var cond = !BOARD_ONLY && (st ? st === "condensed" || st === "planted" : wantCondensed());
+    var bombShown = st ? st === "planted" || st === "everything" : bomb.on;
     toggle(ui.topBox, "cond", cond);
-    toggle(ui.topBox, "planted", bomb.on);
-    setBomb(bomb.on && !BOARD_ONLY);
+    toggle(ui.topBox, "planted", bombShown);
+    setBomb(bombShown && !BOARD_ONLY);
     setBanner(s);
     checkRoundWin(s);
 
@@ -784,7 +839,7 @@
     toggle(ui.event, "hidden", !ev || BOARD_ONLY);
     setSponsors(cfg.sponsors, cfg.sponsor_seconds);
     toggle(ui.event, "solo", ui.sponsor.classList.contains("hidden"));   // (no sponsor box to run under)
-    setStrips(wantStrips(m, cfg));
+    setStrips(st ? st === "everything" || st === "round" || st === "buy" : wantStrips(m, cfg));
 
     // Players.
     g.players.forEach(function (p) {
@@ -800,6 +855,7 @@
     // Listen In, Ace (they take the place of the board / the cam).
     setListen(s);
     checkAce(s);
+    editorShows(s, st);
     var aceOn = ui.ace.classList.contains("on");
     var board = !NO_BOARD && !listenSide && wantBoard(m, cfg);
     if (NO_BOARD && !BOARD_ONLY) {
@@ -810,7 +866,10 @@
         sent.away = b2;
         toggle(ui.side.left, "away", b2); toggle(ui.side.right, "away", b2);
       }
-    } else setBoard(board);
+    } else if (st === "everything") {   // (the board and the player tabs both out, to see and change them)
+      boardOn = "editor"; clearTimeout(boardTimer);
+      toggle(ui.board, "away", false); toggle(ui.side.left, "away", false); toggle(ui.side.right, "away", false);
+    } else setBoard(st ? st === "buy" : board);
 
     // The spectated player's cam (web/cams.js), restyled by scc2027.css.
     if (typeof window.renderCams === "function" && !BOARD_ONLY) {

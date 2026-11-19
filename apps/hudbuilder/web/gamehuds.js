@@ -112,8 +112,9 @@ window.GameHuds = (function () {
   function replay() {
     const cur = (info && info.state) || "";
     const list = (info && info.states) || [];
-    const back = list.find(x => x.id === "live-off") ? "live-off" : "";
-    send("state", { id: cur === "" ? (list[0] || {}).id || "" : back });
+    // (somewhere else and back, so its animations play again)
+    const other = list.find(x => x.id !== cur && x.id !== "everything" && x.id !== "buy") || list.find(x => x.id !== cur) || { id: "" };
+    send("state", { id: other.id });
     setTimeout(() => send("state", { id: cur }), 900);
   }
 
