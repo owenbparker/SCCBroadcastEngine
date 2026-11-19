@@ -245,12 +245,8 @@ body.embedded .engine-card, body.embedded #ed-game { display: none !important; }
 .gh-card:hover { transform: translateY(-2px); }
 .gh-card.off { opacity: .55; cursor: default; transform: none; }
 .gh-card button { margin-top: 8px; }
-.he-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
-.he-test { width: 190px !important; }
 #he-status.warn { color: var(--x-accent); font-weight: 600; }
 .ed-left.ed-panel { overflow: hidden; display: flex; flex-direction: column; }
-.he-tools { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 8px; }
-.he-parts { flex: 1; min-height: 0; overflow-y: auto; }
 .he-row { min-height: 26px; padding-top: 3px; padding-bottom: 3px; font-size: 12.5px; }
 .he-row.gone .lname { opacity: .5; font-style: italic; }
 .he-caret { width: 12px; flex: 0 0 12px; color: var(--x-muted); font-size: 10px; text-align: center; }
@@ -266,8 +262,58 @@ body.embedded .engine-card, body.embedded #ed-game { display: none !important; }
 #he-props .warn { color: var(--x-accent); }
 .he-versions { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
 .he-ver { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--x-fill); }
-.he-states { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; z-index: 2; }
 .he-chip.on { background: var(--x-accent) !important; color: var(--x-on-accent) !important; }
-.he-reveal { margin-left: auto; color: #ddd; }
 .he-setting.changed label > span, .he-setting.changed .check { color: var(--x-accent); }
 .he-setting p { margin: 2px 0 0; }
+
+/* The Game HUD editor: laid out like GFX Engine's Composer (layers | canvas | properties). */
+.page.he-page { padding: 10px; display: grid; grid-template-columns: 270px minmax(0, 1fr) 310px; gap: 10px; overflow: hidden; }
+.he-col { background: var(--x-surface); border: var(--x-card-border); border-radius: 10px; box-shadow: var(--x-card-shadow); min-height: 0; backdrop-filter: var(--x-blur); }
+.he-left { display: flex; flex-direction: column; overflow: hidden; }
+.he-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; min-height: 44px; border-bottom: 1px solid var(--x-line); }
+.he-head h3 { font-size: 18px !important; font-weight: 700; }
+.he-add { flex-wrap: nowrap; }
+.he-designs { max-height: 26%; overflow-y: auto; padding: 6px; border-bottom: 1px solid var(--x-line); flex: 0 0 auto; }
+.he-design { display: flex; flex-direction: column; padding: 6px 10px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
+.he-design:hover { background: var(--x-hover); }
+.he-design.on { background: color-mix(in srgb, var(--x-accent) 22%, transparent); border-color: color-mix(in srgb, var(--x-accent) 55%, transparent); }
+.he-design b { font-weight: 600; font-size: 13px; } .he-design span { font-size: 11px; color: var(--x-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.he-add { display: flex; gap: 2px; align-items: center; }
+.he-add button { width: 23px; padding: 3px 0 !important; min-width: 0; font-size: 13px; }
+.he-add select { width: 64px !important; padding: 3px 4px !important; font-size: 11.5px; }
+.he-tools { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 4px; }
+.he-tools .row-gap { display: flex; align-items: center; gap: 6px; }
+.he-layers { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 6px 10px; }
+.he-ly { display: flex; align-items: center; gap: 5px; padding: 3px 6px; min-height: 28px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; user-select: none; font-size: 12.5px; }
+.he-ly:hover { background: var(--x-hover); }
+.he-ly.sel { background: color-mix(in srgb, var(--x-accent) 22%, transparent); border-color: color-mix(in srgb, var(--x-accent) 60%, transparent); }
+.he-ly .eye { width: 18px; flex: 0 0 18px; text-align: center; cursor: pointer; opacity: .8; font-size: 12px; }
+.he-ly .eye.off { opacity: .25; }
+.he-ly .ic { width: 16px; flex: 0 0 16px; text-align: center; color: var(--x-muted); font-size: 11px; }
+.he-ly .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.he-ly .tag { font-size: 10px; border-radius: 3px; padding: 0 4px; border: 1px solid; flex: 0 0 auto; }
+.he-ly .tag.ch { color: var(--x-accent); border-color: color-mix(in srgb, var(--x-accent) 55%, transparent); }
+.he-ly .tag.new { color: #39d98a; border-color: #1f6b47; }
+.he-ly .tag.del { color: var(--x-red); border-color: color-mix(in srgb, var(--x-red) 55%, transparent); }
+.he-ly.gone .nm { opacity: .5; font-style: italic; }
+.he-ly.deleted .nm { opacity: .5; text-decoration: line-through; }
+.he-ly .rst { padding: 0 5px !important; font-size: 11px; min-width: 0; }
+.he-mid { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 6px; }
+.he-bar { display: flex; align-items: center; gap: 6px; min-height: 36px; flex-wrap: nowrap; }
+.he-bar > * { flex-shrink: 0; }
+.he-bar > #he-pos { flex-shrink: 6; min-width: 0; overflow: hidden; white-space: nowrap; }
+.he-bar .he-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1 !important; min-width: 60px; }
+.he-bar select { width: auto !important; }
+.he-states { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.he-states:empty { display: none; }
+.he-canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; border-radius: 10px; border: 1px solid var(--x-line); background: #131315; }
+.he-props { overflow-y: auto; padding-bottom: 24px; }
+.he-props .sect h3 { font-size: 16px !important; font-weight: 700; margin: 4px 0 0; }
+.he-props .sect h4 { font-size: 13px; color: var(--x-text); font-weight: 700; margin: 2px 0 0; }
+.he-props .row-gap { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.he-props .grow { flex: 1; }
+.he-props .grid4 { gap: 6px; }
+.he-props .gone-note { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--x-red) 14%, transparent); color: var(--x-text); }
+.he-shapes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.he-shapes button { padding: 4px 0 !important; font-size: 15px; min-width: 0; }
+.he-shapes button.on { background: var(--x-accent) !important; color: var(--x-on-accent) !important; }

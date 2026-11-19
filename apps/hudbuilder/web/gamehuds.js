@@ -1,7 +1,8 @@
 // HUD Builder > Game HUDs: every built-in game HUD (League, VALORANT, CoD,
 // Rocket League, Smash, Overwatch, each of their designs and profiles) opened
 // as it is, to change in place: move, resize, recolour, other fonts and
-// pictures, hide parts, add boxes, text and pictures. Save puts it on air.
+// pictures, hide or delete parts, add shapes, text and pictures. Save puts it on air.
+// Laid out like GFX Engine's Composer: HUDs and Layers | the canvas | properties.
 //
 // The HUD runs in the frame as itself (its own data and code), with
 // /hudedit.js doing the picking and dragging inside it; this page is the
@@ -39,12 +40,22 @@ window.GameHuds = (function () {
   }
 
   // --- the editor -------------------------------------------------------------------
+  // The game's other HUDs, to hop between (like Composer's Graphics list).
+  function renderDesigns() {
+    const box = $("#he-designs");
+    if (!box || !open) return;
+    box.replaceChildren(...open.designs.map(d => h("div", { class: "he-design" + (d === open.design ? " on" : ""), title: d.what || "",
+      onclick: () => edit(open.g, d) }, h("b", {}, `${open.title} · ${d.name}`), d.what ? h("span", {}, d.what) : null)));
+  }
+
   function edit(g, d) {
-    open = { game: g.game, title: g.title, port: g.port, design: d };
+    if (open && open.design === d) return;
+    if (open && info && info.dirty && !confirm("Open another HUD without saving your changes to this one?")) return;
+    open = { game: g.game, title: g.title, port: g.port, design: d, designs: g.designs, g };
     info = null; nodes = []; added = []; frameReady = false; collapsed = new Set(); filter = ""; testView = ""; autoState = false;
-    $("#he-title").textContent = `${g.title} · ${d.name}`;
-    $("#he-test").value = "";
+    $("#he-title").textContent = d.name; $("#he-title").title = `${g.title} · ${d.name}`;
     $("#he-search").value = "";
+    renderDesigns();
     load();
     location.hash = "#/hud-edit";
   }
@@ -75,7 +86,7 @@ window.GameHuds = (function () {
     if (m.hudedit === "saved") toast(`Saved: ${open.title} · ${open.design.name} is on air with your changes`);
     if (m.hudedit === "loaded") send("tree");
     renderBar();
-    if (m.hudedit === "live") return renderPos();
+    if (m.hudedit === "live") { renderBarPos(); return renderPos(); }
     renderParts();
     renderProps();
   });
@@ -102,16 +113,13 @@ window.GameHuds = (function () {
     const cur = (info && info.state) || "";
     if (frameReady && !autoState && list.some(x => x.id === "everything")) { autoState = true; send("state", { id: "everything" }); }
     const chip = (id, label, title) => h("button", { class: "small he-chip" + (cur === id ? " on" : ""), title: title || "", onclick: () => send("state", { id }) }, label);
-    box.replaceChildren(...[
-      h("span", { class: "muted small" }, "Show:"),
-      chip("", "Live", "As it is on air right now"),
-      ...list.map(x => chip(x.id, x.label, x.help)),
-      list.length ? h("button", { class: "small ghost", title: "Play this state's animations again", onclick: replay }, "▶ Replay") : null,
-      h("label", { class: "check small he-reveal" }, h("input", { type: "checkbox", checked: !!(info && info.revealAll), onchange: e => { showHidden = e.target.checked; $("#he-hidden").checked = showHidden; send("reveal", { on: e.target.checked }); } }), " Show every part")].filter(Boolean));
+    if (!list.length) return box.replaceChildren();
+    box.replaceChildren(h("span", { class: "muted small" }, "Show:"), chip("", "Live", "As it is on air right now"), ...list.map(x => chip(x.id, x.label, x.help)));
   }
   function replay() {
     const cur = (info && info.state) || "";
     const list = (info && info.states) || [];
+    if (!list.length) return send("replay");   // (no states of its own: its animations started again)
     // (somewhere else and back, so its animations play again)
     const other = list.find(x => x.id !== cur && x.id !== "everything" && x.id !== "buy") || list.find(x => x.id !== cur) || { id: "" };
     send("state", { id: other.id });
@@ -124,25 +132,42 @@ window.GameHuds = (function () {
     $("#he-save").disabled = !dirty;
     $("#he-discard").disabled = !dirty;
     $("#he-undo").disabled = !(info && info.canUndo);
+    $("#he-delete").disabled = !(info && info.selected && !info.selected.deleted);
+    renderBarPos();
     $("#he-redo").disabled = !(info && info.canRedo);
     if (frameReady) $("#he-status").textContent = dirty ? "Not saved yet" : "Saved · on air";
     $("#he-status").classList.toggle("warn", dirty);
   }
 
+  // What's picked and where, on the bar (like Composer's "70, 917 · 220×34").
+  function renderBarPos() {
+    const s = info && info.selected, t = $("#he-pos");
+    if (!t) return;
+    if (!s) return (t.textContent = "");
+    const r = s.added ? { x: s.item.x, y: s.item.y, w: s.item.w, h: s.item.h } : s.rect;
+    t.textContent = r ? `${Math.round(r.x)}, ${Math.round(r.y)} · ${Math.round(r.w)}×${Math.round(r.h)}` : "";
+  }
+
   // --- the parts list -------------------------------------------------------------
-  const ICON = { text: "T", picture: "▣", group: "▤", shape: "◆", box: "□" };
+  const ICON = { text: "T", picture: "🖼", group: "▤", shape: "◆", box: "□" };
+  const SHAPE_ICON = { rect: "▭", ellipse: "◯", triangle: "△", line: "╱", slant: "▱", star: "☆", arrow: "➜", chevron: "❯" };
   function renderParts() {
     const box = $("#he-parts");
     if (!box) return;
     const sel = info && info.selected;
     const rows = [];
-    if (added.length) {
-      rows.push(h("div", { class: "he-sub" }, "Added"));
-      added.forEach(a => rows.push(h("div", { class: "lrow" + (sel && sel.added === a.added ? " sel" : ""), onclick: () => send("select", { added: a.added }) },
-        h("span", { class: "lic" }, ICON[a.kind] || "□"), h("span", { class: "lname" }, a.name), a.shown ? null : h("span", { class: "lmeta" }, "hidden"))));
-      rows.push(h("div", { class: "he-sub" }, "The HUD"));
-    }
+    const eye = (off, onclick) => h("span", { class: "eye" + (off ? " off" : ""), title: off ? "Hidden on air: click to show it" : "Hide it on air (it stays in its place)", onclick: e => { e.stopPropagation(); onclick(); } }, "👁");
     const q = filter.trim().toLowerCase();
+    // Added layers on top (top layer first, as in Composer).
+    [...added].reverse().forEach(a => {
+      if (q && !a.name.toLowerCase().includes(q)) return;
+      rows.push(h("div", { class: "he-ly" + (sel && sel.added === a.added ? " sel" : ""), onclick: () => send("select", { added: a.added }) },
+        eye(a.hidden, () => send("toggle-hide", { added: a.added })),
+        h("span", { class: "ic" }, a.kind === "shape" ? SHAPE_ICON[a.shape || "rect"] || "▭" : ICON[a.kind] || "□"),
+        h("span", { class: "nm", title: a.name }, a.name),
+        a.behind ? h("span", { class: "tag ch", title: "Behind the HUD" }, "behind") : null,
+        h("span", { class: "tag new", title: "You added it" }, "added")));
+    });
     let skipBelow = Infinity;
     for (const n of nodes) {
       if (n.depth > skipBelow) continue;
@@ -150,14 +175,16 @@ window.GameHuds = (function () {
       if (!showHidden && !n.shown && !n.edited) { skipBelow = n.depth; continue; }
       if (q && !n.name.toLowerCase().includes(q)) continue;
       const shut = collapsed.has(n.sel);
-      if (shut && !q) skipBelow = n.depth;
+      if ((shut || n.deleted) && !q) skipBelow = n.depth;
       const on = sel && !sel.added && (sel.sel === n.sel);
-      rows.push(h("div", { class: "lrow he-row" + (on ? " sel" : "") + (n.shown ? "" : " gone"), style: { paddingLeft: (q ? 6 : 6 + n.depth * 12) + "px" },
+      rows.push(h("div", { class: "he-ly" + (on ? " sel" : "") + (n.deleted ? " deleted" : n.shown ? "" : " gone"), style: { paddingLeft: (q ? 6 : 4 + n.depth * 11) + "px" },
         onclick: () => send("select", { sel: n.sel }), title: n.sel },
-        n.kids && !q ? h("span", { class: "he-caret", onclick: e => { e.stopPropagation(); shut ? collapsed.delete(n.sel) : collapsed.add(n.sel); renderParts(); } }, shut ? "▸" : "▾") : h("span", { class: "he-caret" }),
-        h("span", { class: "lic" }, ICON[n.kind] || "□"),
-        h("span", { class: "lname" }, n.name),
-        n.edited ? h("span", { class: "he-dot", title: "Changed" }) : null));
+        n.kids && !q && !n.deleted ? h("span", { class: "he-caret", onclick: e => { e.stopPropagation(); shut ? collapsed.delete(n.sel) : collapsed.add(n.sel); renderParts(); } }, shut ? "▸" : "▾") : h("span", { class: "he-caret" }),
+        n.deleted ? null : eye(n.hidden, () => send("toggle-hide", { sel: n.sel })),
+        h("span", { class: "ic" }, ICON[n.kind] || "□"),
+        h("span", { class: "nm" }, n.name),
+        n.deleted ? h("button", { class: "small rst", title: "Put it back", onclick: e => { e.stopPropagation(); send("restore", { sel: n.sel }); } }, "Restore")
+          : n.edited ? h("span", { class: "tag ch", title: "Changed" }, "changed") : null));
     }
     if (!rows.length) rows.push(h("p", { class: "hint muted" }, frameReady ? "Nothing on screen here. Tick “Show every part”." : "Opening the HUD…"));
     const keep = box.scrollTop;
@@ -168,6 +195,8 @@ window.GameHuds = (function () {
   // --- the properties of what's picked ---------------------------------------------------
   const lab = (t, el) => h("label", {}, h("span", { class: "muted small" }, t), el);
   const grid = (...kids) => h("div", { class: "grid2" }, ...kids.filter(Boolean));
+  const grid4 = (...kids) => h("div", { class: "grid4" }, ...kids.filter(Boolean));
+  const btn = (text, onclick, attrs) => h("button", Object.assign({ class: "small", onclick }, attrs || {}), text);
   const sect = (title, ...kids) => h("div", { class: "sect" }, title ? h("h4", {}, title) : null, ...kids.filter(Boolean));
   const set = props => send("set", { props });
   function numIn(k, value, placeholder, onSet, attrs) {
@@ -205,9 +234,13 @@ window.GameHuds = (function () {
     const s = info && info.selected;
     if (!open) return box.replaceChildren();
     if (!s) {
-      box.replaceChildren(h("div", { class: "props-head" }, h("h3", {}, open.design.name), h("span", { class: "muted" }, open.title)),
-        sect(null,
-          h("p", { class: "muted small" }, "Click any part of the HUD to change it: drag to move, pull the corners to resize (Shift stretches), arrow keys nudge (Shift: 10 px)."),
+      box.replaceChildren(
+        sect(null, h("h3", {}, open.design.name), h("span", { class: "muted small" }, `${open.title} HUD`),
+          lab("Test view (the HUD's own previews)", h("input", { value: testView, placeholder: "e.g. rwin=1", dataset: { k: "testview" },
+            onchange: e => { const v = e.target.value.trim(); if (v === testView) return; if (info && info.dirty && !confirm("Reopening the HUD drops the changes you haven't saved. Go on?")) { e.target.value = testView; return; } testView = v; load(); } }))),
+        sect("How it works",
+          h("p", { class: "muted small" }, "Click any part of the HUD to change it: drag to move, pull the corners to resize (Shift stretches), arrow keys nudge (Shift: 10 px). Delete takes it off (Restore in Layers, or Ctrl+Z, puts it back)."),
+          h("p", { class: "muted small" }, "T, ▭, ◯, ▱, 🖼 and More above Layers add text, shapes and pictures of your own over the HUD (Ctrl+D duplicates one)."),
           h("p", { class: "muted small" }, "Its live data stays as it is: names, scores, timers and pictures from the game keep coming in."),
           h("p", { class: "muted small" }, "Parts that only show now and then (the scoreboard, a round win, the Ace): use the Show buttons above the HUD (Everything shows them all), or tick “Show every part”."),
           h("p", { class: "muted small" }, "Save puts your changes on air at once, everywhere this HUD is shown. Every saved version is kept (Versions).")),
@@ -241,34 +274,50 @@ window.GameHuds = (function () {
     })));
   }
 
+  const KIND_NAME = { text: "Text part", picture: "Picture part", group: "Group", shape: "Shape part", box: "Box part" };
   function partProps(s) {
     const r = s.rule || {}, now = s.now || {};
-    const out = [h("div", { class: "props-head" }, h("h3", { title: s.sel }, r.label || s.name || "Part"), h("span", { class: "muted" }, s.kind || ""))];
+    const out = [];
+    if (s.deleted || s.inDeleted) {
+      out.push(sect(null, h("h3", {}, r.label || s.name || "Part"),
+        h("div", { class: "gone-note small" }, s.deleted ? "Deleted: it isn't on air." : "The part it's in is deleted, so it isn't on air."),
+        h("div", { class: "row-gap" }, btn("Restore", () => send("restore", { sel: s.deleted ? s.sel : s.inDeleted }), { class: "small primary" }))));
+      return out;
+    }
+    renderPos.box = h("div", {});
     out.push(sect(null,
-      lab("Name (just for you)", h("input", { value: r.label || "", placeholder: s.name || "", dataset: { k: "label" }, onchange: e => set({ label: e.target.value.trim() || null }) })),
+      h("h3", { title: s.sel }, KIND_NAME[s.kind] || "Part"),
+      lab("Name", h("input", { value: r.label || "", placeholder: s.name || "", dataset: { k: "label" }, onchange: e => set({ label: e.target.value.trim() || null }) })),
+      renderPos.box,
       h("div", { class: "row-gap" },
-        s.parent ? h("button", { class: "small", onclick: () => send("select", { sel: s.parent }) }, "Pick the part around it") : null),
+        btn("Centre", () => s.rect && send("rect", { x: Math.round((1920 - s.rect.w) / 2), y: Math.round((1080 - s.rect.h) / 2) }), { title: "Centre on the HUD" }),
+        s.parent ? btn("Part around it", () => send("select", { sel: s.parent }), { title: "Pick the part this one is in" }) : null,
+        h("span", { class: "grow" }),
+        btn("Delete", () => send("delete"), { class: "small danger", title: "Take it off the HUD (Delete key). Restore or Ctrl+Z puts it back" })),
       s.similar ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: s.all, onchange: e => send("all", { on: e.target.checked }) }), ` The same for all ${s.similar} like it`) : null,
       s.exists ? null : h("p", { class: "small warn" }, "It isn't on the page right now. Changes are kept for when it is.")));
-    renderPos.box = h("div", { class: "grid2" });
-    out.push(sect("Position and size", renderPos.box,
-      s.rect ? h("p", { class: "muted small", id: "he-rect" }, rectText(s.rect)) : null));
     fillPos(s);
     out.push(sect("Show",
-      h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!r.hide, onchange: e => set({ hide: e.target.checked || null }) }), " Hide it on air"),
-      lab("Opacity %", numIn("op", r.op == null ? "" : Math.round(r.op * 100), Math.round((now.opacity == null ? 1 : now.opacity) * 100), v => set({ op: v == null ? null : Math.max(0, Math.min(100, v)) / 100 }), { min: 0, max: 100, step: 5 }))));
+      h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!r.hide, onchange: e => set({ hide: e.target.checked || null }) }), " Hide it on air (it keeps its place)")));
     if (s.hasText) {
       out.push(sect("Text",
         lab("Font", fontIn(r.font, now.font, v => set({ font: v }))),
-        grid(lab("Size (px)", numIn("size", r.size, now.size, v => set({ size: v }), { min: 1, step: 1 })),
-          lab("Weight", pickList("weight", WEIGHTS, r.weight, v => set({ weight: v })))),
+        h("div", { class: "grid3" }, lab("Size", numIn("size", r.size, now.size, v => set({ size: v }), { min: 1, step: 1 })),
+          lab("Weight", pickList("weight", WEIGHTS, r.weight, v => set({ weight: v }))),
+          lab("Tracking", numIn("spacing", r.spacing, now.spacing, v => set({ spacing: v }), { step: 0.5 }))),
         lab("Colour", colourIn("color", r.color, now.color, v => set({ color: v }))),
-        grid(lab("Letter spacing", numIn("spacing", r.spacing, now.spacing, v => set({ spacing: v }), { step: 0.5 })),
-          lab("Case", pickList("case", CASES, r.case, v => set({ case: v }))))));
+        lab("Case", pickList("case", CASES, r.case, v => set({ case: v })))));
     }
     out.push(sect(s.svg ? "Fill" : "Background",
       lab(s.svg ? "Fill colour" : "Background colour", colourIn("bg", r.bg, now.bg, v => set({ bg: v }))),
-      s.svg ? null : lab("Rounded corners (px)", numIn("radius", r.radius, now.radius, v => set({ radius: v }), { min: 0 }))));
+      s.svg ? null : lab("Corner radius", numIn("radius", r.radius, now.radius, v => set({ radius: v }), { min: 0 }))));
+    if (s.picture) {
+      out.push(sect("Picture",
+        h("div", { class: "row-gap" },
+          btn(r.img ? "Another picture…" : "Replace the picture…", () => upload("image/*,video/webm,video/mp4", name => set({ img: name, imgKind: s.picture }))),
+          r.img ? h("button", { class: "small ghost", onclick: () => set({ img: null }) }, "Back to the HUD's own") : null),
+        /logo|team|flag|agent|champ|hero|photo|crest/i.test(s.src || "") ? h("p", { class: "muted small" }, "This picture may come from the game data (a team logo, an agent…). A picture put here replaces it for every team.") : null));
+    }
     const motion = (now.motion || "");
     out.push(sect("Animation",
       h("p", { class: "muted small" }, motion ? `It animates: ${motion}.` : "No animation of its own (the part around it may have one)."),
@@ -276,27 +325,22 @@ window.GameHuds = (function () {
         lab("Wait before (seconds)", numIn("delay", r.delay, "as it is", v => set({ delay: v }), { min: 0, step: 0.05 }))),
       lab("Feel", pickList("ease", [["", "As it is"], ["snappy", "Snappy"], ["ease", "Smooth"], ["ease-out", "Slow at the end"], ["ease-in", "Slow at the start"], ["linear", "Even"], ["bounce", "Bounce"]], r.ease, v => set({ ease: v }))),
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!r.noanim, onchange: e => set({ noanim: e.target.checked || null }) }), " No animation (it just appears)"),
-      (info && info.states && info.states.length) ? h("p", { class: "muted small" }, "Press ▶ Replay above, or switch between the Show buttons, to watch it.") : null));
-    if (s.picture) {
-      out.push(sect("Picture",
-        h("div", { class: "row-gap" },
-          h("button", { class: "small", onclick: () => upload("image/*,video/webm,video/mp4", name => set({ img: name, imgKind: s.picture })) }, r.img ? "Another picture…" : "Replace the picture…"),
-          r.img ? h("button", { class: "small ghost", onclick: () => set({ img: null }) }, "Back to the HUD's own") : null),
-        /logo|team|flag|agent|champ|hero|photo|crest/i.test(s.src || "") ? h("p", { class: "muted small" }, "This picture may come from the game data (a team logo, an agent…). A picture put here replaces it for every team.") : null));
-    }
-    out.push(sect(null, h("button", { class: "small danger", disabled: !Object.keys(r).filter(k => k !== "svg").length, onclick: () => send("reset-part") }, "Undo all changes to this part")));
+      h("p", { class: "muted small" }, (info && info.states && info.states.length) ? "Press ▶ Replay, or switch between the Show buttons, to watch it." : "Press ▶ Replay to watch it.")));
+    out.push(sect(null, h("button", { class: "small", disabled: !Object.keys(r).filter(k => k !== "svg").length, onclick: () => send("reset-part") }, "Undo all changes to this part")));
     return out;
   }
-  const rectText = r => `On the page: ${r.x}, ${r.y} · ${r.w} × ${r.h}`;
   function fillPos(s) {
-    const r = s.rule || {}, b = renderPos.box;
+    const r = s.rule || {}, b = renderPos.box, now = s.now || {};
     if (!b) return;
+    const rc = s.rect || { x: 0, y: 0, w: 0, h: 0 };
+    const place = (k, v) => v != null && send("rect", { [k]: v });
     b.replaceChildren(
-      lab("Move across (px)", numIn("x", r.x || 0, 0, v => set({ x: v || null }))),
-      lab("Move down (px)", numIn("y", r.y || 0, 0, v => set({ y: v || null }))),
-      lab("Width %", numIn("sx", Math.round((r.sx == null ? 1 : r.sx) * 1000) / 10, 100, v => set({ sx: v == null ? null : v / 100 }), { min: 1, step: 1 })),
-      lab("Height %", numIn("sy", Math.round((r.sy == null ? 1 : r.sy) * 1000) / 10, 100, v => set({ sy: v == null ? null : v / 100 }), { min: 1, step: 1 })),
-      lab("Rotate °", numIn("rot", r.rot || 0, 0, v => set({ rot: v || null }))));
+      grid4(lab("X", numIn("x", rc.x, "", v => place("x", v))), lab("Y", numIn("y", rc.y, "", v => place("y", v))),
+        lab("W", numIn("w", rc.w, "", v => place("w", v), { min: 1 })), lab("H", numIn("h", rc.h, "", v => place("h", v), { min: 1 }))),
+      grid4(lab("Opacity", numIn("op", r.op == null ? "" : r.op, Math.round((now.opacity == null ? 1 : now.opacity) * 100) / 100, v => set({ op: v == null ? null : Math.max(0, Math.min(1, v)) }), { min: 0, max: 1, step: 0.05 })),
+        lab("Rotate °", numIn("rot", r.rot || 0, 0, v => set({ rot: v || null }))),
+        lab("Width %", numIn("sx", Math.round((r.sx == null ? 1 : r.sx) * 1000) / 10, 100, v => set({ sx: v == null ? null : v / 100 }), { min: 1, step: 1 })),
+        lab("Height %", numIn("sy", Math.round((r.sy == null ? 1 : r.sy) * 1000) / 10, 100, v => set({ sy: v == null ? null : v / 100 }), { min: 1, step: 1 }))));
   }
   // (while dragging: just the numbers)
   function renderPos() {
@@ -305,44 +349,69 @@ window.GameHuds = (function () {
     if (s.added) return renderProps();
     if (document.activeElement && renderPos.box && renderPos.box.contains(document.activeElement)) return;
     fillPos(s);
-    const t = $("#he-rect");
-    if (t && s.rect) t.textContent = rectText(s.rect);
   }
 
+  const SHAPES = [["rect", "Rectangle"], ["ellipse", "Circle"], ["slant", "Slanted box"], ["triangle", "Triangle"], ["line", "Line"], ["arrow", "Arrow"], ["chevron", "Chevron"], ["star", "Star"]];
   function addedProps(s) {
     const a = s.item || {};
-    const kind = { box: "Box", text: "Text", image: "Picture" }[a.type] || "";
-    const out = [h("div", { class: "props-head" }, h("h3", {}, s.name), h("span", { class: "muted" }, `${kind} you added`))];
-    out.push(sect(null, lab("Name (just for you)", h("input", { value: a.label || "", dataset: { k: "label" }, onchange: e => set({ label: e.target.value.trim() || null }) }))));
+    const shape = a.type === "box" ? "rect" : a.shape || "rect";
+    const isShape = a.type === "box" || a.type === "shape";
+    const kind = isShape ? "Shape" : { text: "Text", image: "Picture" }[a.type] || "";
+    const out = [];
+    out.push(sect(null,
+      h("h3", {}, kind + " layer"),
+      lab("Name", h("input", { value: a.label || "", placeholder: s.name, dataset: { k: "label" }, onchange: e => set({ label: e.target.value.trim() || null }) })),
+      grid4(lab("X", numIn("ax", a.x, 0, v => set({ x: v || 0 }))), lab("Y", numIn("ay", a.y, 0, v => set({ y: v || 0 }))),
+        lab("W", numIn("aw", a.w, 200, v => set({ w: Math.max(1, v || 1) }), { min: 1 })), lab("H", numIn("ah", a.h, 60, v => set({ h: Math.max(1, v || 1) }), { min: 1 }))),
+      grid4(lab("Opacity", numIn("aop", a.op == null ? 1 : a.op, 1, v => set({ op: v == null || v >= 1 ? null : Math.max(0, v) }), { min: 0, max: 1, step: 0.05 })),
+        lab("Rotate °", numIn("arot", a.rot || 0, 0, v => set({ rot: v || null })))),
+      h("div", { class: "row-gap" },
+        btn("Duplicate", () => send("duplicate"), { title: "Ctrl+D" }),
+        btn("Fill", () => set({ x: 0, y: 0, w: 1920, h: 1080 }), { title: "Full screen" }),
+        btn("Centre", () => set({ x: Math.round((1920 - (a.w || 0)) / 2), y: Math.round((1080 - (a.h || 0)) / 2) }), { title: "Centre on the HUD" }),
+        h("span", { class: "grow" }),
+        btn("Delete", () => send("delete"), { class: "small danger", title: "Delete key" }))));
+    if (isShape) {
+      const fill = a.fill || a.bg || "#ffffff";
+      out.push(sect("Shape",
+        h("div", { class: "he-shapes" }, ...SHAPES.map(([k, t]) => h("button", { class: "small" + (k === shape ? " on" : ""), title: t,
+          onclick: () => set(a.type === "box" ? { type: "shape", shape: k, fill: fill, bg: null } : { shape: k }) }, SHAPE_ICON[k]))),
+        lab(shape === "line" ? "Colour" : "Fill", colourIn("afill", fill, "#ffffff", v => set({ fill: v || "#ffffff", bg: null }))),
+        shape === "line" ? null : lab("Second colour (a gradient)", colourIn("afill2", a.fill2, "", v => set({ fill2: v }))),
+        a.fill2 && shape !== "line" ? lab("Gradient angle °", numIn("aangle", a.angle, 90, v => set({ angle: v }))) : null,
+        shape === "line"
+          ? grid(lab("Thickness", numIn("asw", a.strokeWidth, 6, v => set({ strokeWidth: v }), { min: 1 })),
+                 h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!a.radius, onchange: e => set({ radius: e.target.checked ? 1 : null }) }), " Round ends"))
+          : grid(lab("Border", colourIn("astroke", a.stroke || a.borderColor, "#ffffff", v => set({ stroke: v, borderColor: null }))),
+                 lab("Border width", numIn("asw", a.strokeWidth != null ? a.strokeWidth : a.border, 0, v => set({ strokeWidth: v, border: null }), { min: 0 }))),
+        shape === "rect" ? lab("Corner radius", numIn("aradius", a.radius, 0, v => set({ radius: v }), { min: 0 })) : null,
+        shape === "slant" ? lab("Slant (px, minus leans the other way)", numIn("aslant", a.slant, Math.round((a.h || 60) * 0.5), v => set({ slant: v }))) : null));
+    }
     if (a.type === "text") out.push(sect("Text",
       h("textarea", { rows: 2, dataset: { k: "text" }, onchange: e => set({ text: e.target.value }) }, a.text || ""),
       lab("Font", fontIn(a.font, "", v => set({ font: v }))),
-      grid(lab("Size (px)", numIn("size", a.size, 32, v => set({ size: v }), { min: 1 })), lab("Weight", pickList("weight", WEIGHTS, a.weight, v => set({ weight: v })))),
+      h("div", { class: "grid3" }, lab("Size", numIn("size", a.size, 32, v => set({ size: v }), { min: 1 })),
+        lab("Weight", pickList("weight", WEIGHTS, a.weight, v => set({ weight: v }))),
+        lab("Tracking", numIn("spacing", a.spacing, 0, v => set({ spacing: v }), { step: 0.5 }))),
       lab("Colour", colourIn("color", a.color, "#ffffff", v => set({ color: v }))),
-      grid(lab("Line up", pickList("align", [["left", "Left"], ["center", "Centre"], ["right", "Right"]], a.align || "left", v => set({ align: v }))),
+      grid(lab("Align", pickList("align", [["left", "Left"], ["center", "Centre"], ["right", "Right"]], a.align || "left", v => set({ align: v }))),
         lab("Case", pickList("case", CASES, a.case, v => set({ case: v })))),
-      lab("Letter spacing", numIn("spacing", a.spacing, 0, v => set({ spacing: v }), { step: 0.5 }))));
-    if (a.type === "image") out.push(sect("Picture",
-      h("button", { class: "small", onclick: () => upload("image/*,video/webm,video/mp4", name => set({ img: name })) }, "Another picture…"),
-      lab("Fit", pickList("fit", [["contain", "Whole picture"], ["cover", "Fill the box"], ["fill", "Stretch"]], a.fit || "contain", v => set({ fit: v })))));
-    out.push(sect("Position and size",
-      grid(lab("X", numIn("ax", a.x, 0, v => set({ x: v || 0 }))), lab("Y", numIn("ay", a.y, 0, v => set({ y: v || 0 }))),
-        lab("Width", numIn("aw", a.w, 200, v => set({ w: Math.max(1, v || 1) }))), lab("Height", numIn("ah", a.h, 60, v => set({ h: Math.max(1, v || 1) }))),
-        lab("Rotate °", numIn("arot", a.rot || 0, 0, v => set({ rot: v || null }))),
-        lab("Opacity %", numIn("aop", a.op == null ? 100 : Math.round(a.op * 100), 100, v => set({ op: v == null ? null : Math.max(0, Math.min(100, v)) / 100 }), { min: 0, max: 100, step: 5 })))));
-    out.push(sect(a.type === "text" ? "Box behind the text" : "Look",
-      lab(a.type === "text" ? "Background colour" : a.type === "box" ? "Colour" : "Background colour", colourIn("abg", a.bg, a.type === "box" ? "#ffffff" : "", v => set({ bg: v }))),
-      grid(lab("Rounded corners", numIn("aradius", a.radius, 0, v => set({ radius: v }), { min: 0 })),
-        lab("Outline (px)", numIn("aborder", a.border, 0, v => set({ border: v }), { min: 0 }))),
-      +a.border ? lab("Outline colour", colourIn("abc", a.borderColor, "#ffffff", v => set({ borderColor: v }))) : null));
-    out.push(sect(null,
+      h("div", { class: "row-gap" },
+        h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!a.italic, onchange: e => set({ italic: e.target.checked || null }) }), " Italic"),
+        h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!a.shadow, onchange: e => set({ shadow: e.target.checked || null }) }), " Shadow")),
+      lab("Background colour", colourIn("abg", a.bg, "", v => set({ bg: v })))));
+    if (a.type === "image") out.push(sect("Source",
+      btn("Another picture…", () => upload("image/*,video/webm,video/mp4", name => set({ img: name }))),
+      lab("Fit", pickList("fit", [["contain", "Fit inside"], ["cover", "Fill and crop"], ["fill", "Stretch"]], a.fit || "contain", v => set({ fit: v }))),
+      grid(lab("Corner radius", numIn("aradius", a.radius, 0, v => set({ radius: v }), { min: 0 })),
+        lab("Border width", numIn("aborder", a.border, 0, v => set({ border: v }), { min: 0 }))),
+      +a.border ? lab("Border colour", colourIn("abc", a.borderColor, "#ffffff", v => set({ borderColor: v }))) : null));
+    out.push(sect("Layer",
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!a.behind, onchange: e => set({ behind: e.target.checked || null }) }), " Behind the HUD"),
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!a.hide, onchange: e => set({ hide: e.target.checked || null }) }), " Hide it on air"),
       h("div", { class: "row-gap" },
-        h("button", { class: "small", onclick: () => send("order", { id: a.id, by: 1 }) }, "Forward"),
-        h("button", { class: "small", onclick: () => send("order", { id: a.id, by: -1 }) }, "Back"),
-        h("button", { class: "small", onclick: () => send("add", { item: Object.assign({}, a, { id: undefined, x: (a.x || 0) + 20, y: (a.y || 0) + 20 }) }) }, "Duplicate"),
-        h("button", { class: "small danger", onclick: () => send("remove-added", { id: a.id }) }, "Delete"))));
+        btn("Bring forward", () => send("order", { id: a.id, by: 1 })),
+        btn("Send back", () => send("order", { id: a.id, by: -1 })))));
     return out;
   }
 
@@ -372,8 +441,12 @@ window.GameHuds = (function () {
 
   function addItem(type) {
     const make = item => send("add", { item: Object.assign({ x: 860, y: 480, w: 200, h: 60, type }, item) });
-    if (type === "box") make({ bg: "#ffffff", w: 240, h: 80 });
-    if (type === "text") make({ text: "Text", size: 40, weight: 700, color: "#ffffff", w: 300, h: 60, label: "" });
+    const SIZE = { rect: [240, 80], ellipse: [140, 140], slant: [300, 70], triangle: [140, 120], line: [300, 20], arrow: [220, 90], chevron: [160, 80], star: [140, 140] };
+    if (SIZE[type]) {
+      const [w, hh] = SIZE[type];
+      return send("add", { item: { type: "shape", shape: type, fill: "#ffffff", x: Math.round((1920 - w) / 2), y: Math.round((1080 - hh) / 2), w, h: hh } });
+    }
+    if (type === "text") make({ text: "Text", size: 40, weight: 700, color: "#ffffff", w: 300, h: 60, x: 810, y: 510 });
     if (type === "image") upload("image/*,video/webm,video/mp4", (name, f) => {
       const img = new Image();
       const done = (w, hh) => { const k = Math.min(1, 600 / w, 400 / hh); make({ img: name, w: Math.round(w * k), h: Math.round(hh * k), label: f.name.replace(/\.[^.]+$/, "") }); };
@@ -411,6 +484,9 @@ window.GameHuds = (function () {
   // --- wiring ---------------------------------------------------------------------------
   function wire() {
     $("#he-back").onclick = () => { location.hash = "#/game-huds"; };
+    $("#he-delete").onclick = () => send("delete");
+    $("#he-replay").onclick = replay;
+    $("#he-add-more").onchange = e => { const v = e.target.value; e.target.value = ""; if (v) addItem(v); };
     $("#he-undo").onclick = () => send("undo");
     $("#he-redo").onclick = () => send("redo");
     $("#he-save").onclick = () => send("save");
@@ -418,7 +494,6 @@ window.GameHuds = (function () {
     $("#he-versions-btn").onclick = versions;
     $$("[data-he-add]").forEach(b => { b.onclick = () => addItem(b.dataset.heAdd); });
     $("#he-bg").onchange = e => { $("#he-canvas").dataset.bg = e.target.value; };
-    $("#he-test").onchange = e => { testView = e.target.value.trim(); if (open) { if (info && info.dirty && !confirm("Reopening the HUD drops the changes you haven't saved. Go on?")) return; load(); } };
     $("#he-search").oninput = e => { filter = e.target.value; renderParts(); };
     $("#he-hidden").onchange = e => { showHidden = e.target.checked; send("reveal", { on: showHidden }); renderParts(); };
     $("#he-refresh").onclick = () => send("tree");
@@ -436,7 +511,8 @@ window.GameHuds = (function () {
       else if (e.key === "ArrowUp") m = { hudedit: "nudge", dx: 0, dy: -step };
       else if (e.key === "ArrowDown") m = { hudedit: "nudge", dx: 0, dy: step };
       else if (e.key === "Escape") m = { hudedit: "select", sel: null };
-      else if ((e.key === "Delete" || e.key === "Backspace") && info && info.selected && info.selected.added) m = { hudedit: "remove-added", id: info.selected.added.toString() };
+      else if ((e.key === "Delete" || e.key === "Backspace") && info && info.selected) m = { hudedit: "delete" };
+      else if (mod && /^d$/i.test(e.key) && info && info.selected && info.selected.added) m = { hudedit: "duplicate" };
       if (m) { e.preventDefault(); post(m); }
     });
     addEventListener("beforeunload", e => { if (info && info.dirty) { e.preventDefault(); e.returnValue = ""; } });
