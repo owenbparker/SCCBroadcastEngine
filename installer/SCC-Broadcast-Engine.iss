@@ -138,7 +138,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Tmp, App: String;
-  Code: Integer;
+  Code, Size: Integer;
 begin
   Result := DownloadLatest;  { silent installs skip the Ready page }
   if Result <> '' then
@@ -150,8 +150,17 @@ begin
   RunHidden(ExpandConstant('{sys}\taskkill.exe'), '/IM {#ExeName} /F');
   Sleep(800);
 
-  Code := RunHidden('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '''
+  if FileSize(Tmp + '\{#ZipName}', Size) then
+    Log('Downloaded ' + IntToStr(Size) + ' bytes');
+  Code := RunHidden('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference=''Stop''; Expand-Archive -LiteralPath '''
     + Tmp + '\{#ZipName}'' -DestinationPath ''' + Tmp + '\new'' -Force"');
+  if not FileExists(Tmp + '\new\{#ExeName}') then begin
+    { Expand-Archive can stop without saying why (a Windows that won't load
+      its module): Windows' own tar unpacks zips too. }
+    Log('Expand-Archive gave code ' + IntToStr(Code) + ' and no app; unpacking with tar');
+    ForceDirectories(Tmp + '\new');
+    Code := RunHidden(ExpandConstant('{sys}\tar.exe'), '-xf "' + Tmp + '\{#ZipName}" -C "' + Tmp + '\new"');
+  end;
   if (Code <> 0) or not FileExists(Tmp + '\new\{#ExeName}') then begin
     Result := 'Couldn''t unpack the download (code ' + IntToStr(Code) + ').';
     Exit;
