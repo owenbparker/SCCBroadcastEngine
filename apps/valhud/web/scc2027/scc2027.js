@@ -166,6 +166,7 @@
   // owen's "Main with Hole" / "Condensed with Hole" figs: two halves with a
   // hole in the middle (890..1030) where the game's own timer shows; screen
   // coordinates throughout.
+  el("ol t", top); el("ol b", top);   // (the outline carries on over the hole, owen)
   ["l", "r"].forEach(function (k) { var h = el("half " + k, top); el("fill", h); el("edge", h); });
   el("div l", top); el("div r", top);
   ui.top = {

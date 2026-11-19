@@ -45,6 +45,11 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
    shows; the outline runs team colour -> white toward the middle. */
 #top { left: 0; top: 0; width: 1920px; height: 72px; pointer-events: none; }
 #top .half { top: 0; height: 72px; overflow: hidden; }
+#top .ol { left: 625px; width: 670px; height: 1px; background: linear-gradient(90deg, var(--left), #fff 50%, var(--right)); }
+#top .ol.t { top: 0; }
+#top .ol.b { top: 71px; }
+#top .ol { transition: left .5s cubic-bezier(.2, .8, .2, 1), width .5s cubic-bezier(.2, .8, .2, 1); }
+#top.cond .ol { left: 710px; width: 501px; }
 #top .half.l { left: 625px; width: 265px; border-radius: 10px 0 0 10px;
   background: linear-gradient(90deg, var(--left), #fff) 0 0 / calc(100% + 70px) 100% no-repeat; }
 #top .half.r { left: 1030px; width: 265px; border-radius: 0 10px 10px 0;
