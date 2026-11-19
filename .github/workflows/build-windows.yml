@@ -20,6 +20,15 @@ on:
 permissions:
   contents: write
 
+# Main's builds run one at a time. Each one publishes the latest release and
+# then installs "the latest release" to test the installer; two at once (merges
+# minutes apart) swapped "latest" under the other's download and its install
+# test failed ("Couldn't unpack the download"). A newer merge waiting behind a
+# running build may replace an older waiting one: main holds both changes.
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && 'release-main' || format('run-{0}', github.run_id) }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-latest
