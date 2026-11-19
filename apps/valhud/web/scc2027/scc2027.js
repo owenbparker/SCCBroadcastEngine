@@ -180,7 +180,10 @@
   ui.top.logoL.alt = ui.top.logoR.alt = "";
   ui.top.pipsL.style.setProperty("--c", COL.left);
   ui.top.pipsR.style.setProperty("--c", COL.right);
-  ui.planted = el("", stage); ui.planted.id = "planted";
+  // The planted spike: the Default 2026 HUD's spike icon, slid up into the
+  // bar's hole (over the game's own) and flashing faster as it runs down.
+  ui.bomb = el("", stage); ui.bomb.id = "bomb";
+  ui.bombIcon = el("icon", ui.bomb);
   // The round win graphic: owen's "Round Win Graphic SCC" fig (1573 x 467),
   // a #F9C229 flash, then the panel; the winning team in the yellow bar as
   // in the Default 2026 HUD (side, logo, tricode).
@@ -302,7 +305,7 @@
     return { el: t, cam: cam, logo: logo, name: nm, side: "left", slot: n + 1 };
   });
 
-  if (BOARD_ONLY) [top, ui.planted, ui.banner, ui.maps, ui.event, ui.sponsor, ui.side.left, ui.side.right, ui.ace, ui.listen]
+  if (BOARD_ONLY) [top, ui.bomb, ui.banner, ui.maps, ui.event, ui.sponsor, ui.side.left, ui.side.right, ui.ace, ui.listen]
     .forEach(function (e) { e.classList.add("hidden"); });
 
   // ---------------------------------------------------------- sponsors
@@ -394,34 +397,84 @@
     }
   }
 
-  // The maps and event strips (owen, 2026-11-18): out from behind the top
-  // bar in the buy phase, back behind it 20 seconds into the round; out
-  // between maps too (no round being played).
-  var STRIPS_MS = 20000, combatAt = 0;
-  function wantStrips(m, cfg) {
-    if ((cfg.show || {}).scoreboard || m.phase === "buy") { combatAt = 0; return true; }
-    if (m.phase === "combat") {
-      // By the round clock (1:40 a round: out until 1:20); the spike down, in.
-      if (m.spike && m.spike.state === "planted") return false;
-      if (m.timer > 0 && m.timer <= 100) return 100 - m.timer < STRIPS_MS / 1000;
-      if (!combatAt) combatAt = Date.now();   // (no clock read: from when the round was seen)
-      return Date.now() - combatAt < STRIPS_MS;
+  // The round, as the top bar goes by it (owen, 2026-11-19: the bar kept
+  // coming in and out). A read of the phase only counts once it's held for
+  // HOLD_MS (one missed or stray BUY PHASE banner read changes nothing), the
+  // round's clock runs from when it was first seen under way (not from the
+  // timer read, which goes stale while the spike's down), and once a round
+  // has condensed the bar it stays condensed until the next buy phase.
+  //  - maps/event strips: out in the buy phase, tucked STRIPS_S into the
+  //    round or at the plant;
+  //  - condensed bar: COND_S into the round or at the plant; full again in
+  //    the buy phase.
+  var STRIPS_S = 20, COND_S = 20.5, HOLD_MS = 1200;
+  var rd = { phase: "", raw: "", rawAt: 0, startAt: 0, cond: false, strips: true };
+  function trackRound(m, now) {
+    var raw = m.phase === "buy" ? "buy" : m.phase === "combat" || m.phase === "end" ? "combat" : "";
+    if (raw !== rd.raw) { rd.raw = raw; rd.rawAt = now; }
+    var was = rd.phase;
+    if (raw && raw !== rd.phase && (now - rd.rawAt >= HOLD_MS || !rd.phase)) rd.phase = raw;
+    if (rd.phase === "combat" && was !== "combat") {
+      // Under way from when it was first read so; joined mid-round (nothing
+      // before it), by the round's clock if it reads 1:40 or under.
+      rd.startAt = was === "buy" ? rd.rawAt : m.timer > 0 && m.timer <= 100 ? now - (100 - m.timer) * 1000 : now;
     }
-    combatAt = 0;
-    return m.phase !== "end";
+    if (rd.phase === "buy" || !rd.phase) { rd.cond = false; rd.strips = true; rd.startAt = 0; }
+    else {
+      var t = (now - rd.startAt) / 1000;
+      if (bomb.on || t >= COND_S) rd.cond = true;
+      if (bomb.on || t >= STRIPS_S) rd.strips = false;
+    }
+  }
+  function wantStrips(m, cfg) {
+    if ((cfg.show || {}).scoreboard) return true;
+    return rd.strips;
   }
   function setStrips(on) {
     toggle(ui.maps, "tucked", !on); toggle(ui.event, "tucked", !on);
   }
-
-  var condensed = false;
-  function wantCondensed(m, planted) {
+  function wantCondensed() {
     if (params.get("condensed")) return params.get("condensed") === "1";
-    if (m.phase === "combat") condensed = planted || (m.timer > 0 && m.timer <= 100 ? 100 - m.timer >= COND_AT : condensed);
-    else if (m.phase !== "end") condensed = false;   // (the round's end keeps it as it was)
-    return condensed;
+    return rd.cond;
   }
-  var COND_AT = 20.5;
+
+  // The spike (owen, 2026-11-19): up as soon as it's read planted, and kept
+  // up through every flicker of that read (the game's icon flashes) until
+  // the round's over and the game's own 6/7 second timer is back in the hole
+  // (or the buy phase, or 10 seconds after the round's score has gone up).
+  var bomb = { on: false, at: 0, timer: null, score: "", scoredAt: 0, backAt: 0, flash: null, lit: -1 };
+  function trackBomb(m, now) {
+    var seen = m.spike && m.spike.state === "planted";
+    var score = (m.score.left || 0) + ":" + (m.score.right || 0);
+    if (rd.phase === "buy" || !rd.phase) { bomb.on = false; return; }
+    if (seen && !bomb.on) {
+      bomb.on = true; bomb.at = now; bomb.timer = m.timer; bomb.score = score; bomb.scoredAt = 0; bomb.backAt = 0;
+      return;
+    }
+    if (!bomb.on) return;
+    if (seen) { bomb.timer = m.timer; bomb.backAt = 0; }
+    if (score !== bomb.score && !bomb.scoredAt) bomb.scoredAt = now;
+    // the game's own timer read again, a fresh 0:0x (not the one left from before the plant)
+    var back = !seen && m.timer > 0 && m.timer <= 9 && m.timer !== bomb.timer;
+    bomb.backAt = back ? bomb.backAt || now : 0;
+    if ((bomb.backAt && now - bomb.backAt >= 400) || (bomb.scoredAt && now - bomb.scoredAt >= 10000)) bomb.on = false;
+  }
+  function setBomb(on) {
+    if (on === ui.bomb.classList.contains("on")) return;
+    toggle(ui.bomb, "on", on);
+    clearInterval(bomb.flash); bomb.flash = null; bomb.lit = -1;
+    ui.bombIcon.classList.remove("dim");
+    if (!on) return;
+    // the Default 2026 flashing: every second for 20 s, every half second
+    // for 18 s, then three times a second (the spike's 45 seconds)
+    bomb.flash = setInterval(function () {
+      var e = (Date.now() - bomb.at) / 1000;
+      var n = e < 20 ? Math.floor(e) : e < 38 ? 20 + Math.floor((e - 20) / .5) : 56 + Math.floor(Math.min(e - 38, 7) / (1 / 3));
+      if (n === bomb.lit) return;
+      bomb.lit = n;
+      toggle(ui.bombIcon, "dim", n % 2 === 1);
+    }, 50);
+  }
 
   // -------------------------------------------------------------- top
   function setPips(box, need, won) {
@@ -711,14 +764,16 @@
     setPips(T.pipsL, need, Math.min(need, cfg.left.wins || 0));
     setPips(T.pipsR, need, Math.min(need, cfg.right.wins || 0));
     setText(T.rnd, "ROUND " + Math.max(1, m.round || (m.score.left || 0) + (m.score.right || 0) + 1));
-    var planted = m.spike && m.spike.state === "planted";
     // (no clock: the game's own timer shows through the bar's hole)
+    var now = Date.now();
+    trackRound(m, now);
+    trackBomb(m, now);
     // Condensed (owen's "Condensed with Hole"): 20.5 seconds into
     // the round, or once the spike is down; the full bar again in the buy phase.
-    var cond = !BOARD_ONLY && wantCondensed(m, planted);
+    var cond = !BOARD_ONLY && wantCondensed();
     toggle(ui.topBox, "cond", cond);
-    toggle(ui.topBox, "planted", planted);
-    toggle(ui.planted, "on", planted && !cond && !BOARD_ONLY);
+    toggle(ui.topBox, "planted", bomb.on);
+    setBomb(bomb.on && !BOARD_ONLY);
     setBanner(s);
     checkRoundWin(s);
 

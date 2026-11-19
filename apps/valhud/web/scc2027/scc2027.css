@@ -89,11 +89,17 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .pips { top: 11px; height: 10px; width: 60px; display: flex !important; justify-content: center; gap: 6px; }
 .pips > b { position: static; width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 1px solid #fff; }
 .pips > b.won { background: var(--c); }
-/* the spike, under the timer once it's planted */
-#planted { left: 934px; top: 94px; width: 51px; height: 46px; background: url("assets/spike-planted.png") center / contain no-repeat;
-  filter: drop-shadow(0 0 6px rgba(238, 91, 88, .9)); opacity: 0; transition: opacity .3s; }
-#planted.on { opacity: 1; animation: s27-pulse 1s ease-in-out infinite alternate; }
-@keyframes s27-pulse { from { filter: drop-shadow(0 0 2px rgba(238, 91, 88, .6)); } to { filter: drop-shadow(0 0 12px rgba(238, 91, 88, 1)) brightness(1.15); } }
+/* the planted spike: the Default 2026 HUD's icon, box and take-in (slides
+   up into the box, over the game's own timer, where it sat in that HUD), flashing as it runs down */
+#bomb { left: 914px; top: 6px; width: 95px; height: 65px; overflow: hidden; background: url("assets/spike-default-bg.png") 0 0 / 95px 65px no-repeat; z-index: 6;
+  opacity: 0; visibility: hidden; transition: opacity .15s ease, visibility 0s linear .5s; }
+#bomb.on { opacity: 1; visibility: visible; transition: opacity .15s ease; }
+#bomb .icon { left: 12px; top: -1px; width: 70px; height: 70px; background: url("assets/spike-default.png") center / 70px 70px no-repeat;
+  transform: translateY(86px); transition: transform .5s ease;
+  filter: brightness(.142) sepia(1) hue-rotate(316deg) saturate(700%) brightness(200%) contrast(1); }
+#bomb.on .icon { transform: translateY(0); }
+#bomb .icon.dim { filter: brightness(.142) sepia(1) hue-rotate(316deg) saturate(700%) brightness(125%) contrast(1); }
+#top.planted .rnd { opacity: 0; }
 
 /* the banner under the top bar: timeouts, technical pause, round won */
 #banner { left: 710px; top: 80px; width: 500px; height: 40px; border-radius: 10px; background: var(--navy);
