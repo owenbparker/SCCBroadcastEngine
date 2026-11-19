@@ -102,12 +102,12 @@ window.GameHuds = (function () {
     const cur = (info && info.state) || "";
     if (frameReady && !autoState && list.some(x => x.id === "everything")) { autoState = true; send("state", { id: "everything" }); }
     const chip = (id, label, title) => h("button", { class: "small he-chip" + (cur === id ? " on" : ""), title: title || "", onclick: () => send("state", { id }) }, label);
-    box.replaceChildren(
+    box.replaceChildren(...[
       h("span", { class: "muted small" }, "Show:"),
       chip("", "Live", "As it is on air right now"),
       ...list.map(x => chip(x.id, x.label, x.help)),
       list.length ? h("button", { class: "small ghost", title: "Play this state's animations again", onclick: replay }, "▶ Replay") : null,
-      h("label", { class: "check small he-reveal" }, h("input", { type: "checkbox", checked: !!(info && info.revealAll), onchange: e => { showHidden = e.target.checked; $("#he-hidden").checked = showHidden; send("reveal", { on: e.target.checked }); } }), " Show every part"));
+      h("label", { class: "check small he-reveal" }, h("input", { type: "checkbox", checked: !!(info && info.revealAll), onchange: e => { showHidden = e.target.checked; $("#he-hidden").checked = showHidden; send("reveal", { on: e.target.checked }); } }), " Show every part")].filter(Boolean));
   }
   function replay() {
     const cur = (info && info.state) || "";
