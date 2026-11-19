@@ -62,6 +62,8 @@
                background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.55), rgba(255,255,255,0)); }
 </style>
 <style id="fonts"></style>
+<!-- HUD Builder > Game HUDs: the changes saved for this design, applied over the page -->
+<script src="/hudedit.js" data-design="lol-overlay"></script>
 </head>
 <body>
 <svg id="hud" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
@@ -162,6 +164,7 @@ function loadFonts(fonts) {
 function build(p, id) {
   profile = p;
   base = `/profiles/${id}/`;
+  if (window.HudEdit) HudEdit.setDesign(id);   // (each profile has its own HUD Builder changes)
   texts = []; logos = {}; pips = {}; diffs = {}; drakes = {}; objectiveEls = []; tints = {}; timers = null;
   videos = []; videoStandIns = [];
   hasScoreboard = false;

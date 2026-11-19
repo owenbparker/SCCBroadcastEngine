@@ -33,7 +33,9 @@ window.App = (function () {
   function show(page) {
     if (HUD_PAGES.includes(page) && !current) page = "huds";
     if (!$(`.page[data-page="${page}"]`)) page = "huds";
+    if (page === "hud-edit" && !GameHuds.isOpen()) page = "game-huds";
     const leaving = document.body.dataset.page;
+    if (leaving === "hud-edit" && page !== "hud-edit" && !GameHuds.leave()) { history.replaceState(null, "", "#/hud-edit"); return; }
     if (leaving === "design" && page !== "design") Editor.flush();
     // (My HUDs' pictures are read once, so read them again after an edit)
     if (page === "huds" && leaving && leaving !== "huds") Promise.resolve(Editor.flush()).then(refresh);
@@ -44,6 +46,9 @@ window.App = (function () {
     if (page === "control") renderControl();
     if (page === "live") renderLive();
     if (page === "settings") pollLog();
+    if (page === "game-huds") GameHuds.list();
+    if (page === "hud-edit") GameHuds.shown();
+    $$("#side .nav").forEach(a => { if (a.dataset.page === "game-huds" && page === "hud-edit") a.classList.add("on"); });
   }
   function route() { show(location.hash.replace(/^#\/?/, "") || "huds"); }
   addEventListener("hashchange", route);
@@ -255,5 +260,5 @@ window.App = (function () {
   const remember = () => { try { if (current) localStorage.setItem("hb-open", current); } catch (e) { /* */ } };
   setInterval(remember, 2000);
 
-  return { renamed, refresh };
+  return { renamed, refresh, state: () => state };
 })();

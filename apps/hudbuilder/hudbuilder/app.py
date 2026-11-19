@@ -18,7 +18,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import appearance, designimport, pack
+from . import appearance, designimport, hudedit, pack
 from .config import DATA_DIR, HUDS_DIR, web_file
 from .log import log, since
 from . import gamedata
@@ -229,6 +229,9 @@ def make_handler(app):
                     return self._file(full)
                 if path == "/api/state":
                     return self._json(app.state())
+                if path == "/api/game-huds":
+                    # Game HUDs: every built-in HUD design that can be edited in place (hudedit.py)
+                    return self._json({"games": hudedit.catalog((q.get("game") or [None])[0])})
                 m = re.fullmatch(r"/api/gamedata/(\w+)", path)
                 if m:
                     return self._json({"catalog": gamedata.catalog(m.group(1)), "samples": gamedata.samples(m.group(1)),
