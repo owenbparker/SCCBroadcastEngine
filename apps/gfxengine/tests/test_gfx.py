@@ -314,7 +314,14 @@ class StatsTests(unittest.TestCase):
         self.assertEqual((t["Left player 1 stat 1"], t["Left stat 3"], t["Row 4 title"], t["MVP row 4"], t["Left kills"],
                           t["Left total kills"]), ("12", "3", "FIRST KILLS", "2", "7", "12"))
         pics = dict(stats.rows(stats.read("valorant", f), True, {}, "auto", None, {"team": {"left": "champion"}, "player": {"left": "headshot"}})[1:])
-        self.assertEqual((pics["Left player 1 champion"], pics["MVP champion"]), ("agents/Jett.png", ""))
+        # (headshots picked, but no headshot for this player: their agent instead of an empty box)
+        self.assertEqual((pics["Left player 1 champion"], pics["MVP champion"]), ("agents/Jett.png", "agents/Jett.png"))
+        look = lambda side, name: {"name": name, "photo": "photos/owen.png"}
+        pics = dict(stats.rows(stats.read("valorant", f), True, {}, "auto", look, {"team": {"left": "headshot"}, "player": {"left": "headshot"}})[1:])
+        self.assertEqual((pics["Left player 1 headshot"], pics["Left player 1 champion"], pics["MVP champion"]),
+                         ("photos/owen.png", "", ""))
+        pics = dict(stats.rows(stats.read("valorant", f), True, {})[1:])
+        self.assertEqual((pics["Left player 1 headshot"], pics["Left player 1 champion"]), ("", "agents/Jett.png"))
         lol = stats.read("lol", {"P1 NAME": "A", "P1 KDA": "3/1/7", "KILLS LEFT": 3})
         self.assertEqual((lol["left"]["players"][0]["stats"], lol["left"]["score"]), ([3, 1, 7], 3))
         rl = dict(stats.rows(stats.read("rl", {"left_p1_name": "B", "left_p1_goals": 2}), False)[1:])
