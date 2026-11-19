@@ -41,6 +41,20 @@ class SeriesTests(unittest.TestCase):
         self.assertEqual([m["name"] for m in maps], ["Haven", "Lotus", "Sunset"])   # Sunset: the one left
         self.assertEqual([m["picked_by"] for m in maps], ["left", "right", ""])
 
+    def test_demo_match_maps_follow_map_bans(self):
+        # (owen, 2026-11-19: in the demo match the board's map cards kept
+        # the default Ascent / Bind / Haven)
+        from valhud.app import HudApp
+        from valhud.demo import DemoGame
+        steps = [{"map": m} for m in ("Abyss", "Bind", "Corrode", "Haven", "Lotus", "Summit", "")]
+        self.cfg.update({"best_of": 3, "output_dir": os.path.join(self.tmp.name, "out"),
+                         "map_bans": {"team_a": "left", "bo3": {"steps": steps}}})
+        app = HudApp(self.cfg, DemoGame(seed=1), mode="demo")
+        app.refresh()
+        maps = self.cfg.get()["maps"]
+        self.assertEqual([m["name"] for m in maps], ["Corrode", "Haven", "Sunset"])
+        self.assertEqual([m["picked_by"] for m in maps], ["left", "right", ""])
+
     def test_a_won_map_and_the_next_agent_select(self):
         self.cfg.update({"best_of": 3, "current_map": 0})
         fields = {"LEFT P1 K": 20}
