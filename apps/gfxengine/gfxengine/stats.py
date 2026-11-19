@@ -257,7 +257,9 @@ def rows(stats, live, names=None, pick="auto", lookup=None, pictures=None):
             out += [[f"{k} stat {i + 1}", _show(c, v.get(c, "")) if p["name"] else ""] for i, c in enumerate(lay["cols"])]
             out.append([f"{k} K/D", v["kd"] if p["name"] else ""])
             # Their picture: their headshot (from the roster) or their champion, as Control says.
-            champ = team_pics.get(side) == "champion"
+            # (a player with no headshot in the roster shows their champion /
+            # agent instead of an empty box)
+            champ = team_pics.get(side) == "champion" or not r.get("photo")
             out += [[f"{k} headshot", "" if champ else r.get("photo", "")], [f"{k} champion", p.get("icon", "") if champ and p["name"] else ""]]
             # Best: most of stat 1 (kills, goals), then stat 3, then fewest stat 2.
             # (the first Player stats row when it's a number, like ACS)
@@ -272,7 +274,8 @@ def rows(stats, live, names=None, pick="auto", lookup=None, pictures=None):
         _, side, p = best
         r = (lookup(side, p["name"]) if lookup else None) or {}
         v = _values(game, p)
-        champ = (champion_art(p.get("icon", "")) or p.get("icon", "")) if player_pics.get(side) == "champion" else ""
+        champ = (champion_art(p.get("icon", "")) or p.get("icon", "")) \
+            if player_pics.get(side) == "champion" or not r.get("photo") else ""
         out += [["MVP", p["name"]], ["MVP team", names.get(side, side.title())], ["MVP character", p["character"]],
                 ["MVP picked", "manual" if picked else "auto"], ["MVP side", side],
                 ["MVP name", r.get("name") or r.get("ign") or p["name"]], ["MVP ID", r.get("ign") or p["name"]],
