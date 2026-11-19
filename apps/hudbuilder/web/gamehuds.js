@@ -41,7 +41,7 @@ window.GameHuds = (function () {
   // --- the editor -------------------------------------------------------------------
   function edit(g, d) {
     open = { game: g.game, title: g.title, port: g.port, design: d };
-    info = null; nodes = []; added = []; frameReady = false; collapsed = new Set(); filter = ""; testView = "";
+    info = null; nodes = []; added = []; frameReady = false; collapsed = new Set(); filter = ""; testView = ""; autoState = false;
     $("#he-title").textContent = `${g.title} · ${d.name}`;
     $("#he-test").value = "";
     $("#he-search").value = "";
@@ -49,7 +49,7 @@ window.GameHuds = (function () {
     location.hash = "#/hud-edit";
   }
   function load() {
-    frameReady = false;
+    frameReady = false; autoState = false;
     const extra = testView.replace(/^[?&]+/, "");
     const path = open.design.path + (open.design.path.includes("?") ? "&" : "?") + "hudedit=1" + (extra ? "&" + extra : "");
     frame().src = hudUrl(path);
@@ -93,7 +93,33 @@ window.GameHuds = (function () {
   }
   new ResizeObserver(fit).observe(document.documentElement);
 
+  // What the HUD shows while editing: live, or one of its own states (everything at once, the buy phase, a round win...).
+  let autoState = false;
+  function renderStates() {
+    const box = $("#he-states");
+    if (!box) return;
+    const list = (info && info.states) || [];
+    const cur = (info && info.state) || "";
+    if (frameReady && !autoState && list.some(x => x.id === "everything")) { autoState = true; send("state", { id: "everything" }); }
+    const chip = (id, label, title) => h("button", { class: "small he-chip" + (cur === id ? " on" : ""), title: title || "", onclick: () => send("state", { id }) }, label);
+    box.replaceChildren(...[
+      h("span", { class: "muted small" }, "Show:"),
+      chip("", "Live", "As it is on air right now"),
+      ...list.map(x => chip(x.id, x.label, x.help)),
+      list.length ? h("button", { class: "small ghost", title: "Play this state's animations again", onclick: replay }, "▶ Replay") : null,
+      h("label", { class: "check small he-reveal" }, h("input", { type: "checkbox", checked: !!(info && info.revealAll), onchange: e => { showHidden = e.target.checked; $("#he-hidden").checked = showHidden; send("reveal", { on: e.target.checked }); } }), " Show every part")].filter(Boolean));
+  }
+  function replay() {
+    const cur = (info && info.state) || "";
+    const list = (info && info.states) || [];
+    // (somewhere else and back, so its animations play again)
+    const other = list.find(x => x.id !== cur && x.id !== "everything" && x.id !== "buy") || list.find(x => x.id !== cur) || { id: "" };
+    send("state", { id: other.id });
+    setTimeout(() => send("state", { id: cur }), 900);
+  }
+
   function renderBar() {
+    renderStates();
     const dirty = !!(info && info.dirty);
     $("#he-save").disabled = !dirty;
     $("#he-discard").disabled = !dirty;
@@ -133,7 +159,7 @@ window.GameHuds = (function () {
         h("span", { class: "lname" }, n.name),
         n.edited ? h("span", { class: "he-dot", title: "Changed" }) : null));
     }
-    if (!rows.length) rows.push(h("p", { class: "hint muted" }, frameReady ? "Nothing on screen here. Tick “Show hidden parts”." : "Opening the HUD…"));
+    if (!rows.length) rows.push(h("p", { class: "hint muted" }, frameReady ? "Nothing on screen here. Tick “Show every part”." : "Opening the HUD…"));
     const keep = box.scrollTop;
     box.replaceChildren(...rows);
     box.scrollTop = keep;
@@ -183,13 +209,36 @@ window.GameHuds = (function () {
         sect(null,
           h("p", { class: "muted small" }, "Click any part of the HUD to change it: drag to move, pull the corners to resize (Shift stretches), arrow keys nudge (Shift: 10 px)."),
           h("p", { class: "muted small" }, "Its live data stays as it is: names, scores, timers and pictures from the game keep coming in."),
-          h("p", { class: "muted small" }, "A part that only shows now and then (a round win banner, say): tick “Show hidden parts” and pick it from the list."),
+          h("p", { class: "muted small" }, "Parts that only show now and then (the scoreboard, a round win, the Ace): use the Show buttons above the HUD (Everything shows them all), or tick “Show every part”."),
           h("p", { class: "muted small" }, "Save puts your changes on air at once, everywhere this HUD is shown. Every saved version is kept (Versions).")),
+        ...settingsSects(),
         sect("Whole HUD", h("button", { class: "small danger", onclick: () => { if (confirm("Take every change off this HUD? (Save to put that on air; Versions keeps the old one.)")) send("reset-all"); } }, "Undo all changes")));
+      if (focusK) { const el = box.querySelector(`[data-k="${focusK}"]`); if (el) el.focus(); }
       return;
     }
     box.replaceChildren(...(s.added ? addedProps(s) : partProps(s)));
     if (focusK) { const el = box.querySelector(`[data-k="${focusK}"]`); if (el) el.focus(); }
+  }
+
+  // The HUD's own settings: when parts come in and go out, how long things stay up.
+  function settingsSects() {
+    const dec = (info && info.declared) || [], vals = (info && info.settings) || {};
+    if (!dec.length) return [];
+    const groups = [];
+    dec.forEach(d => { let g = groups.find(x => x.name === (d.group || "Settings")); if (!g) groups.push(g = { name: d.group || "Settings", list: [] }); g.list.push(d); });
+    const put = (k, v) => send("setting", { key: k, value: v });
+    return groups.map(g => sect(g.name, ...g.list.map(d => {
+      const v = vals[d.key];
+      const changed = v !== undefined && v !== null && v !== "" && v !== d.def;
+      let input;
+      if (d.type === "bool") input = h("label", { class: "check" }, h("input", { type: "checkbox", dataset: { k: "s:" + d.key }, checked: v === undefined ? !!d.def : !!v, onchange: e => put(d.key, e.target.checked === !!d.def ? null : e.target.checked) }), " " + d.label);
+      else if (d.type === "choice") input = lab(d.label, h("select", { dataset: { k: "s:" + d.key }, onchange: e => put(d.key, e.target.value === String(d.def) ? null : e.target.value) },
+        ...d.options.map(([ov, ot]) => h("option", { value: ov, selected: String(v === undefined ? d.def : v) === String(ov) }, ot))));
+      else input = lab(d.label + (d.unit ? ` (${d.unit})` : ""), h("input", { type: "number", step: d.step || "any", min: d.min, max: d.max, dataset: { k: "s:" + d.key },
+        value: v === undefined || v === null ? d.def : v, onchange: e => put(d.key, e.target.value === "" || +e.target.value === d.def ? null : +e.target.value) }));
+      return h("div", { class: "he-setting" + (changed ? " changed" : "") }, input,
+        d.help ? h("p", { class: "muted small" }, d.help + (changed ? ` (normally ${d.type === "bool" ? (d.def ? "on" : "off") : d.def}${d.unit ? " " + d.unit : ""})` : "")) : null);
+    })));
   }
 
   function partProps(s) {
@@ -220,6 +269,14 @@ window.GameHuds = (function () {
     out.push(sect(s.svg ? "Fill" : "Background",
       lab(s.svg ? "Fill colour" : "Background colour", colourIn("bg", r.bg, now.bg, v => set({ bg: v }))),
       s.svg ? null : lab("Rounded corners (px)", numIn("radius", r.radius, now.radius, v => set({ radius: v }), { min: 0 }))));
+    const motion = (now.motion || "");
+    out.push(sect("Animation",
+      h("p", { class: "muted small" }, motion ? `It animates: ${motion}.` : "No animation of its own (the part around it may have one)."),
+      grid(lab("Speed (seconds)", numIn("dur", r.dur, "as it is", v => set({ dur: v }), { min: 0, step: 0.05 })),
+        lab("Wait before (seconds)", numIn("delay", r.delay, "as it is", v => set({ delay: v }), { min: 0, step: 0.05 }))),
+      lab("Feel", pickList("ease", [["", "As it is"], ["snappy", "Snappy"], ["ease", "Smooth"], ["ease-out", "Slow at the end"], ["ease-in", "Slow at the start"], ["linear", "Even"], ["bounce", "Bounce"]], r.ease, v => set({ ease: v }))),
+      h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!r.noanim, onchange: e => set({ noanim: e.target.checked || null }) }), " No animation (it just appears)"),
+      (info && info.states && info.states.length) ? h("p", { class: "muted small" }, "Press ▶ Replay above, or switch between the Show buttons, to watch it.") : null));
     if (s.picture) {
       out.push(sect("Picture",
         h("div", { class: "row-gap" },
@@ -363,7 +420,7 @@ window.GameHuds = (function () {
     $("#he-bg").onchange = e => { $("#he-canvas").dataset.bg = e.target.value; };
     $("#he-test").onchange = e => { testView = e.target.value.trim(); if (open) { if (info && info.dirty && !confirm("Reopening the HUD drops the changes you haven't saved. Go on?")) return; load(); } };
     $("#he-search").oninput = e => { filter = e.target.value; renderParts(); };
-    $("#he-hidden").onchange = e => { showHidden = e.target.checked; renderParts(); };
+    $("#he-hidden").onchange = e => { showHidden = e.target.checked; send("reveal", { on: showHidden }); renderParts(); };
     $("#he-refresh").onclick = () => send("tree");
     addEventListener("keydown", e => {
       if (document.body.dataset.page !== "hud-edit") return;

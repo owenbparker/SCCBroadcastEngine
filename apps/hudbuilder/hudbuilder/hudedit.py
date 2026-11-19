@@ -50,7 +50,9 @@ _lock = threading.Lock()
 RULE = {"x": "num", "y": "num", "sx": "num", "sy": "num", "rot": "num", "op": "num", "hide": "bool",
         "color": "color", "font": "font", "size": "num", "weight": "num", "spacing": "num",
         "case": ("upper", "lower", "none", "capitalize"), "bg": "color", "radius": "num",
-        "img": "asset", "imgKind": ("img", "bg", "svg"), "svg": "bool", "label": "text"}
+        "img": "asset", "imgKind": ("img", "bg", "svg"), "svg": "bool", "label": "text",
+        "dur": "num", "delay": "num", "noanim": "bool",
+        "ease": ("ease", "linear", "ease-in", "ease-out", "ease-in-out", "snappy", "bounce")}
 ADDED = {"id": "id", "type": ("box", "text", "image"), "x": "num", "y": "num", "w": "num", "h": "num",
          "rot": "num", "op": "num", "hide": "bool", "behind": "bool", "bg": "color", "radius": "num",
          "border": "num", "borderColor": "color", "text": "text", "color": "color", "font": "font",
@@ -75,7 +77,7 @@ def _path(data_dir, design):
 
 
 def blank():
-    return {"rev": 0, "rules": {}, "added": [], "fonts": []}
+    return {"rev": 0, "rules": {}, "added": [], "fonts": [], "settings": {}}
 
 
 def load(data_dir, design):
@@ -149,7 +151,15 @@ def clean(doc):
             fam, file = _value("font", f.get("family")), _value("asset", f.get("file"))
             if fam and file:
                 fonts.append({"family": fam, "file": file})
-    return {"rules": rules, "added": added[:300], "fonts": fonts[:40]}
+    settings = {}
+    for k, v in (doc.get("settings") or {}).items() if isinstance(doc.get("settings"), dict) else []:
+        if not (isinstance(k, str) and re.fullmatch(r"[a-z0-9_.-]{1,60}", k)):
+            continue
+        if isinstance(v, bool) or (isinstance(v, (int, float)) and v == v and abs(v) < 1e6):
+            settings[k] = v
+        elif isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9 _.:-]{0,40}", v):
+            settings[k] = v
+    return {"rules": rules, "added": added[:300], "fonts": fonts[:40], "settings": dict(list(settings.items())[:200])}
 
 
 # --- saving -------------------------------------------------------------------
