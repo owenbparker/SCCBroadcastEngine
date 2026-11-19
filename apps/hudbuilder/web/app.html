@@ -42,39 +42,48 @@
     <div id="gh-list"></div>
   </section>
 
-  <section class="page editor" data-page="hud-edit">
-    <div class="ed-bar">
-      <button class="tool" id="he-back" title="Back to Game HUDs">‹</button>
-      <b id="he-title" class="he-title"></b>
-      <span class="sep"></span>
-      <button class="tool" id="he-undo" title="Undo (Ctrl+Z)">↶</button>
-      <button class="tool" id="he-redo" title="Redo (Ctrl+Y)">↷</button>
-      <span class="sep"></span>
-      <button class="tool" data-he-add="box" title="Add a box"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5" fill="currentColor"/></svg></button>
-      <button class="tool" data-he-add="text" title="Add text"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>
-      <button class="tool" data-he-add="image" title="Add a picture or video"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 17l5-5 4 4 2-2 3 3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="9" r="1.6" fill="currentColor"/></svg></button>
-      <span class="sep"></span>
-      <input id="he-test" class="he-test" placeholder="Test view, e.g. rwin=1" title="Extra settings for the page while you edit (the HUD's own previews, like ?rwin=1 or ?ace=1 on VALORANT SCC 2027)">
-      <span class="grow"></span>
-      <select id="he-bg" aria-label="Canvas background"><option value="checker">Checkerboard</option><option value="black">Black</option><option value="green">Green</option><option value="grey">Grey</option></select>
-      <button id="he-versions-btn" title="Earlier saved versions">Versions</button>
-      <button id="he-discard" title="Drop the changes you haven't saved">Discard</button>
-      <span id="he-status" class="saved muted"></span>
-      <button class="primary" id="he-save" title="Put the changes on air (Ctrl+S)">Save</button>
-    </div>
-    <div class="ed-body">
-      <div class="ed-left ed-panel">
-        <div class="ed-head"><h3>Parts</h3><span class="grow"></span><button class="tool small" id="he-refresh" title="Read the parts again">⟳</button></div>
-        <div class="he-tools"><input id="he-search" placeholder="Find a part" aria-label="Find a part">
-          <label class="check small"><input type="checkbox" id="he-hidden"> Show every part</label></div>
-        <div id="he-parts" class="layer-list he-parts"></div>
+  <section class="page he-page" data-page="hud-edit">
+    <aside class="he-col he-left">
+      <div class="he-head"><h3>HUDs</h3><span class="grow"></span>
+        <button class="small" id="he-back" title="Back to every game HUD">All HUDs</button></div>
+      <div id="he-designs" class="he-designs"></div>
+      <div class="he-head"><h3>Layers</h3><span class="grow"></span>
+        <div class="he-add">
+          <button class="small" data-he-add="text" title="Add text">T</button>
+          <button class="small" data-he-add="rect" title="Add a shape: rectangle">▭</button>
+          <button class="small" data-he-add="ellipse" title="Add a shape: circle">◯</button>
+          <button class="small" data-he-add="slant" title="Add a shape: slanted box">▱</button>
+          <button class="small" data-he-add="image" title="Add a picture or video">🖼</button>
+          <select id="he-add-more" class="small" title="More shapes"><option value="">More</option>
+            <option value="triangle">Triangle</option><option value="line">Line</option><option value="arrow">Arrow</option>
+            <option value="chevron">Chevron</option><option value="star">Star</option></select>
+        </div></div>
+      <div class="he-tools"><input id="he-search" placeholder="Find a layer" aria-label="Find a layer">
+        <div class="row-gap"><label class="check small"><input type="checkbox" id="he-hidden"> Show every part</label>
+          <span class="grow"></span><button class="small ghost" id="he-refresh" title="Read the layers again">⟳</button></div></div>
+      <div id="he-parts" class="he-layers"></div>
+    </aside>
+    <section class="he-mid">
+      <div class="he-bar">
+        <b id="he-title" class="he-title"></b>
+        <span class="muted small" id="he-pos"></span>
+        <span class="grow"></span>
+        <button class="small" id="he-undo" title="Undo (Ctrl+Z)">↶</button>
+        <button class="small" id="he-redo" title="Redo (Ctrl+Y)">↷</button>
+        <button class="small" id="he-replay" title="Play the HUD's animations again">▶ Replay</button>
+        <select id="he-bg" class="small" aria-label="Canvas background"><option value="checker">Checker</option><option value="black">Black</option><option value="green">Green</option><option value="grey">Grey</option></select>
+        <button class="small" id="he-versions-btn" title="Earlier saved versions">Versions</button>
+        <button class="small" id="he-discard" title="Drop the changes you haven't saved">Discard</button>
+        <button class="small danger" id="he-delete" title="Delete the picked layer (Delete key). Undo or Restore brings it back">Delete</button>
+        <span id="he-status" class="saved muted small"></span>
+        <button class="small primary" id="he-save" title="Put the changes on air (Ctrl+S)">Save</button>
       </div>
-      <div class="ed-canvas" id="he-canvas" data-bg="checker">
+      <div id="he-states" class="he-states"></div>
+      <div class="he-canvas" id="he-canvas" data-bg="checker">
         <div id="he-stage" class="he-stage"><iframe id="he-frame" title="The HUD" allow="autoplay"></iframe></div>
-        <div id="he-states" class="he-states"></div>
       </div>
-      <div class="ed-right ed-panel" id="he-props"></div>
-    </div>
+    </section>
+    <aside class="he-col he-props" id="he-props"></aside>
   </section>
 
   <!-- The editor -->

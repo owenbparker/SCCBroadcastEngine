@@ -44,6 +44,7 @@
       if (sx !== 1 || sy !== 1) d.push("scale:" + sx + " " + sy);
       if (rot) d.push("rotate:" + rot + "deg");
       if (r.svg && (sx !== 1 || sy !== 1 || rot)) d.push("transform-box:fill-box", "transform-origin:50% 50%");
+      if (r.del) { out.push(sel + "{display:none !important}"); return; }
       if (r.hide) d.push(editing ? "opacity:.22" : "opacity:0", editing ? "outline:2px dashed rgba(255,80,80,.9)" : "visibility:hidden");
       else if (r.op != null) d.push("opacity:" + r.op);
       if (r.bg) d.push(r.svg ? "fill:" + r.bg : "background-color:" + r.bg);
@@ -78,6 +79,48 @@
     return el;
   }
 
+  function esc(v) { return String(v == null ? "" : v).replace(/[^#\w\s.,%()-]/g, ""); }
+  function f1(v) { return Math.round(v * 10) / 10; }
+  // A shape you added (and the boxes from before shapes): drawn as SVG in its box.
+  function shapeSvg(a) {
+    var w = Math.max(1, num(a.w, 200)), h = Math.max(1, num(a.h, 60));
+    var kind = a.type === "box" ? "rect" : (a.shape || "rect");
+    var fill = a.fill || a.bg || "#ffffff", stroke = a.stroke || a.borderColor || "#ffffff";
+    var sw = Math.max(0, num(a.strokeWidth, num(a.border, 0))), o = sw / 2;
+    var paint = esc(fill), defs = "";
+    if (a.fill2) {
+      var gid = "hg" + a.id;
+      defs = '<defs><linearGradient id="' + gid + '" gradientTransform="rotate(' + num(a.angle, 90) + ' .5 .5)">' +
+        '<stop offset="0" stop-color="' + esc(fill) + '"/><stop offset="1" stop-color="' + esc(a.fill2) + '"/></linearGradient></defs>';
+      paint = "url(#" + gid + ")";
+    }
+    var line = sw ? ' stroke="' + esc(stroke) + '" stroke-width="' + sw + '" stroke-linejoin="round"' : "";
+    var look = ' fill="' + paint + '"' + line;
+    function poly(pts) { return '<polygon points="' + pts.map(function (p) { return f1(p[0]) + "," + f1(p[1]); }).join(" ") + '"' + look + "/>"; }
+    var body;
+    if (kind === "ellipse") body = '<ellipse cx="' + w / 2 + '" cy="' + h / 2 + '" rx="' + Math.max(0, w / 2 - o) + '" ry="' + Math.max(0, h / 2 - o) + '"' + look + "/>";
+    else if (kind === "line") body = '<line x1="' + o + '" y1="' + h / 2 + '" x2="' + (w - o) + '" y2="' + h / 2 + '" stroke="' + paint + '" stroke-width="' + Math.max(1, num(a.strokeWidth, 6)) + '" stroke-linecap="' + (num(a.radius, 0) ? "round" : "butt") + '"/>';
+    else if (kind === "triangle") body = poly([[w / 2, o], [w - o, h - o], [o, h - o]]);
+    else if (kind === "slant") {
+      var k = num(a.slant, Math.round(h * 0.5)), m = Math.min(Math.abs(k), w / 2);
+      body = poly(k >= 0 ? [[o + m, o], [w - o, o], [w - o - m, h - o], [o, h - o]] : [[o, o], [w - o - m, o], [w - o, h - o], [o + m, h - o]]);
+    } else if (kind === "arrow") {
+      var hd = Math.min(w * 0.5, h * 0.6);
+      body = poly([[o, h * 0.32], [w - hd, h * 0.32], [w - hd, o], [w - o, h / 2], [w - hd, h - o], [w - hd, h * 0.68], [o, h * 0.68]]);
+    } else if (kind === "chevron") {
+      var c = Math.min(w * 0.45, h * 0.5);
+      body = poly([[o, o], [w - c, o], [w - o, h / 2], [w - c, h - o], [o, h - o], [c, h / 2]]);
+    } else if (kind === "star") {
+      var pts = [], R = Math.min(w, h) / 2 - o, cx = w / 2, cy = h / 2;
+      for (var i = 0; i < 10; i++) { var ang = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? R * 0.42 : R; pts.push([cx + rr * Math.cos(ang) * (w / Math.min(w, h)), cy + rr * Math.sin(ang) * (h / Math.min(w, h))]); }
+      body = poly(pts);
+    } else {
+      var rx = Math.min(num(a.radius, 0), w / 2, h / 2);
+      body = '<rect x="' + o + '" y="' + o + '" width="' + Math.max(0, w - sw) + '" height="' + Math.max(0, h - sw) + '" rx="' + rx + '"' + look + "/>";
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none" style="display:block;overflow:visible">' + defs + body + "</svg>";
+  }
+
   function addedEl(a) {
     var el = document.createElement("hudedit-item");
     el.id = "hudedit-a-" + a.id;
@@ -88,9 +131,11 @@
     s.width = num(a.w, 200) + "px"; s.height = num(a.h, 60) + "px";
     if (a.rot) s.rotate = a.rot + "deg";
     s.opacity = a.hide ? ".22" : String(num(a.op, 1));
-    if (a.radius) s.borderRadius = a.radius + "px";
-    if (a.border) s.border = a.border + "px solid " + (a.borderColor || "#ffffff");
-    if (a.type === "box") s.background = a.bg || "#ffffff";
+    if (a.type === "box" || a.type === "shape") el.innerHTML = shapeSvg(a);
+    else {
+      if (a.radius) s.borderRadius = a.radius + "px";
+      if (a.border) s.border = a.border + "px solid " + (a.borderColor || "#ffffff");
+    }
     if (a.type === "text") {
       s.alignItems = "center"; s.whiteSpace = "pre"; s.overflow = "visible";
       s.justifyContent = a.align === "right" ? "flex-end" : a.align === "center" ? "center" : "flex-start";
@@ -98,6 +143,8 @@
       if (a.font) s.fontFamily = '"' + a.font + '"';
       if (a.spacing) s.letterSpacing = a.spacing + "px";
       if (a.case) s.textTransform = a.case;
+      if (a.italic) s.fontStyle = "italic";
+      if (a.shadow) s.textShadow = "0 2px 6px rgba(0,0,0,.6)";
       if (a.bg) s.background = a.bg;
       el.textContent = a.text || "";
     }
@@ -307,7 +354,7 @@
   function nameOf(el) {
     if (el.dataset && el.dataset.hudeditAdded) {
       var a = findAdded(el.dataset.hudeditAdded);
-      return a ? (a.label || (a.type === "text" ? "Text: " + (a.text || "").slice(0, 24) : a.type === "box" ? "Box" : "Picture")) : "Added";
+      return a ? (a.label || (a.type === "text" ? (a.text || "Text").slice(0, 30) : a.type === "image" ? "Picture" : SHAPE_NAME[a.type === "box" ? "rect" : a.shape || "rect"])) : "Added";
     }
     var r = (edits.rules || {})[selectorFor(el)];
     if (r && r.label) return r.label;
@@ -322,6 +369,16 @@
     if (own && bits.length < 2) bits.push("“" + own.slice(0, 22) + "”");
     if (!bits.length) bits.push(el.localName);
     return bits.join(" · ");
+  }
+  var SHAPE_NAME = { rect: "Rectangle", ellipse: "Circle", triangle: "Triangle", line: "Line", slant: "Slanted box", star: "Star", arrow: "Arrow", chevron: "Chevron" };
+  // Deleted (a rule that takes it off), it or the part it's in.
+  function delRule(el) {
+    var rules = edits.rules || {};
+    for (var sel in rules) {
+      if (!rules[sel].del) continue;
+      try { if (el.matches(sel)) return sel; } catch (e) { }
+    }
+    return null;
   }
   function kindOf(el) {
     var tag = el.localName;
@@ -354,14 +411,15 @@
         if (skipEl(c)) continue;
         if (out.length > 1500) return;
         var sel = selectorFor(c);
+        var ru = (edits.rules || {})[sel] || {};
         out.push({ sel: sel, name: nameOf(c), kind: kindOf(c), depth: depth, shown: shown(c), edited: !!(edits.rules || {})[sel],
-                   kids: !!c.firstElementChild });
+                   kids: !!c.firstElementChild, deleted: !!ru.del, hidden: !!ru.hide });
         if (depth < 14) walk(c, depth + 1);
       }
     }
     walk(document.body, 0);
     var added = (edits.added || []).map(function (a) {
-      return { added: a.id, name: nameOf({ dataset: { hudeditAdded: a.id } }), kind: a.type === "image" ? "picture" : a.type, depth: 0, shown: !a.hide };
+      return { added: a.id, name: nameOf({ dataset: { hudeditAdded: a.id } }), kind: a.type === "image" ? "picture" : a.type === "text" ? "text" : "shape", shape: a.type === "box" ? "rect" : a.shape, depth: 0, shown: !a.hide, hidden: !!a.hide, behind: !!a.behind };
     });
     return { nodes: out, added: added };
   }
@@ -386,7 +444,7 @@
     }
     var el = first(s.sel);
     var rule = (edits.rules || {})[s.sel] || {};
-    var out = { sel: s.sel, rule: rule, exists: !!el, similar: s.similar || null, all: !!s.all };
+    var out = { sel: s.sel, rule: rule, exists: !!el, similar: s.similar || null, all: !!s.all, deleted: !!rule.del, inDeleted: el ? delRule(el) : null };
     if (el) {
       var cs = getComputedStyle(el), r = el.getBoundingClientRect();
       var textEl = el;
@@ -399,7 +457,7 @@
       var bgImg = cs.backgroundImage && /url\(/.test(cs.backgroundImage);
       Object.assign(out, {
         name: nameOf(el), kind: kindOf(el), tag: el.localName, svg: el instanceof SVGElement,
-        rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+        rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }, k: localScale(el),
         hasText: !!(el.textContent || "").trim(),
         picture: el.localName === "img" ? "img" : el.localName === "image" ? "svg" : bgImg ? "bg" : "",
         src: src,
@@ -435,7 +493,7 @@
     var all = document.body.querySelectorAll("*");
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
-      if (skipEl(el) || ours(el)) continue;
+      if (skipEl(el) || ours(el) || delRule(el)) continue;
       var cs = getComputedStyle(el);
       if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity) === 0) {
         var was = el.getAttribute("style");
@@ -576,6 +634,7 @@
 
   // A part that isn't on screen right now (a banner between rounds): shown while it's picked.
   function peek(el) {
+    if (delRule(el)) return;
     for (var e = el; e && e.nodeType === 1 && e !== document.body; e = e.parentElement) {
       var cs = getComputedStyle(e);
       var was = e.getAttribute("style");
@@ -721,7 +780,8 @@
     if (k === "ArrowUp") return { hudedit: "nudge", dx: 0, dy: -step };
     if (k === "ArrowDown") return { hudedit: "nudge", dx: 0, dy: step };
     if (k === "Escape") return { hudedit: "select", sel: null };
-    if ((k === "Delete" || k === "Backspace") && selected && selected.added) return { hudedit: "remove-added", id: selected.added };
+    if ((k === "Delete" || k === "Backspace") && selected) return { hudedit: "delete" };
+    if (mod && (k === "d" || k === "D") && selected && selected.added) return { hudedit: "duplicate" };
     return null;
   }
 
@@ -748,6 +808,35 @@
     if (t === "undo" && history.length > 1) { future.push(history.pop()); setEdits(JSON.parse(history[history.length - 1])); say("changed", Object.assign(info(), { tree: tree() })); }
     else if (t === "redo" && future.length) { var n = future.pop(); history.push(n); setEdits(JSON.parse(n)); say("changed", Object.assign(info(), { tree: tree() })); }
     else if (t === "nudge") nudge(m.dx, m.dy);
+    else if (t === "delete") {   // the picked layer: an added one goes, a HUD part is taken off (Restore puts it back)
+      if (!selected) return;
+      if (selected.added) { var gone = selected.added; edits.added = (edits.added || []).filter(function (x) { return x.id !== gone; }); }
+      else { var dr = rule(selected.sel); if (first(selected.sel) instanceof SVGElement) dr.svg = true; dr.del = true; }
+      selected = null; unpeek(); changed(); say("selected", info());
+    } else if (t === "restore") {
+      var rr = (edits.rules || {})[m.sel];
+      if (rr) { delete rr.del; tidy(m.sel); changed(); select({ sel: m.sel }, { peek: true }); }
+    } else if (t === "toggle-hide") {   // the eye in Layers
+      if (m.added) { var ta = findAdded(m.added); if (!ta) return; if (ta.hide) delete ta.hide; else ta.hide = true; }
+      else { var th = rule(m.sel); if (th.hide) delete th.hide; else th.hide = true; tidy(m.sel); }
+      changed();
+    } else if (t === "duplicate") {
+      var da = selected && selected.added && findAdded(selected.added);
+      if (da) command({ hudedit: "add", item: Object.assign({}, da, { id: undefined, x: (da.x || 0) + 20, y: (da.y || 0) + 20, label: da.label ? da.label + " copy" : undefined }) });
+    } else if (t === "rect") {   // X / Y / W / H in page pixels, for a HUD part (moved and scaled to land there)
+      if (!selected || !selected.sel) return;
+      var pe = first(selected.sel); if (!pe) return;
+      var pr = pe.getBoundingClientRect(), pk = localScale(pe), ru2 = rule(selected.sel);
+      if (pe instanceof SVGElement) ru2.svg = true;
+      var X = num(m.x, pr.left), Y = num(m.y, pr.top), W = Math.max(1, num(m.w, pr.width)), H = Math.max(1, num(m.h, pr.height));
+      if (pr.width >= 1 && W !== pr.width) ru2.sx = Math.round(num(ru2.sx, 1) * W / pr.width * 1000) / 1000;
+      if (pr.height >= 1 && H !== pr.height) ru2.sy = Math.round(num(ru2.sy, 1) * H / pr.height * 1000) / 1000;
+      // (scaling is about its middle: the move keeps the left / top edge where it's asked to be)
+      ru2.x = Math.round((num(ru2.x, 0) + (X - pr.left + (W - pr.width) / 2) / pk) * 10) / 10;
+      ru2.y = Math.round((num(ru2.y, 0) + (Y - pr.top + (H - pr.height) / 2) / pk) * 10) / 10;
+      tidy(selected.sel);
+      changed(true);
+    }
     else if (t === "save") save();
     else if (t === "tree") say("tree", tree());
     else if (t === "info") say("selected", info());
@@ -773,7 +862,8 @@
     } else if (t === "reset-all") {
       edits = blank(); selected = null; changed();
     } else if (t === "add") {
-      var item = Object.assign({ id: newId() }, m.item);
+      var item = Object.assign({}, m.item, { id: newId() });
+      Object.keys(item).forEach(function (k) { if (item[k] === undefined || item[k] === null) delete item[k]; });
       edits.added = (edits.added || []).concat([item]);
       apply();
       selected = { added: item.id };
@@ -793,6 +883,9 @@
       changed(true);
     } else if (t === "view") { view = m.scale || 1; drawSelection(); }
     else if (t === "state") { forced = m.id || ""; setTimeout(function () { say("changed", Object.assign(info(), { tree: tree() })); }, 700); say("selected", info()); }
+    else if (t === "replay") {   // (a page without states of its own: its CSS animations from the start)
+      try { document.getAnimations().forEach(function (an) { if (an.effect && an.effect.target && ours(an.effect.target)) return; an.cancel(); an.play(); }); } catch (e) { }
+    }
     else if (t === "reveal") { setReveal(m.on); setTimeout(function () { say("changed", Object.assign(info(), { tree: tree() })); }, 100); }
     else if (t === "setting") {
       edits.settings = edits.settings || {};

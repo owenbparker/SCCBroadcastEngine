@@ -51,6 +51,19 @@ class HudEditStore(unittest.TestCase):
         self.assertEqual([a["id"] for a in doc["added"]], ["abc"])
         self.assertEqual(len(doc["fonts"]), 1)
 
+    def test_deleted_parts_and_shapes_kept(self):
+        doc = hudedit.clean({"rules": {"#logo": {"del": True}, "#x": {"del": "yes"}},
+            "added": [{"id": "s1", "type": "shape", "shape": "slant", "fill": "#ff0000", "fill2": "#0000ff", "angle": 45,
+                       "stroke": "#fff", "strokeWidth": 2, "slant": -20, "x": 1, "y": 2, "w": 300, "h": 70},
+                      {"id": "s2", "type": "shape", "shape": "hexagon<script>", "fill": "red;}"},
+                      {"id": "t1", "type": "text", "text": "Hi", "italic": True, "shadow": True}]})
+        self.assertEqual(doc["rules"], {"#logo": {"del": True}})
+        s1, s2, t1 = doc["added"]
+        self.assertEqual((s1["shape"], s1["fill2"], s1["slant"], s1["strokeWidth"]), ("slant", "#0000ff", -20.0, 2.0))
+        self.assertNotIn("shape", s2)
+        self.assertNotIn("fill", s2)
+        self.assertTrue(t1["italic"] and t1["shadow"])
+
     def test_bad_design_names(self):
         for bad in ("../x", "", "A B", "x/y"):
             with self.assertRaises(ValueError):
