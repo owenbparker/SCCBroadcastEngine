@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse, urlsplit
 from . import appearance, heroes, maps, scoreboard
 from .config import DATA_DIR, LOGO_DIR, PLAYER, STAT_KEYS, STYLES, web_file
 from hudbuilder import embed as hud_builder
+from hudbuilder import hudedit   # (HUD Builder > Game HUDs: changes saved over this HUD's pages)
 from .enginelink import EngineLink, save_logo_bytes
 from .log import log, since
 from .updater import Updater, clean_up_old_update
@@ -419,6 +420,8 @@ def make_handler(app):
             path = url.path
             if appearance.handle(self, "GET", path, DATA_DIR):
                 return
+            if hudedit.handle(self, "GET", path, DATA_DIR):
+                return
             if path in PAGES:
                 target = PAGES[path]
                 if target.startswith("/"):
@@ -454,6 +457,8 @@ def make_handler(app):
         def do_POST(self):
             path = urlparse(self.path).path
             if appearance.handle(self, "POST", path, DATA_DIR):
+                return
+            if hudedit.handle(self, "POST", path, DATA_DIR):
                 return
             if not _is_local(self.client_address[0]):
                 return self._json({"error": "settings can only be changed on the HUD's own PC"}, 403)

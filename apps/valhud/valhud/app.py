@@ -23,6 +23,7 @@ from .agentselect import AgentSelect, AgentSelectDemo
 from .cams import CamHub, cam_links
 from .config import DATA_DIR, LOGO_DIR, PHOTO_DIR, SPONSOR_DIR, WEB_DIR, web_file
 from hudbuilder import embed as hud_builder
+from hudbuilder import hudedit   # (HUD Builder > Game HUDs: changes saved over this HUD's pages)
 from .demo import DemoGame
 from .enginelink import EngineLink, save_logo_bytes, save_sponsors
 from .log import log, since
@@ -878,6 +879,8 @@ def make_handler(app):
             path = url.path
             if appearance.handle(self, "GET", path, DATA_DIR):
                 return
+            if hudedit.handle(self, "GET", path, DATA_DIR):
+                return
             if startpick.handle(self, "GET", path, DATA_DIR):
                 return
             fields = app.snapshot()["fields"]
@@ -987,6 +990,8 @@ def make_handler(app):
             url = urlparse(self.path)
             path = url.path
             if appearance.handle(self, "POST", path, DATA_DIR):
+                return
+            if hudedit.handle(self, "POST", path, DATA_DIR):
                 return
             if startpick.handle(self, "POST", path, DATA_DIR):
                 return

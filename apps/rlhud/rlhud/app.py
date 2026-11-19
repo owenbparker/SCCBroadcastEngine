@@ -19,6 +19,7 @@ from .cams import CamHub, cam_links
 from .config import DATA_DIR, LOGO_DIR, SPONSOR_DIR, WEB_DIR, web_file
 from .replaystinger import ReplayStinger
 from hudbuilder import embed as hud_builder
+from hudbuilder import hudedit   # (HUD Builder > Game HUDs: changes saved over this HUD's pages)
 from .demo import DemoMatch
 from .enginelink import EngineLink, save_logo_bytes, save_sponsors
 from .game import GameState
@@ -571,6 +572,8 @@ def make_handler(app):
             path = url.path
             if appearance.handle(self, "GET", path, DATA_DIR):
                 return
+            if hudedit.handle(self, "GET", path, DATA_DIR):
+                return
             if startpick.handle(self, "GET", path, DATA_DIR):
                 return
             # The overlay: the graphic from the GFX Engine when there is one (and it's on).
@@ -621,6 +624,8 @@ def make_handler(app):
         def do_POST(self):
             path = urlparse(self.path).path
             if appearance.handle(self, "POST", path, DATA_DIR):
+                return
+            if hudedit.handle(self, "POST", path, DATA_DIR):
                 return
             if startpick.handle(self, "POST", path, DATA_DIR):
                 return
