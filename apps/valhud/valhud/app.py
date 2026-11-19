@@ -522,8 +522,11 @@ class HudApp:
             state["match"]["observed"] = (game.observed_by_agent(state, agent, side)
                                           or game.observed_player(state, text))
         self.series.round_kills(state)
-        if self.mode == "live" and fetch:
+        if fetch:
+            # The series' maps follow Map Bans in the demo match too (owen,
+            # 2026-11-19: the board's map cards showed the default maps).
             self.series.sync_maps()
+        if self.mode == "live" and fetch:
             fields = game.fields(state, cfg)
             shown = self.series.watch(state, fields)
             if shown is not state:   # cleared after the map
