@@ -452,14 +452,27 @@ def make_handler(shell):
                 body = fh.read()
             self._send(200, body, mimetypes.guess_type(f)[0] or "application/octet-stream")
 
+        def _drain(self):
+            # A refusal still reads the request's body first: on Windows a
+            # socket closed with unread data in it is reset, and the caller
+            # (GFX Engine's /sccbe/ pass-through) gets a reset, not the 403.
+            try:
+                n = min(int(self.headers.get("Content-Length") or 0), 1 << 20)
+                if n:
+                    self.rfile.read(n)
+            except (ValueError, OSError):
+                pass
+
         def do_POST(self):
             path = urlparse(self.path).path
             origin = self.headers.get("Origin")
             if origin and (urlparse(origin).hostname or "").lower() not in ("127.0.0.1", "localhost", "::1"):
                 # (a web page open in a browser on this PC can't drive the app)
+                self._drain()
                 self.close_connection = True
                 return self._json({"error": "Only this PC's own pages can change SCC Broadcast Engine"}, 403)
             if self._remote() and not (path.startswith(REMOTE_POST[0]) or path in REMOTE_POST[1:]):
+                self._drain()
                 self.close_connection = True
                 return self._json({"error": "Only in the app on that PC"}, 403)
             try:
