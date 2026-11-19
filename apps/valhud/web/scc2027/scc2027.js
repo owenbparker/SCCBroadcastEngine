@@ -203,7 +203,7 @@
     return m;
   });
   ui.event = el("phase", stage); ui.event.id = "event";
-  ui.eventText = text("nar", ui.event, 0, 8, 474, 8, "c");   // (centred on 1493, as in the fig)
+  ui.eventText = text("nar", ui.event, 0, 8, 394, 8, "c");   // (centred on 1492, as in the fig)
   ui.sponsor = el("", stage); ui.sponsor.id = "sponsor";
   ui.sponsorLogo = el("logo white", ui.sponsor);
 
