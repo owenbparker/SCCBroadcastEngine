@@ -186,25 +186,25 @@
   ui.bombIcon = el("icon", ui.bomb);
   // The round win graphic: owen's "Round Win Graphic SCC" fig (1573 x 467),
   // a #F9C229 flash, then the panel; the winning team in the yellow bar as
-  // in the Default 2026 HUD (side, logo, tricode).
+  // (team, side, how they won; owen 2026-11-19).
   ui.rwin = el("", stage); ui.rwin.id = "rwin";
-  el("bg", ui.rwin); el("flash", ui.rwin); el("crest", ui.rwin);
+  el("bg", ui.rwin); el("flash", ui.rwin);
+  // the crest: the round winner's logo (owen, 2026-11-19), the SCC crest
+  // when the team has none
+  ui.rwinCrest = el("crest", ui.rwin);
   setText(text("nar", ui.rwin, 329, 192, 916, 138, "c", null, "word"), "ROUND WIN");
   el("bar", ui.rwin);
   var rwinWho = el("who", ui.rwin);
-  ui.rwinSide = el("side", rwinWho, null, "span"); ui.rwinLogo = el("logo", rwinWho, null, "img"); ui.rwinLogo.alt = "";
-  ui.rwinTeam = el("team", rwinWho, null, "span");
+  // the yellow bar: who, their side and how they won (no logo: it's up top)
+  ui.rwinTeam = el("team", rwinWho, null, "span"); ui.rwinSide = el("side", rwinWho, null, "span");
+  ui.rwinHow = el("how", rwinWho, null, "span");
   ui.banner = el("", stage); ui.banner.id = "banner";
   el("bar", ui.banner);
   ui.bannerText = text("nar", ui.banner, 8, 0, null, null, "c", null, "txt");
   ui.bannerText.style.right = "0"; ui.bannerText.style.bottom = "0";
 
-  // Maps strip, event strip, sponsor box.
-  ui.maps = el("phase", stage); ui.maps.id = "maps";
-  ui.mapSlots = [23, 248, 446].map(function (x) {
-    var m = el("m t nar", ui.maps, { left: px(x) });
-    return m;
-  });
+  // Event strip, sponsor box. (The series' maps are on the buy-phase board
+  // now, owen 2026-11-19: no maps strip along the top.)
   ui.event = el("phase", stage); ui.event.id = "event";
   ui.eventText = text("nar", ui.event, 0, 8, 394, 8, "c");   // (centred on 1492, as in the fig)
   ui.sponsor = el("", stage); ui.sponsor.id = "sponsor";
@@ -305,7 +305,7 @@
     return { el: t, cam: cam, logo: logo, name: nm, side: "left", slot: n + 1 };
   });
 
-  if (BOARD_ONLY) [top, ui.bomb, ui.banner, ui.maps, ui.event, ui.sponsor, ui.side.left, ui.side.right, ui.ace, ui.listen]
+  if (BOARD_ONLY) [top, ui.bomb, ui.banner, ui.event, ui.sponsor, ui.side.left, ui.side.right, ui.ace, ui.listen]
     .forEach(function (e) { e.classList.add("hidden"); });
 
   // ---------------------------------------------------------- sponsors
@@ -421,9 +421,9 @@
     { group: "Top bar", key: "top.condense_at", label: "Goes small this long into the round", type: "num", def: COND_S, unit: "s", min: 0, step: 0.5 },
     { group: "Top bar", key: "top.condense_on_plant", label: "Goes small when the spike is planted", type: "bool", def: true },
     { group: "Top bar", key: "round.settle", label: "A new phase counts once it's held for", type: "num", def: HOLD_MS / 1000, unit: "s", min: 0, step: 0.1, help: "Stops the bar going in and out on a stray read." },
-    { group: "Maps and event strips", key: "strips.mode", label: "Strips", type: "choice", def: "auto", options: [["auto", "By the round (normal)"], ["shown", "Always out"], ["hidden", "Always tucked away"]] },
-    { group: "Maps and event strips", key: "strips.tuck_at", label: "Tuck away this long into the round", type: "num", def: STRIPS_S, unit: "s", min: 0, step: 0.5 },
-    { group: "Maps and event strips", key: "strips.tuck_on_plant", label: "Tuck away when the spike is planted", type: "bool", def: true },
+    { group: "Event strip", key: "strips.mode", label: "Event strip", type: "choice", def: "auto", options: [["auto", "By the round (normal)"], ["shown", "Always out"], ["hidden", "Always tucked away"]] },
+    { group: "Event strip", key: "strips.tuck_at", label: "Tuck away this long into the round", type: "num", def: STRIPS_S, unit: "s", min: 0, step: 0.5 },
+    { group: "Event strip", key: "strips.tuck_on_plant", label: "Tuck away when the spike is planted", type: "bool", def: true },
     { group: "Scoreboard", key: "board.buy_phase", label: "Scoreboard up in the buy phase", type: "bool", def: true },
     { group: "Scoreboard", key: "board.swap", label: "Player tabs and scoreboard swap over in", type: "num", def: 0.45, unit: "s", min: 0, step: 0.05 },
     { group: "Round win and Ace", key: "rwin.on", label: "Show the round win banner", type: "bool", def: true },
@@ -464,7 +464,7 @@
     return rd.strips;
   }
   function setStrips(on) {
-    toggle(ui.maps, "tucked", !on); toggle(ui.event, "tucked", !on);
+    toggle(ui.event, "tucked", !on);
   }
   function wantCondensed() {
     if (params.get("condensed")) return params.get("condensed") === "1";
@@ -525,30 +525,29 @@
   }
 
   // -------------------------------------------------------------- maps
-  function mapLabel(cfg, slot, shown, all, first) {
-    var i = first + slot, map = slot < shown ? all[i] : null;
-    if (!map || !map.name) return null;
-    var name = upper(map.name), logo = function (side) { return side && cfg[side] && cfg[side].logo ? url(cfg[side].logo) : ""; };
-    if (map.winner && map.score) return { pre: name, logo: logo(map.winner), post: map.score.left + " - " + map.score.right };
-    if (map.winner) return { pre: name, logo: logo(map.winner), post: upper(cfg[map.winner].tricode) };
-    if (i === (cfg.current_map || 0)) return { pre: "CURRENT:", logo: logo(map.picked_by), post: name };
-    if (shown === 3 && i === all.length - 1 && all.length === Number(cfg.best_of || 3)) return { pre: "DECIDER:", logo: "", post: name };
-    return { pre: "NEXT:", logo: logo(map.picked_by), post: name };
-  }
-  function setMaps(cfg) {
-    var shown = (cfg.best_of || 3) == 1 ? 1 : 3;
-    var all = (cfg.maps || []).slice(0, Math.max(1, cfg.best_of || 3));
-    var first = shown === 3 ? Math.max(0, Math.min((cfg.current_map || 0) - 1, all.length - 3)) : 0;
-    ui.mapSlots.forEach(function (box, slot) {
-      var l = mapLabel(cfg, slot, shown, all, first), key = JSON.stringify(l);
-      if (box._key === key) return;
-      box._key = key;
-      box.innerHTML = "";
-      if (!l) return;
-      el("", box, null, "i").textContent = l.pre;
-      if (l.logo) { var im = el("", box, null, "img"); im.src = l.logo; }
-      el("", box, null, "i").textContent = l.post;
-    });
+  // The series' maps as cards at the end of the round tracker (owen's "SCC
+  // Round with MAPS" / "MAP WINS" figs), from Map Bans: the map's picture,
+  // the picker's logo, the map and CURRENT / NEXT; once played the winner's
+  // logo, the map's score and "<TEAM> WIN"; the last map of the series not
+  // yet reached, DECIDER.
+  function mapCards(cfg) {
+    var bo = Math.max(1, Number(cfg.best_of) || 3), shown = bo === 1 ? 1 : 3;
+    var all = (cfg.maps || []).slice(0, bo), cur = cfg.current_map || 0;
+    var first = shown === 3 ? Math.max(0, Math.min(cur - 1, all.length - 3)) : 0;
+    var logo = function (side) { return side && cfg[side] && cfg[side].logo ? url(cfg[side].logo) : ""; };
+    var out = [];
+    for (var slot = 0; slot < shown; slot++) {
+      var i = first + slot, map = all[i];
+      if (!map || !map.name) continue;
+      var art = "/map-art/" + encodeURIComponent(map.name), name = upper(map.name);
+      if (map.winner) {
+        var sc = map.score && map.score.left != null ? map.score.left + " - " + map.score.right : name;
+        out.push({ art: art, logo: logo(map.winner), big: sc, small: upper(cfg[map.winner].tricode || cfg[map.winner].name) + " WIN" });
+      } else if (i === cur) out.push({ art: art, logo: logo(map.picked_by), big: name, small: "CURRENT" });
+      else if (bo > 1 && i === bo - 1) out.push({ art: art, logo: "", big: "DECIDER", small: "", decider: true });
+      else out.push({ art: art, logo: logo(map.picked_by), big: name, small: "NEXT" });
+    }
+    return out;
   }
 
   // ------------------------------------------------------------ tracker
@@ -559,7 +558,8 @@
     var last = Math.max(now, played), duo = Number(cfg.team_size) === 2;
     var cols = duo && last <= 12 ? 12 : Math.max(24, Math.ceil(last / 2) * 2);
     var to = cfg.timeouts || {};
-    var key = JSON.stringify([cols, now, rounds, to, cfg.left.tricode, cfg.right.tricode, cfg.left.logo, cfg.right.logo]);
+    var cards = mapCards(cfg);
+    var key = JSON.stringify([cols, now, rounds, to, cfg.left.tricode, cfg.right.tricode, cfg.left.logo, cfg.right.logo, cards]);
     if (ui.tracker._key === key) return;
     ui.tracker._key = key;
     var T = ui.tracker;
@@ -571,7 +571,8 @@
       xs.push(x);
       x += 37;
     }
-    var gridEnd = xs[cols - 1] + 32 + 9, width = gridEnd + 14;
+    // (the map cards after the last round, 153 px apart, inside the grid's outline)
+    var cardsAt = xs[cols - 1] + 32 + 9, gridEnd = cardsAt + cards.length * 153, width = gridEnd + 14;
     T.style.width = px(width);
     toggle(T, "wide", cols > 12);   // (the 24-round look: owen's Buy Phase file)
     T.style.left = px(Math.round(960 - width / 2));
@@ -602,6 +603,14 @@
       if (c + 1 === now) el("now", T, { left: px(cx - 3) });
     });
     [12, 24].forEach(function (c) { if (cols > c) el("half", T, { left: px(xs[c] - 9) }); });
+    cards.forEach(function (cd, n) {
+      var card = el("map" + (cd.decider ? " decider" : ""), T, { left: px(cardsAt + n * 153) });
+      card.style.backgroundImage = 'url("' + cd.art + '")';
+      if (cd.logo) { var lg = el("logo", card, null, "img"); lg.alt = ""; lg.src = cd.logo; }
+      if (cd.decider) { setText(text("din", card, 0, 35, 144, 14, "c", null, "big"), cd.big); return; }
+      setText(text("din", card, 0, 42, 144, 14, "c", null, "big"), cd.big);
+      setText(text("rubl", card, 0, 63, 144, 8, "c", null, "small"), cd.small);
+    });
   }
 
   // -------------------------------------------------------------- tabs
@@ -733,6 +742,7 @@
   // A round won (a score went up, not on the page's first look): the round
   // win graphic for 5 seconds.
   var rwin = { score: null, timer: null, inner: null, out: null };
+  var WIN_WORDS = { Deactivation: "DEFUSAL", Time: "TIME", Elimination: "KILLS", Detonation: "SPIKE DETONATION" };
   function checkRoundWin(s) {
     var m = s.game.match, now = [m.score.left || 0, m.score.right || 0], was = rwin.score;
     rwin.score = now;
@@ -744,9 +754,15 @@
   }
   function showRoundWin(s, side, hold) {
     var m = s.game.match, cfg = s.config;
-    ui.rwinSide.textContent = m.attackers === side ? "ATK" : "DEF";
-    img(ui.rwinLogo, url(cfg[side].logo));
+    ui.rwinSide.textContent = m.attackers === side ? "ATTACK" : "DEFENSE";
+    var logo = cfg[side].logo ? url(cfg[side].logo) : "";
+    ui.rwinCrest.style.backgroundImage = logo ? 'url("' + logo + '")' : "";
     ui.rwinTeam.textContent = upper(cfg[side].tricode || cfg[side].name);
+    // how: this round's entry in the round history (or the last round won)
+    var rounds = m.rounds || [], last = rounds[rounds.length - 1];
+    var how = m.win_type || (last && last.winner === side ? last.win_type : "");
+    ui.rwinHow.textContent = WIN_WORDS[how] || "";
+    toggle(ui.rwinHow, "hidden", !WIN_WORDS[how]);
     var R = ui.rwin;
     clearTimeout(rwin.timer); clearTimeout(rwin.inner); clearTimeout(rwin.out);
     R.classList.remove("on", "text", "out");
@@ -833,7 +849,6 @@
     checkRoundWin(s);
 
     // Maps, event, sponsors.
-    setMaps(cfg);
     var ev = cfg.event_text || [cfg.event, cfg.stage].filter(Boolean).join(" | ");
     setText(ui.eventText, upper(ev));
     toggle(ui.event, "hidden", !ev || BOARD_ONLY);
