@@ -29,6 +29,7 @@ class FindWindowTests(unittest.TestCase):
 
     def use(self, *wins):
         reader.game_windows = lambda: list(wins)
+        reader._found.update(key=None, win=None, at=0.0)   # (looked for again)
 
     def test_finds_valorant_by_its_program_on_any_screen(self):
         self.use(win("Google Chrome", "chrome.exe", 2560, 1440, 1),
@@ -118,3 +119,67 @@ class WindowsApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KeptWindowTests(unittest.TestCase):
+    """The window found is kept for a moment (going through every window on
+    the PC for each of twenty captures a second was slow): only checked."""
+
+    def setUp(self):
+        self._real = (reader.game_windows, reader._window_now)
+        reader.set_pick({})
+        reader._found.update(key=None, win=None, at=0.0)
+
+    def tearDown(self):
+        reader.game_windows, reader._window_now = self._real
+        reader._found.update(key=None, win=None, at=0.0)
+
+    def test_looks_once_then_checks(self):
+        looks = []
+        reader.game_windows = lambda: looks.append(1) or [win("VALORANT", "VALORANT-Win64-Shipping.exe")]
+        reader._window_now = lambda w: dict(w, x=5)
+        for _ in range(5):
+            found, _ = reader._find_window()
+        self.assertEqual(len(looks), 1)
+        self.assertEqual(found["x"], 5)
+
+    def test_looks_again_when_gone_or_another_is_picked(self):
+        looks = []
+        reader.game_windows = lambda: looks.append(1) or [win("VALORANT", "VALORANT-Win64-Shipping.exe"),
+                                                          win("OBS", "obs64.exe")]
+        reader._window_now = lambda w: None   # (closed)
+        reader._find_window()
+        reader._find_window()
+        self.assertEqual(len(looks), 2)
+        reader._window_now = lambda w: w
+        reader.set_pick({"title": "OBS", "exe": "obs64.exe"})
+        self.assertEqual(reader._find_window()[0]["exe"], "obs64.exe")
+        self.assertEqual(len(looks), 3)
+
+    def test_not_open_is_kept_for_a_moment_too(self):
+        looks = []
+        reader.game_windows = lambda: looks.append(1) or []
+        for _ in range(3):
+            found, reason = reader._find_window()
+        self.assertIsNone(found)
+        self.assertIn("not found", reason)
+        self.assertEqual(len(looks), 1)
+
+
+@unittest.skipUnless(sys.platform == "win32", "Windows screen copy")
+class AreaGrabTests(unittest.TestCase):
+    def test_same_as_imagegrab(self):
+        from PIL import ImageChops, ImageGrab
+        from scc_shared import dpi
+        with dpi.real_pixels():
+            l, t, r, b = dpi.monitors()[0]
+            box = (l + 10, t + 20, min(r, l + 410), min(b, t + 320))
+            mine = reader._gdi_grab(box)
+            theirs = ImageGrab.grab(box, all_screens=True)
+        self.assertIsNotNone(mine)
+        self.assertEqual(mine.size, theirs.size)
+        self.assertEqual(mine.mode, "RGB")
+        # (the screen can change between the two copies: nearly all the same)
+        diff = ImageChops.difference(mine, theirs).convert("L")
+        same = sum(1 for v in diff.getdata() if v < 8) / (mine.width * mine.height)
+        self.assertGreater(same, 0.95)
