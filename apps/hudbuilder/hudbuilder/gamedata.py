@@ -105,6 +105,7 @@ def _valorant():
                 _f(f"{k} AGENT", f"{w} agent name", sample="Jett"),
                 _f(f"{k} HP", f"{w} health", "number", 100, True),
                 _f(f"{k} SHIELD", f"{w} shield", "number", 50, True),
+                _f(f"{k} SHIELD TYPE", f"{w} shield type (LIGHT / HEAVY / REGEN)", sample="REGEN"),
                 _f(f"{k} CREDITS", f"{w} credits", "number", 3900, True),
                 _f(f"{k} WEAPON", f"{w} weapon", sample="Vandal", guide=True),
                 _f(f"{k} K", f"{w} kills", "number", 12, True), _f(f"{k} D", f"{w} deaths", "number", 9, True),

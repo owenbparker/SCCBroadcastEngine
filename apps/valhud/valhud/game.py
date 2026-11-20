@@ -279,6 +279,8 @@ def fields(state, cfg):
         f[f"{k} ALIVE"] = "1" if p["alive"] else "0"
         f[f"{k} HP"] = p["health"] if p["alive"] else 0
         f[f"{k} SHIELD"] = p["shield"]
+        f[f"{k} SHIELD TYPE"] = ("REGEN" if p.get("regen_shield") else "HEAVY" if p["shield"] >= 50 else
+                                 "LIGHT" if p["shield"] > 0 else "")
         f[f"{k} CREDITS"] = p["credits"]
         f[f"{k} WEAPON"] = p["weapon"]
         f[f"{k} K"] = p["kills"]

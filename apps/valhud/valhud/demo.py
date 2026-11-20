@@ -74,7 +74,7 @@ class DemoGame:
         if m["round"] in (1, 13) or (m["round"] > 24 and m["round"] % 2):
             for p in self._players():
                 p["credits"] = 800 if m["round"] in (1, 13) else 5000
-                p["weapon"], p["shield"] = "Classic", 0
+                p["weapon"], p["shield"], p["regen_shield"] = "Classic", 0, False
                 p["abilities"] = {"C": [0, 2], "Q": [0, 1], "E": [1, 1]}
         m["attackers"] = self._attackers(m["round"])
         m["phase"], m["timer"] = "buy", BUY_TIME
@@ -83,7 +83,7 @@ class DemoGame:
         for p in self._players():
             p["alive"], p["health"], p["spike"] = True, 100, False
             if p["shield"] and self.rng.random() < 0.5:
-                p["shield"] = 0  # used up last round
+                p["shield"], p["regen_shield"] = 0, False  # used up last round
         carrier = self.rng.choice(self._players(m["attackers"]))
         carrier["spike"] = True
         m["spike"]["carrier"] = [carrier["team"], carrier["slot"]]
@@ -106,7 +106,9 @@ class DemoGame:
                 p["credits"] -= WEAPONS[gun]
                 p["weapon"] = gun
             if p["credits"] >= 1000 and p["shield"] < 50:
-                p["credits"], p["shield"] = p["credits"] - 1000, 50
+                p["credits"], p["shield"], p["regen_shield"] = p["credits"] - 1000, 50, False
+            elif p["credits"] >= 650 and p["shield"] < 25 and p["slot"] % 2:
+                p["credits"], p["shield"], p["regen_shield"] = p["credits"] - 650, 25, True   # regen shield
             elif p["credits"] >= 400 and p["shield"] < 25:
                 p["credits"], p["shield"] = p["credits"] - 400, 25
             for key in ("C", "Q"):
@@ -184,7 +186,7 @@ class DemoGame:
             return self._end_round(dfn, "Time")
 
     def _kill(self, killer, victim):
-        victim["alive"], victim["health"], victim["shield"] = False, 0, 0
+        victim["alive"], victim["health"], victim["shield"], victim["regen_shield"] = False, 0, 0, False
         victim["deaths"] += 1
         victim["ult_points"] = min(victim["ult_max"], victim["ult_points"] + 1)
         if victim["spike"]:

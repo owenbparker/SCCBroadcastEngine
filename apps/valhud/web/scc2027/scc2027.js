@@ -99,8 +99,15 @@
   }
   function shieldSvg(parent) {
     var wrap = el("shield", parent);
-    wrap.innerHTML = '<svg width="21" height="21" viewBox="-1 -1 22.7 22.7"><path d="M10.33 0L0 5.17 2.58 15.5 10.33 20.67 18.08 15.5 20.66 5.17Z"' +
-      ' fill="none" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/></svg>';
+    // the shield outline (light 25 / heavy 50), or the game's round regen
+    // shield icon: a ring around a disc with an arrow cut out of it
+    wrap.innerHTML = '<svg class="sh" width="21" height="21" viewBox="-1 -1 22.7 22.7"><path d="M10.33 0L0 5.17 2.58 15.5 10.33 20.67 18.08 15.5 20.66 5.17Z"' +
+      ' fill="none" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/></svg>' +
+      '<svg class="rg" width="21" height="21" viewBox="0 0 21 21"><defs><mask id="scc-regen-cut"><rect width="21" height="21" fill="#fff"/>' +
+      '<path d="M8.1 13.2V11.1L10.5 8.7 12.9 11.1V13.2L10.5 10.8Z" fill="#000"/></mask></defs>' +
+      '<circle cx="10.5" cy="10.5" r="9.3" fill="none" stroke="#fff" stroke-width="1.5"/>' +
+      '<circle cx="10.5" cy="10.5" r="7" fill="none" stroke="#fff" stroke-width=".8" stroke-dasharray="7.5 3.5" transform="rotate(-62 10.5 10.5)"/>' +
+      '<circle cx="10.5" cy="10.5" r="4.9" fill="#fff" mask="url(#scc-regen-cut)"/></svg>';
     wrap.num = text("rub", wrap, 0, 0, 21, 21, "c");
     return wrap;
   }
@@ -638,6 +645,7 @@
     bg(o.side_gun, g.side); bg(o.main_gun, g.main);
     var sc = shieldCode(p);
     toggle(o.shield, "hidden", !sc);
+    toggle(o.shield, "regen", sc === "R");
     setText(o.shield.num, sc === "R" ? "" : sc);
     setText(o.hp, Math.max(0, p.health || 0));
     setText(o.kda, [p.kills, p.deaths, p.assists].map(function (n) { return n || 0; }).join("/"));
@@ -659,6 +667,7 @@
     var sc = shieldCode(p);
     toggle(r.shieldImg, "heavy", sc === "50");
     toggle(r.shield, "hidden", !sc || sc === "50");
+    toggle(r.shield, "regen", sc === "R");
     setText(r.shield.num, sc === "R" ? "" : sc);
     var g = gun(p);
     bg(r.gun, g.main || g.side);
