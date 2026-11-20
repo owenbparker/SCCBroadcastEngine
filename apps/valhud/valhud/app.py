@@ -562,7 +562,7 @@ class HudApp:
             return False
         who = self.autosides.typed(cfg, "left") or f"{cfg['left']['name'] or 'the left team'}'s players"
         self.autosides.status = f"{who} seen on the right side of the game: teams swapped sides"
-        log(f"Auto sides: {who} are on the right side of the game, so the teams swap sides "
+        log(f"Auto sides: {who} seen on the right side of the game, so the teams swap sides "
             f"({cfg['right']['name'] or 'right team'} on the left)", "warn")
         self.swap_sides()
         return True
