@@ -362,9 +362,33 @@
   // control panel); the player tabs slide away under it. Same rules as the
   // Default 2026 HUD (driver.js wantBoard).
   var boardTimes = { total: null, from: 0, until: 0 };
+  // The buy phase, held (owen, 2026-11-20: the board flickered out before
+  // the round whenever something crossed the BUY PHASE banner and a read
+  // missed it). Once the buy phase is seen the board stays until the buy
+  // timer's run out (0:00, by the last read of it), whatever the phase
+  // reads say meanwhile; with no timer read, until the round has read as
+  // under way for a few seconds running.
+  var buy = { on: false, endAt: 0, timer: null, otherSince: 0 };
+  function trackBuy(m, now) {
+    var t = Number(m.timer) || 0, fresh = t !== buy.timer;
+    buy.timer = t;
+    if (m.phase === "buy") {
+      if (!buy.on) { buy.on = true; buy.endAt = 0; }
+      buy.otherSince = 0;
+      // (a read of the buy timer: 0:30 down to 0:00; the board goes at 0:00)
+      if (fresh && t > 0 && t <= 60) buy.endAt = now + t * 1000 + 900;
+      return;
+    }
+    if (!buy.on) return;
+    if (!buy.otherSince) buy.otherSince = now;
+    var clockOn = fresh && t > 60;   // (the round's own 1:40 read: under way)
+    if (buy.endAt ? now >= buy.endAt || clockOn : now - buy.otherSince >= SET("board.hold_without_timer", 3) * 1000) {
+      buy.on = false; buy.endAt = 0;
+    }
+  }
   function wantBoard(m, cfg) {
     if ((cfg.show || {}).scoreboard) return true;
-    if (m.phase === "buy") return !!SET("board.buy_phase", true);
+    if (buy.on) return !!SET("board.buy_phase", true);
     if (m.phase === "combat" || m.phase === "end") return false;
     var total = (m.score.left || 0) + (m.score.right || 0), now = Date.now();
     if (boardTimes.total !== null && total > boardTimes.total) { boardTimes.from = now + 6600; boardTimes.until = now + 34500; }
@@ -425,6 +449,7 @@
     { group: "Event strip", key: "strips.tuck_at", label: "Tuck away this long into the round", type: "num", def: STRIPS_S, unit: "s", min: 0, step: 0.5 },
     { group: "Event strip", key: "strips.tuck_on_plant", label: "Tuck away when the spike is planted", type: "bool", def: true },
     { group: "Scoreboard", key: "board.buy_phase", label: "Scoreboard up in the buy phase", type: "bool", def: true },
+    { group: "Scoreboard", key: "board.hold_without_timer", label: "With no buy timer read, it goes once the round's read as under way for", type: "num", def: 3, unit: "s", min: 0, step: 0.5, help: "With the timer read, it stays until 0:00." },
     { group: "Scoreboard", key: "board.swap", label: "Player tabs and scoreboard swap over in", type: "num", def: 0.45, unit: "s", min: 0, step: 0.05 },
     { group: "Round win and Ace", key: "rwin.on", label: "Show the round win banner", type: "bool", def: true },
     { group: "Round win and Ace", key: "rwin.seconds", label: "Round win stays up for", type: "num", def: 4.7, unit: "s", min: 1, step: 0.1 },
@@ -836,6 +861,7 @@
     // (no clock: the game's own timer shows through the bar's hole)
     var now = Date.now();
     trackRound(m, now);
+    trackBuy(m, now);
     trackBomb(m, now);
     // Condensed (owen's "Condensed with Hole"): 20.5 seconds into
     // the round, or once the spike is down; the full bar again in the buy phase.
