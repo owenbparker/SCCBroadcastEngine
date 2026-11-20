@@ -65,7 +65,7 @@ class Frame:
         # A capture of just the top of the window says how tall the whole was.
         info = image.info if hasattr(image, "info") else {}
         full = info.get("full_height", image.height)
-        self.image = image.convert("RGB")
+        self.image = image if getattr(image, "mode", "") == "RGB" else image.convert("RGB")   # (read only: no copy)
         # The game's picture inside black bars (a 16:10 or 4:3 screen showing
         # 16:9): the layout is found inside them.
         self.top, bottom = (0, 0) if "full_height" in info else letterbox(self.image)
@@ -157,35 +157,127 @@ def _agent_refs(agent, kind):
     return _refs[key]
 
 
+def templates(rgb, mask):
+    """Templates for ncc_many: rgb (A, n, 3), mask (A, n) (1 where a pixel
+    counts). Worked out once and kept."""
+    np = _np()
+    mask = np.asarray(mask, dtype=np.float64)
+    tm = np.asarray(rgb, dtype=np.float64) * mask[..., None]
+    return mask, tm.reshape(len(tm), -1), tm.sum(axis=2), (tm * tm).sum(axis=2)
+
+
+def windows(win, inside):
+    """Windows for ncc_many, worked out once: win (O, n, 3) (0 where outside
+    the picture), inside (O, n) (1 where a window's pixel is in it)."""
+    np = _np()
+    win = np.ascontiguousarray(win, dtype=np.float64)
+    O = win.shape[0]
+    flat = win.reshape(O, -1)
+    three = np.ones(3)
+    return (flat, np.asarray(inside, dtype=np.float64), (win.reshape(-1, 3) @ three).reshape(O, -1),
+            ((flat * flat).reshape(-1, 3) @ three).reshape(O, -1))
+
+
+def ncc_many(win, inside, bank, prepared=None):
+    """Normalised cross-correlation of every window against every template,
+    each over the pixels both cover (the same number _ncc gives for each
+    pair, all at once: a few matrix products instead of thousands of small
+    numpy calls, which held the whole app up).
+
+    win, inside: see windows() (or prepared=windows(win, inside), to compare
+    the same windows with several banks); bank: templates(). Returns ((A, O)
+    scores, (A, O) pixels compared)."""
+    np = _np()
+    mask, tflat, tsum, tsq = bank
+    flat, inside, wsum, wsq = prepared or windows(win, inside)
+    count = mask @ inside.T                       # pixels compared
+    n = 3 * count                                 # values compared (3 a pixel)
+    sa = mask @ wsum.T                            # the windows' side
+    saa = mask @ wsq.T
+    sb = tsum @ inside.T                          # the templates' side
+    sbb = tsq @ inside.T
+    sab = tflat @ flat.T
+    with np.errstate(divide="ignore", invalid="ignore"):
+        safe = np.maximum(n, 1)
+        va = saa - sa * sa / safe
+        vb = sbb - sb * sb / safe
+        cov = sab - sa * sb / safe
+        d = np.sqrt(np.maximum(va, 0) * np.maximum(vb, 0))
+        ok = (n > 0) & (va > 1e-9 * np.maximum(saa, 1)) & (vb > 1e-9 * np.maximum(sbb, 1))
+        out = np.where(ok, cov / np.where(ok, d, 1), 0.0)
+    return out, count
+
+
+_icon_banks = {}
+
+
+def _icon_bank(agents, s):
+    """templates() of these agents' icons at size s."""
+    np = _np()
+    key = (tuple(agents), s)
+    bank = _icon_banks.get(key)
+    if bank is None:
+        icons = [_agent_icon(a, s) for a in agents]
+        bank = templates(np.stack([rgb.reshape(-1, 3) for rgb, _ in icons]),
+                         np.stack([m.reshape(-1) for _, m in icons]))
+        if len(_icon_banks) > 64:
+            _icon_banks.clear()
+        _icon_banks[key] = bank
+    return bank
+
+
+_ref_banks = {}
+
+
+def _ref_bank(ref):
+    np = _np()
+    bank = _ref_banks.get(id(ref))
+    if bank is None:
+        h, w = ref.shape[:2]
+        bank = _ref_banks[id(ref)] = templates(ref.reshape(1, -1, 3), np.ones((1, h * w)))
+    return bank
+
+
 def identify_agent(crop, sizes, slack=3, agents=None, kind=None):
     """[(score, agent), ...] best first, for a portrait crop whose top-left is
     roughly where the icon starts (within `slack` px). kind ("top"/"row")
     also compares against real portraits from web/reader_refs."""
     np = _np()
-    c = np.asarray(crop, dtype=np.float32)
+    slide = np.lib.stride_tricks.sliding_window_view
+    c = np.asarray(crop, dtype=np.float64)
+    if c.ndim == 2:
+        c = np.repeat(c[..., None], 3, axis=2)
+    c = c[..., :3]
     H, W = c.shape[:2]
-    out = []
-    for agent in agents or game.AGENTS:
-        best = -1.0
+    agents = list(agents or game.AGENTS)
+    best = np.full(len(agents), -1.0)
+    for i, agent in enumerate(agents):
         for ref in _agent_refs(agent, kind):
             h, w = ref.shape[:2]
-            for dy in range(0, H - h + 1):
-                for dx in range(0, W - w + 1):
-                    best = max(best, _ncc(c[dy:dy + h, dx:dx + w].ravel(), ref.ravel()))
-        for s in sizes:
-            rgb, mask = _agent_icon(agent, s)
-            for dy in range(-slack, slack + 1):
-                for dx in range(-slack, slack + 1):
-                    y0, x0 = max(0, dy), max(0, dx)
-                    y1, x1 = min(H, dy + s), min(W, dx + s)
-                    if y1 - y0 < 10 or x1 - x0 < 10:
-                        continue
-                    m = mask[y0 - dy:y1 - dy, x0 - dx:x1 - dx]
-                    if m.sum() < 120:
-                        continue
-                    v = _ncc(c[y0:y1, x0:x1][m].ravel(), rgb[y0 - dy:y1 - dy, x0 - dx:x1 - dx][m].ravel())
-                    best = max(best, v)
-        out.append((round(best, 3), agent))
+            if H < h or W < w:
+                continue
+            v = slide(c, (h, w, 3))[:, :, 0].reshape(-1, h * w, 3)
+            score, _ = ncc_many(v, np.ones(v.shape[:2]), _ref_bank(ref))
+            best[i] = max(best[i], float(score.max()))
+    for s in sizes:
+        # The crop padded with nothing round it, so a window can hang off its
+        # edges (only the pixels on the crop count, as before).
+        pad = slack + s
+        padded = np.zeros((H + 2 * pad, W + 2 * pad, 3))
+        padded[pad:pad + H, pad:pad + W] = c
+        on = np.zeros((H + 2 * pad, W + 2 * pad))
+        on[pad:pad + H, pad:pad + W] = 1
+        lo, hi = pad - slack, pad + slack + 1
+        v = slide(padded, (s, s, 3))[lo:hi, lo:hi, 0].reshape(-1, s * s, 3)
+        inside = slide(on, (s, s))[lo:hi, lo:hi].reshape(-1, s * s)
+        # (offsets whose overlap with the crop is under 10 px a side don't count)
+        span = [min(H, d + s) - max(0, d) for d in range(-slack, slack + 1)]
+        spanx = [min(W, d + s) - max(0, d) for d in range(-slack, slack + 1)]
+        wide = np.array([[sy >= 10 and sx >= 10 for sx in spanx] for sy in span]).reshape(-1)
+        score, count = ncc_many(v, inside, _icon_bank(agents, s))
+        score = np.where(wide[None, :] & (count >= 120), score, -np.inf)
+        best = np.maximum(best, score.max(axis=1))
+    out = [(round(float(b), 3), agent) for b, agent in zip(best, agents)]
     out.sort(reverse=True)
     return out
 
@@ -835,6 +927,21 @@ def _busts():
     return _bust_refs
 
 
+_bust_bank_cache = None
+
+
+def _bust_bank():
+    """(names, templates()) of the observer card's agent portraits."""
+    global _bust_bank_cache
+    if _bust_bank_cache is None:
+        np = _np()
+        busts = _busts()
+        names = list(busts)
+        _bust_bank_cache = (names, templates(np.stack([busts[a][0].reshape(-1, 3) for a in names]),
+                                             np.stack([busts[a][1].reshape(-1) for a in names])))
+    return _bust_bank_cache
+
+
 def spectated_agent(frame):
     """(agent, "attackers" / "defenders") from the spectated player's card,
     or (None, None) (no card: free cam, or another kind of spectating)."""
@@ -844,9 +951,15 @@ def spectated_agent(frame):
     side = "attackers" if r > 150 and r - g > 60 else "defenders" if g > 120 and g - r > 40 else None
     if not side:
         return None, None
+    busts = _busts()
+    if not busts:
+        return None, None
+    names, bank = _bust_bank()
+    wins = np.stack([card[oy:oy + 80, ox:ox + 80].reshape(-1, 3) for ox in (0, 1) for oy in (0, 1)])
+    scores, _ = ncc_many(wins, np.ones(wins.shape[:2]), bank)
+    each = [float(v) for v in scores.max(axis=1)]
     best, second = (0.0, None), 0.0
-    for agent, (rgb, mask) in _busts().items():
-        score = max(_ncc(card[oy:oy + 80, ox:ox + 80][mask].ravel(), rgb[mask].ravel()) for ox in (0, 1) for oy in (0, 1))
+    for agent, score in zip(names, each):
         if score > best[0]:
             best, second = (score, agent), best[0]
         elif score > second:
@@ -1086,8 +1199,52 @@ def game_windows():
     return out
 
 
+_found = {"key": None, "win": None, "reason": "", "at": 0.0}
+FIND_EVERY = 2.0   # seconds between full looks through every window (each capture checks the one found is still there)
+
+
 def _find_window():
-    """(window, None) for the window to read, or (None, reason)."""
+    """(window, None) for the window to read, or (None, reason). The window
+    found is kept and only checked (still open, where it is now) on each
+    capture: going through every window on the PC (and the program behind
+    each) twenty times a second cost a lot."""
+    key = (PICK["title"], PICK["exe"])
+    win, age = _found["win"], time.time() - _found["at"]
+    if _found["key"] == key:
+        if win and age < FIND_EVERY:
+            now = _window_now(win)
+            if now:
+                return now, None
+        elif not win and age < FIND_EVERY / 2:
+            return None, _found["reason"]   # (not open a moment ago)
+    win, reason = _look_for_window()
+    _found.update(key=key, win=win, reason=reason, at=time.time())
+    return win, reason
+
+
+def _window_now(win):
+    """The window kept by _find_window, with where it is now, or None (it's
+    gone, or hidden: look again)."""
+    import ctypes
+    from ctypes import wintypes
+    from scc_shared import dpi
+    user32 = ctypes.windll.user32
+    hwnd = win["hwnd"]
+    if not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd):
+        return None
+    rect = wintypes.RECT()
+    point = wintypes.POINT(0, 0)
+    if not user32.GetClientRect(hwnd, ctypes.byref(rect)) or not user32.ClientToScreen(hwnd, ctypes.byref(point)):
+        return None
+    now = dict(win, width=rect.right, height=rect.bottom, x=point.x, y=point.y,
+               minimised=bool(user32.IsIconic(hwnd)))
+    if (now["x"], now["y"], now["width"], now["height"]) != (win["x"], win["y"], win["width"], win["height"]):
+        now["screen"] = dpi.screen_of(now["x"] + now["width"] // 2, now["y"] + now["height"] // 2)
+        _found["win"] = now
+    return now
+
+
+def _look_for_window():
     found = game_windows()
     if PICK["title"]:
         title, exe = PICK["title"], PICK["exe"].lower()
@@ -1177,7 +1334,7 @@ def _grab_box(box, uncovered):
     from PIL import ImageGrab
     image = None
     if not CAPTURE["gdi_black"]:
-        image = ImageGrab.grab(box, all_screens=True)
+        image = _gdi_grab(box) or ImageGrab.grab(box, all_screens=True)
     if image is None or (uncovered and _is_black(image)):
         dx = _dxgi_grab(box)
         if dx is not None and not _is_black(dx):
@@ -1191,13 +1348,90 @@ def _grab_box(box, uncovered):
     return image
 
 
+def _bitmap_header(width, height):
+    import ctypes
+    from ctypes import wintypes
+
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+                    ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                    ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                    ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+                    ("biClrImportant", wintypes.DWORD)]
+
+    info = BITMAPINFOHEADER()
+    info.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+    info.biWidth, info.biHeight = width, -height   # top-down rows
+    info.biPlanes, info.biBitCount = 1, 32
+    return info
+
+
+def _gdi_grab(box):
+    """The screen area box = (left, top, right, bottom), copied off the
+    screen (what PIL's ImageGrab does, but only that area: ImageGrab copies
+    every screen whole and then cuts the box out, which on a PC with three
+    screens, one 4K, was a lot of copying twenty times a second). None if it
+    couldn't be (the caller falls back to ImageGrab)."""
+    import ctypes
+    from ctypes import wintypes
+    from PIL import Image
+    left, top, right, bottom = (int(v) for v in box)
+    width, height = right - left, bottom - top
+    if width <= 0 or height <= 0:
+        return None
+    try:
+        user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+        user32.GetDC.restype = wintypes.HDC
+        user32.GetDC.argtypes = [wintypes.HWND]
+        user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+        gdi32.CreateCompatibleDC.restype = wintypes.HDC
+        gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+        gdi32.CreateDIBSection.restype = wintypes.HBITMAP
+        gdi32.CreateDIBSection.argtypes = [wintypes.HDC, ctypes.c_void_p, ctypes.c_uint,
+                                           ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD]
+        gdi32.SelectObject.restype = wintypes.HGDIOBJ
+        gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+        gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+        gdi32.DeleteDC.argtypes = [wintypes.HDC]
+        gdi32.BitBlt.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                 wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
+        screen = user32.GetDC(None)
+        if not screen:
+            return None
+        dc = gdi32.CreateCompatibleDC(screen)
+        try:
+            info = _bitmap_header(width, height)
+            bits = ctypes.c_void_p()
+            bitmap = gdi32.CreateDIBSection(dc, ctypes.byref(info), 0, ctypes.byref(bits), None, 0)
+            if not bitmap:
+                return None
+            old = gdi32.SelectObject(dc, bitmap)
+            try:
+                if not gdi32.BitBlt(dc, 0, 0, width, height, screen, left, top, 0x00CC0020):   # SRCCOPY
+                    return None
+                data = ctypes.string_at(bits, width * height * 4)
+            finally:
+                gdi32.SelectObject(dc, old)
+                gdi32.DeleteObject(bitmap)
+        finally:
+            gdi32.DeleteDC(dc)
+            user32.ReleaseDC(None, screen)
+        return Image.frombuffer("RGBX", (width, height), data, "raw", "BGRX", 0, 1).convert("RGB")
+    except Exception as e:
+        log_once("gdi-grab", f"Screen copy of just the game's area failed, copying every screen instead: {e!r}")
+        return None
+
+
 # How the game's being captured (for the status line and the log).
 CAPTURE = {"gdi_black": False, "method": "screen", "dxgi_error": None, "dxgi_failed_at": 0.0, "black_logged": False,
            "window": ""}
 
 
 def _is_black(image):
-    small = image.convert("L").resize((64, 36))
+    # (shrunk first, then made grey: the same answer for a fraction of the
+    # work on a big screen)
+    from PIL import Image
+    small = image.resize((64, 36), Image.BOX, reducing_gap=2.0).convert("L")
     return max(small.getdata()) < 8
 
 
@@ -1801,7 +2035,12 @@ class ScreenReader:
             reason = None
             try:
                 image, reason = capture_valorant()
-                selecting = image is not None and self.select.check(image, self.ocr)
+                if image is not None and self.spectate and time.time() - self.select.checked_at < 0.4:
+                    # (the spectate loop read agent select off a frame just
+                    # now: not read again, it's the slow part of agent select)
+                    selecting = self.select.active
+                else:
+                    selecting = image is not None and self.select.check(image, self.ocr)
                 self._record(image, selecting)
                 if selecting:
                     self.tracker.agent_select()

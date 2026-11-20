@@ -15,7 +15,7 @@ Everything is measured on a 1920x1080 frame, like the rest of the reader.
 """
 
 from . import game
-from .reader import _agent_icon, _ncc, _np, identify_weapon
+from .reader import _agent_icon, _np, identify_weapon, ncc_many, templates, windows
 
 AREA = (1100, 80, 1920, 560)   # where kill bars can be
 BAND_H = (22, 48)              # a bar's height
@@ -75,6 +75,31 @@ ICON_K = (2.0, 2.1, 2.2)
 ICON_ROWS = (0.45, 0.85)   # where the bar's top falls in the icon, as a part of the bar's height
 
 
+_strips = {}
+
+
+def _strip_bank(agents, s, oy, h, mirrored):
+    """(templates(), [enough pixels]) of rows oy..oy+h of these agents' icons
+    at size s: the part of each icon a bar shows."""
+    np = _np()
+    key = (tuple(agents), s, oy, h, mirrored)
+    got = _strips.get(key)
+    if got is None:
+        rgbs, masks = [], []
+        for agent in agents:
+            rgb, mask = _agent_icon(agent, s)
+            if mirrored:
+                rgb, mask = rgb[:, ::-1], mask[:, ::-1]
+            rgbs.append(rgb[oy:oy + h].reshape(-1, 3))
+            masks.append(mask[oy:oy + h].reshape(-1))
+        masks = np.stack(masks)
+        got = (templates(np.stack(rgbs), masks), masks.sum(axis=1) >= 150)
+        if len(_strips) > 512:
+            _strips.clear()
+        _strips[key] = got
+    return got
+
+
 def _icon_agent(frame, x, y0, y1, agents, mirrored, reach=10):
     """The agent whose icon starts near x on this bar, from `agents`, or None."""
     np = _np()
@@ -83,24 +108,23 @@ def _icon_agent(frame, x, y0, y1, agents, mirrored, reach=10):
     h = y1 - y0
     big = max(round(h * k) for k in ICON_K)
     area = np.asarray(frame.crop(x - reach, y0, x + reach + big, y1), dtype=np.float32)
-    scores = {}
-    for agent in agents:
-        best = -1.0
-        for k in ICON_K:
-            s = round(h * k)
-            rgb, mask = _agent_icon(agent, s)
-            if mirrored:
-                rgb, mask = rgb[:, ::-1], mask[:, ::-1]
-            for oy in range(round(h * ICON_ROWS[0]), min(s - h, round(h * ICON_ROWS[1])) + 1, 2):
-                t, m = rgb[oy:oy + h], mask[oy:oy + h]
-                if m.sum() < 150:
-                    continue
-                want = t[m].ravel()
-                for dx in range(0, 2 * reach + 1, 2):
-                    c = area[:, dx:dx + s]
-                    if c.shape[1] == s:
-                        best = max(best, _ncc(c[m].ravel(), want))
-        scores[agent] = best
+    agents = list(agents)
+    best = np.full(len(agents), -1.0)
+    for k in ICON_K:
+        s = round(h * k)
+        # (every 2 px along the bar, the icon's whole width on it)
+        starts = [dx for dx in range(0, 2 * reach + 1, 2) if area[:, dx:dx + s].shape[1] == s]
+        if not starts:
+            continue
+        wins = np.stack([area[:, dx:dx + s].reshape(-1, 3) for dx in starts])
+        prepared = windows(wins, np.ones(wins.shape[:2]))
+        for oy in range(round(h * ICON_ROWS[0]), min(s - h, round(h * ICON_ROWS[1])) + 1, 2):
+            bank, enough = _strip_bank(agents, s, oy, h, mirrored)
+            if not enough.any():
+                continue
+            score, _ = ncc_many(None, None, bank, prepared)
+            best = np.maximum(best, np.where(enough, score.max(axis=1), -1.0))
+    scores = {agent: float(v) for agent, v in zip(agents, best)}
     ranked = sorted(((v, a) for a, v in scores.items()), reverse=True)
     top = ranked[0][0]
     second = ranked[1][0] if len(ranked) > 1 else -1.0
