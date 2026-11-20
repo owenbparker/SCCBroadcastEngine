@@ -83,22 +83,38 @@ RECHECK = 2.0             # seconds between second looks at a name already read
 
 
 class Layout:
-    """The card column's scale and offset from where the 1080p screenshots
-    had it: a point (x, y) is at (960 + (x - 960) * s + dx, 540 + (y - 540) *
-    s + dy), dx mirrored for the attackers."""
+    """Each side's card column: its scale and offset from where the 1080p
+    screenshots had it. A point (x, y) on a side is at (960 + (x - 960) * s +
+    dx, 540 + (y - 540) * s + dy), dx mirrored for the attackers.
+
+    The two sides are kept apart: the game doesn't always draw them alike
+    (owen's 2026-11-19 recording had the attackers' portraits 12px higher
+    than the defenders'), and one layout fitted to the attackers lost a
+    defender's agent, every defender's name and their locked state."""
 
     def __init__(self):
-        self.s, self.dx, self.dy = 1.0, 0.0, 0.0
+        self.sides = {side: {"s": 1.0, "dx": 0.0, "dy": 0.0} for side in SIDES}
         self.searched_at = 0.0
         self.wait = CALIBRATE_EVERY   # longer after each search that finds nothing better (e.g. an agent with no icon here)
 
+    # (s, dx, dy: the defenders', set for both sides)
+    def _get(key):
+        return property(lambda self: self.sides["defenders"][key],
+                        lambda self, v: [d.__setitem__(key, v) for d in self.sides.values()] and None)
+    s, dx, dy = _get("s"), _get("dx"), _get("dy")
+    del _get
+
+    def copy_side(self, other, side):
+        self.sides[side] = dict(other.sides[side])
+
     def point(self, side, x, y):
+        d = self.sides[side]
         sign = 1 if side == "defenders" else -1
-        return 960 + (x - 960) * self.s + self.dx * sign, 540 + (y - 540) * self.s + self.dy
+        return 960 + (x - 960) * d["s"] + d["dx"] * sign, 540 + (y - 540) * d["s"] + d["dy"]
 
     def icon(self, side, row):
         """The portrait's box (x0, y0, size) on screen, in 1080p coordinates."""
-        size = ICON * self.s
+        size = ICON * self.sides[side]["s"]
         if side == "defenders":
             x0, y0 = self.point(side, ICON_X[side], ICON_Y0 + ROW_STEP * row)
         else:   # mirrored: the box's right edge is where the defenders' left is
@@ -107,14 +123,13 @@ class Layout:
         return x0, y0, size
 
     def found(self, side, row, x0, y0, size):
-        """A card's portrait was found at this box: the layout that puts it there."""
+        """A card's portrait was found at this box: that side's layout that puts it there."""
         s = size / ICON
         sign = 1 if side == "defenders" else -1
         x = ICON_X[side] if side == "defenders" else ICON_X[side] + ICON
         xs = x0 if side == "defenders" else x0 + size
-        self.s = s
-        self.dx = (xs - (960 + (x - 960) * s)) * sign
-        self.dy = y0 - (540 + (ICON_Y0 + ROW_STEP * row - 540) * s)
+        self.sides[side] = {"s": s, "dx": (xs - (960 + (x - 960) * s)) * sign,
+                            "dy": y0 - (540 + (ICON_Y0 + ROW_STEP * row - 540) * s)}
 
 
 _banks = {}
@@ -267,17 +282,19 @@ def find_layout(frame, layout, unread):
         if not box:
             continue
         trial = Layout()
+        for other_side in SIDES:
+            trial.copy_side(layout, other_side)
         trial.found(side, row, *box)
         others = sorted((r for s_, r in unread if s_ == side and r != row), key=lambda r: -abs(r - row))
         for other in others[:1]:
             box2 = find_card(frame, side, other, trial)
             if box2 and abs(box2[2] / box[2] - 1) < 0.05:
                 s = (box2[1] - box[1]) / (ROW_STEP * (other - row))
-                if abs(s / trial.s - 1) < 0.1:
+                if abs(s / trial.sides[side]["s"] - 1) < 0.1:
                     size = ICON * s
                     # (same middle as found, the spacing's size)
                     trial.found(side, row, box[0] + (box[2] - size) / 2, box[1] + (box[2] - size) / 2, size)
-        return trial
+        return trial, side
     return None
 
 
@@ -404,23 +421,31 @@ def read(image, ocr=None, names=None, layout=None):
         if t is not None:
             reading["timer"] = t
     cards = {(side, row): _match(frame, side, row, layout)[0] for side in SIDES for row in range(5)}
-    # Portraits no agent matches: the cards aren't where the layout has them.
+    # Portraits no agent matches: the cards aren't where the layout has them
+    # (each side looked for on its own).
     if not keep or time.time() - layout.searched_at >= layout.wait:
         unread = [key for key, agent in cards.items() if not agent and has_portrait(frame, key[0], key[1], layout)]
         if unread:
             layout.searched_at = time.time()
             layout.wait = min(layout.wait * 2, 60.0)
-            trial = find_layout(frame, layout, unread)
-            if trial and 0.8 <= trial.s <= 1.25 and abs(trial.dx) <= 150 and abs(trial.dy) <= 150:
-                again = {key: _match(frame, key[0], key[1], trial)[0] for key in cards}
-                if sum(map(bool, again.values())) > sum(map(bool, cards.values())):
-                    layout.s, layout.dx, layout.dy = trial.s, trial.dx, trial.dy
+            for side in SIDES:
+                mine = [key for key in unread if key[0] == side]
+                found = find_layout(frame, layout, mine) if mine else None
+                if not found:
+                    continue
+                trial, _ = found
+                d = trial.sides[side]
+                if not (0.8 <= d["s"] <= 1.25 and abs(d["dx"]) <= 150 and abs(d["dy"]) <= 150):
+                    continue
+                again = {(side, r): _match(frame, side, r, trial)[0] for r in range(5)}
+                if sum(map(bool, again.values())) > sum(1 for r in range(5) if cards[(side, r)]):
+                    layout.copy_side(trial, side)
                     layout.wait = CALIBRATE_EVERY
-                    cards = again
+                    cards.update(again)
                     try:
                         from .log import log
-                        log(f"Agent select: cards found {trial.s:.3f}x, {trial.dx:+.0f}px across, {trial.dy:+.0f}px down "
-                            "from the usual place")
+                        log(f"Agent select: {side}' cards found {d['s']:.3f}x, {d['dx']:+.0f}px across, "
+                            f"{d['dy']:+.0f}px down from the usual place")
                     except Exception:
                         pass
     # Cards still showing a portrait no agent matched (kept as a problem frame

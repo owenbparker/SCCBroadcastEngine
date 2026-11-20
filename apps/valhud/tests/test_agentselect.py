@@ -272,6 +272,21 @@ class ShiftedCardsTests(unittest.TestCase):
             again = selectreader.read(self.moved("mixed_38", scale, dx, dy), layout=layout)
             self.assertEqual(again["players"], reading["players"])
 
+    def test_each_side_found_on_its_own(self):
+        """owen's 2026-11-19 recording: the attackers' portraits sat 12px
+        higher than the defenders'. One layout for both, fitted to the
+        attackers, lost a defender's agent, every defender's name and their
+        locked state."""
+        from PIL import Image
+        from valhud import selectreader
+        layout = selectreader.Layout()
+        reading = selectreader.read(Image.open(os.path.join(FIXTURES, "attackers_higher_69.webp")), layout=layout)
+        self.assertEqual([(p["agent"], p["locked"]) for p in reading["players"]],
+                         [("Skye", True), ("Omen", False), ("Iso", True), ("Jett", True), ("Vyse", True),
+                          ("Viper", True), ("Fade", True), ("Chamber", True), ("Raze", True), ("Omen", True)])
+        self.assertAlmostEqual(layout.sides["defenders"]["dy"], 0, delta=2)
+        self.assertAlmostEqual(layout.sides["attackers"]["dy"], -12, delta=2)
+
     def test_unread_cards_counted(self):
         from valhud import selectreader
         self.assertEqual(selectreader.read(self.moved("locked_00", 1, 0, 0))["unread"], 0)
