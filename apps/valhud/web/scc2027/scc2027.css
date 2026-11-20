@@ -172,6 +172,8 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .tab .shield { top: 54px; width: 21px; height: 21px; }
 .shield { width: 21px; height: 21px; }
 .shield svg { position: absolute; left: 0; top: 0; }
+.shield .rg, .shield.regen .sh { display: none; }   /* the regen shield: its own round icon, no number */
+.shield.regen .rg { display: block; }
 .shield .t { left: 0; top: 0; width: 21px; height: 21px; font-size: 9px; }
 .tab .hp { top: 57px; height: 14px; font-size: 20px; width: 40px; }
 .tab .hpbar { left: 0; right: 0; bottom: 0; height: 8px; background: rgba(0, 0, 0, .35); }

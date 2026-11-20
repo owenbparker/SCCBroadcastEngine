@@ -114,8 +114,22 @@ class ShieldTests(unittest.TestCase):
         cell = lambda side, row: reader.row_cell(frame, side, row, "shield", 4)
         self.assertEqual(reader.shield_reading(cell("left", 0)), (50, False))   # filled, with wings
         self.assertEqual(reader.shield_reading(cell("left", 1)), (25, False))   # outline
-        # Another icon (the regen shield's): 25 that regenerates.
+        # Something white that isn't a shield icon: no reading (the last one stands).
         other = Image.new("RGB", (34, 26), (40, 90, 80))
-        ImageDraw.Draw(other).ellipse((9, 3, 25, 22), outline=(255, 255, 255), width=3)
-        self.assertEqual(reader.shield_reading(other), (25, True))
+        ImageDraw.Draw(other).rectangle((6, 4, 28, 22), fill=(255, 255, 255))
+        self.assertIsNone(reader.shield_reading(other))
         self.assertEqual(reader.shield_reading(Image.new("RGB", (34, 26), (40, 90, 80))), (0, False))
+
+    def test_regen_shield_on_a_real_board(self):
+        # owen's recording (Summit, 2026-11-16): the round regen shield icon
+        # next to heavy and light shields, and players with none.
+        from PIL import Image
+        from valhud import reader
+        frame = reader.Frame(Image.open(os.path.join(FIXTURES, "tab_scoreboard_regen.jpg")))
+        self.assertTrue(reader.scoreboard_open(frame))
+        seen = [reader.shield_reading(reader.row_cell(frame, side, r, "shield", 4))
+                for side in ("left", "right") for r in range(5)]
+        self.assertEqual(seen, [(0, False), (0, False), (25, True), (50, False), (0, False)] + [(25, False)] * 5)
+        update = reader.read_frame(frame.image)
+        self.assertEqual(sum(1 for p in update["players"] if p.get("regen_shield")), 1)
+        self.assertEqual(sum(1 for p in update["players"] if p.get("shield") == 25), 6)
