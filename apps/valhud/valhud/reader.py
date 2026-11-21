@@ -1607,6 +1607,87 @@ class BuyBanner:
         return "buy" if self.on else "combat"
 
 
+def _name_key(text):
+    return "".join(ch for ch in str(text or "").lower() if ch.isalnum())
+
+
+def _close_names(a, b):
+    """Two readings of one name? (the same letters, one cut short, or a
+    letter or two off)."""
+    import difflib
+    a, b = _name_key(a), _name_key(b)
+    if not a or not b:
+        return False
+    if a == b or (min(len(a), len(b)) >= 3 and (a.startswith(b) or b.startswith(a))):
+        return True
+    return len(a) >= 4 and len(b) >= 4 and difflib.SequenceMatcher(None, a, b).ratio() >= 0.8
+
+
+class NameKeeper:
+    """Seat names for a map, read off the Tab scoreboard (a few times a
+    round). A name counts once it's been read the same twice; once it's been
+    read LOCK times it's the seat's name for the map. After that:
+      - a reading with the same letters (spaces apart), a team tag in front
+        ("SPHI f4ngz"), cut short or a letter off is a misread of it: the
+        name stays (written with the fewest spaces it's been read with);
+      - a plainly different name (the seats were swapped round) takes
+        CHANGE readings in a row."""
+
+    LOCK = 4
+    CHANGE = 6
+
+    def __init__(self):
+        self.seats = {}   # seat -> {"name", "counts": {text: n}, "locked", "pending", "run"}
+
+    def name(self, seat):
+        return (self.seats.get(seat) or {}).get("name")
+
+    def offer(self, seat, text):
+        text = " ".join(str(text or "").split())
+        s = self.seats.setdefault(seat, {"name": None, "counts": {}, "locked": False, "pending": None, "run": 0})
+        have = s["name"]
+        if not text:
+            return have
+        if have and self._tagged(text, have):
+            return have   # (a team tag left on: not counted)
+        if have and (_close_names(text, have) or self._tagged(have, text)):
+            s["pending"], s["run"] = None, 0
+            if self._tagged(have, text):
+                # (the tag was on the first readings: the name is without it)
+                s["counts"] = {text: s["counts"].pop(have, 0)}
+            s["counts"][text] = s["counts"].get(text, 0) + 1
+            s["name"] = self._best(s["counts"])
+            s["locked"] = s["locked"] or sum(s["counts"].values()) >= self.LOCK
+            return s["name"]
+        # A different name.
+        s["run"] = s["run"] + 1 if s["pending"] and _name_key(s["pending"]) == _name_key(text) else 1
+        s["pending"] = text
+        need = self.CHANGE if s["locked"] else 2
+        if have is None and s["run"] >= 2 or have is not None and s["run"] >= need:
+            s.update(name=text, counts={text: s["run"]}, locked=False, pending=None, run=0)
+        return s["name"]
+
+    @staticmethod
+    def _best(counts):
+        """The name the readings of one name agree on: the letters read most
+        (the longer on a tie: names get cut short, not made longer), written
+        with the fewest spaces it's been read with twice."""
+        by_key = {}
+        for t, n in counts.items():
+            by_key[_name_key(t)] = by_key.get(_name_key(t), 0) + n
+        key = max(by_key, key=lambda k: (by_key[k], len(k)))
+        # (text recognition puts spaces into names more than it drops them:
+        # the fewest spaces of those read twice or more)
+        return max((t for t in counts if _name_key(t) == key),
+                   key=lambda t: (counts[t] >= 2, -t.count(" "), counts[t]))
+
+    @staticmethod
+    def _tagged(text, name):
+        """text is name with a short team tag in front ("SPHI f4ngz")."""
+        words = text.split()
+        return len(words) >= 2 and len(words[0]) <= 5 and _name_key(" ".join(words[1:])) == _name_key(name)
+
+
 class ScreenReader:
     """Reads the game in the background and hands each update to `send`."""
 
@@ -1957,25 +2038,16 @@ class ScreenReader:
         m.pop("round", None)
 
     def _steady_names(self, update):
-        """A seat's name off the scoreboard counts once it's been read the
-        same twice (one misread, "chr" for "chronicle", used to show until
-        the next read); the name it had stays meanwhile."""
-        names = self.__dict__.setdefault("_seat_names", {})
+        """Each seat's name off the scoreboard, kept for the map (NameKeeper):
+        one misread ("chr" for "chronicle"), a split ("yoog ee") or a team
+        tag left on ("SPHI f4ngz") doesn't replace a name read the same many
+        times; the name it had stays meanwhile."""
+        keeper = self.__dict__.setdefault("names", NameKeeper())
         for p in update["players"]:
             text = p.pop("name", None)
-            if not text:
-                continue
-            seat = (p["team"], p["slot"])
-            have, pending = names.get(seat, (None, None))
-            if text == have:
-                p["name"] = text
-            elif text == pending:
-                names[seat] = (text, None)
-                p["name"] = text
-            else:
-                names[seat] = (have, text)
-                if have:
-                    p["name"] = have
+            shown = keeper.offer((p["team"], p["slot"]), text) if text else keeper.name((p["team"], p["slot"]))
+            if shown:
+                p["name"] = shown
 
     def _learn_agents(self, update):
         """An agent counts once it's been seen three times in the same seat on
@@ -2084,7 +2156,7 @@ class ScreenReader:
                     # put last map's agents on this map's seats until
                     # learned again)
                     self.agents, self._agent_votes = {}, {}
-                    self._seat_names = {}
+                    self.names = NameKeeper()
                     if self.select.empty_for() > 20:
                         self._keep_frame(image, "agent-select-unread")
                     elif self.select.unread_for() > 8:

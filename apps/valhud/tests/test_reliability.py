@@ -101,5 +101,43 @@ class FlickerTests(unittest.TestCase):
         self.assertEqual(r.kda.values(seat)[1], 2)
 
 
+class NameKeeperTests(unittest.TestCase):
+    """Names off owen's Lotus recording (2026-11-19): one player read as
+    "yoogee", "yoog ee" and "y oog ee", another as "f4ngz" and "SPHI f4ngz"."""
+
+    def test_spaces_and_tags_dont_change_the_name(self):
+        from valhud.reader import NameKeeper
+        k, a, b = NameKeeper(), ("right", 1), ("left", 1)
+        for text in ["yoogee", "yoogee", "yoog ee", "y oog ee", "yoog ee", "yoog ee", "yoog ee", "yoogee"]:
+            k.offer(a, text)
+            if k.name(a):
+                self.assertEqual(k.name(a), "yoogee")
+        for text in ["f4ngz", "f4ngz", "SPHI f4ngz", "SPHI f4ngz", "f4ngz"]:
+            k.offer(b, text)
+        self.assertEqual(k.name(b), "f4ngz")
+
+    def test_tag_on_the_first_readings_comes_off(self):
+        from valhud.reader import NameKeeper
+        k, a = NameKeeper(), ("left", 1)
+        k.offer(a, "SPHI f4ngz")
+        k.offer(a, "SPHI f4ngz")
+        self.assertEqual(k.name(a), "SPHI f4ngz")
+        k.offer(a, "f4ngz")
+        self.assertEqual(k.name(a), "f4ngz")
+
+    def test_a_locked_name_needs_many_reads_to_change(self):
+        from valhud.reader import NameKeeper
+        k, a = NameKeeper(), ("left", 2)
+        for _ in range(5):
+            k.offer(a, "chronicle")
+        for _ in range(3):
+            k.offer(a, "Juw")                 # a few misplaced reads
+        k.offer(a, "chr")                     # cut short
+        self.assertEqual(k.name(a), "chronicle")
+        for _ in range(NameKeeper.CHANGE):
+            k.offer(a, "Juw")
+        self.assertEqual(k.name(a), "Juw")
+
+
 if __name__ == "__main__":
     unittest.main()
