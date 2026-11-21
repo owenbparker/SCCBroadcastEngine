@@ -468,6 +468,7 @@ class ScoreMisreadTests(unittest.TestCase):
         for _ in range(4):                          # a real jump (joined late, a missed read): five reads
             self.assertIsNone(self._feed(r, 14, 12))
         self.assertEqual(self._feed(r, 14, 12), {"left": 14, "right": 12})
+        r._select_seen = True                       # (agent select in between)
         self.assertIsNone(self._feed(r, 0, 0))      # the next map: second read
         self.assertEqual(self._feed(r, 0, 0), {"left": 0, "right": 0})
 
@@ -485,11 +486,27 @@ class ScoreMisreadTests(unittest.TestCase):
             self._feed(r, 1, 1)
         self.assertIsNone(self._feed(r, 6, 5))
         self.assertEqual(self._feed(r, 6, 5), {"left": 6, "right": 5})
-        # A new map after a won one: back to 0-0 at two reads.
+        # A new map after a won one (agent select in between, or a minute
+        # with no score read): back to 0-0 at two reads.
         for score in [(12, 5)] * 5 + [(13, 5)] * 2:
             self._feed(r, *score)
+        r._select_seen = True
         self.assertIsNone(self._feed(r, 0, 0))
         self.assertEqual(self._feed(r, 0, 0), {"left": 0, "right": 0})
+        for score in [(12, 5)] * 5 + [(13, 5)] * 2:
+            self._feed(r, *score)
+        r._score_read_at -= 90
+        self.assertIsNone(self._feed(r, 0, 0))
+        self.assertEqual(self._feed(r, 0, 0), {"left": 0, "right": 0})
+
+    def test_near_zero_without_agent_select_needs_five(self):
+        from valhud.reader import ScreenReader
+        r = ScreenReader(lambda u: None)
+        for _ in range(5):
+            self._feed(r, 12, 11)
+        for _ in range(4):
+            self.assertIsNone(self._feed(r, 1, 1))  # "12-11" read as "1-1": not a new map
+        self.assertEqual(self._feed(r, 1, 1), {"left": 1, "right": 1})
 
 
 class SpectatedByCardFirstTests(unittest.TestCase):

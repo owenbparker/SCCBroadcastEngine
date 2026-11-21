@@ -139,5 +139,50 @@ class NameKeeperTests(unittest.TestCase):
         self.assertEqual(k.name(a), "Juw")
 
 
+class ReadingHealthTests(unittest.TestCase):
+    def test_line_says_good_or_what_to_fix(self):
+        from valhud.reader import ReadingHealth
+        h = ReadingHealth()
+        for i in range(10):
+            h.frame("match", now=100 + i)
+            h.read(0.7, now=100 + i)
+        self.assertEqual(h.info(now=110)["line"], "Reading check: good. Full read 0.7 s.")
+        h.held["score"] += 2
+        self.assertIn("Misreads held back this map: 2 score.", h.info(now=110)["line"])
+        for i in range(10):
+            h.read(2.5, now=111 + i)
+        info = h.info(now=121)
+        self.assertTrue(info["warn"])
+        self.assertIn("separate programs", info["line"])
+        h.new_map()
+        self.assertEqual(h.held["score"], 0)
+
+    def test_window_not_found_and_black_frames(self):
+        from valhud.reader import ReadingHealth
+        h = ReadingHealth()
+        for i in range(10):
+            h.frame("none", now=i)
+        self.assertIn("Game window", h.info(now=10)["line"])
+        h = ReadingHealth()
+        for i in range(10):
+            h.frame("black" if i % 2 else "match", now=i)
+        self.assertIn("black", h.info(now=10)["line"])
+
+    def test_score_jump_is_counted_as_held(self):
+        from valhud import reader
+        r = object.__new__(reader.ScreenReader)
+        r.health = reader.ReadingHealth()
+
+        def offer(left, right):
+            u = {"match": {"score": {"left": left, "right": right}}}
+            r._steady_score(u)
+            return u["match"].get("score")
+        offer(12, 11)
+        offer(12, 11)
+        self.assertIsNone(offer(1, 1))      # "12-11" read as "1-1"
+        self.assertEqual(r.health.held["score"], 1)
+        self.assertEqual(len(r._held_now), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

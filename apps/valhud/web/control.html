@@ -366,6 +366,7 @@
     <h2>Live data</h2>
     <button id="reader" class="read-btn">Read VALORANT on this PC</button>
     <div class="note" id="reader-status" style="margin:8px 0 10px"></div>
+    <div class="note" id="reader-health" style="margin:-4px 0 10px" hidden></div>
     <div class="row" style="margin-bottom:10px;align-items:center">
       <label for="game-window" style="flex:0 0 auto;margin:0">Game window</label>
       <select id="game-window" style="flex:1;min-width:0" title="The window the reader reads. Automatic finds VALORANT on any screen; pick it by hand if it's not found."></select>
@@ -738,6 +739,10 @@ function apply(s) {
   $("reader-status").textContent = !rd.available ? rd.status
     : rd.enabled ? `${rd.status}${rd.window ? ` from ${rd.window}` : ""}${rd.age != null ? ` (last read ${rd.age}s ago)` : ""}. ${rd.detail ? rd.detail + " " : ""}Keep the top bar visible; open the Tab scoreboard (e.g. in the buy phase) to read names, credits, weapons, ults and K/D/A.`
     : "Off. Turn on when VALORANT (spectating) runs on this PC.";
+  const health = rd.enabled && rd.health;
+  $("reader-health").hidden = !health;
+  $("reader-health").textContent = health ? health.line : "";
+  $("reader-health").style.color = health && health.warn ? "var(--warn, #e0a040)" : "";
   const riot = app.riot || {};
   $("riot-status").textContent = riot.received != null && riot.received < 30
     ? `Riot Client: agent select and Riot IDs coming in (${riot.received}s ago)`
