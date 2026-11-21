@@ -199,34 +199,112 @@ class LiveKda:
     kills read off the kill feed. Each death counts once (a player has to be
     seen alive again before they can die again: next round, or a revive),
     and each death gives one kill, so a bar read many times while it's on
-    screen counts once."""
+    screen counts once.
+
+    Every death and kill is kept with the time it happened. A Tab read says
+    when its frame was taken (the full read takes a second or two): only what
+    happened after that frame is added on top of it, so a death the top bar
+    caught while the board was being read isn't undone (the K/D/A used to
+    flicker 1 -> 0 -> 1).
+
+    The board's own numbers are checked against the game's rules first: they
+    never go down in a map, and nobody has more deaths than rounds started.
+    A reading that breaks them (a misread "11" as "1") only counts once it's
+    been read the same twice running (a real correction), and each one turned
+    away is counted in `rejected` (the reader's health line shows it)."""
+
+    NEAR = 1.0   # seconds after a board's frame a death can still be on it (the board updates at once)
 
     def __init__(self):
         import threading
         self._lock = threading.Lock()
         self.base = {}       # seat -> [kills, deaths, assists] from the scoreboard
         self.extra = {}      # seat -> [kills, deaths, assists] since
+        self.events = {}     # seat -> [(time, 0 kill / 1 death)] since the board's frame
         self.life = {}       # seat -> how many times they've been seen coming back to life
         self.dead = {}       # seat -> dead now (as far as the top bar says)
         self.died = {}       # seat -> the life whose death was counted
         self.killed = {}     # seat -> the life whose killer was credited
+        self._odd = {}       # seat -> a board reading the rules turned away (counts if read again)
+        self.floor = {}      # seat -> the K/D/A last shown: nothing shown goes below it...
+        self._lower = {}     # seat -> ...unless two boards running say lower (a real correction)
+        self.rejected = 0
+        self.last_rejected = None   # (seat, reading, why)
 
-    def board(self, seat, kills, deaths, assists):
+    def board(self, seat, kills, deaths, assists, at=None, rounds=None):
+        """The Tab scoreboard's K/D/A for a seat. at: when its frame was
+        taken (default: now). rounds: rounds started so far (the round being
+        played included), for the deaths check. Returns False if the rules
+        turned it away."""
+        import time
+        at = time.time() if at is None else at
+        reading = [int(kills), int(deaths), int(assists)]
         with self._lock:
-            self.base[seat] = [kills, deaths, assists]
-            self.extra[seat] = [0, 0, 0]
-            if self.dead.get(seat):
+            why = self._odd_board(seat, reading, rounds)
+            if why:
+                if self._odd.get(seat) != reading:
+                    self._odd[seat] = reading
+                    self.rejected += 1
+                    self.last_rejected = (seat, tuple(reading), why)
+                    return False
+            self._odd.pop(seat, None)
+            before = [e for e in self.events.get(seat, []) if e[0] <= at]
+            after = [e for e in self.events.get(seat, []) if e[0] > at]
+            prev = self.base.get(seat)
+            keep = []
+            for i in (0, 1):
+                mine = [e for e in after if e[1] == i]
+                if prev is not None:
+                    # The board's ahead of what was known by its frame: deaths
+                    # (kills) caught just after the frame are on it already.
+                    surplus = reading[i] - (prev[i] + sum(1 for e in before if e[1] == i))
+                    near = [e for e in mine if e[0] - at <= self.NEAR]
+                    drop = min(max(0, surplus), len(near))
+                    mine = mine[drop:]
+                keep += mine
+            self.base[seat] = reading
+            self.events[seat] = sorted(keep)
+            self.extra[seat] = [sum(1 for e in keep if e[1] == 0), sum(1 for e in keep if e[1] == 1), 0]
+            total = [b + e for b, e in zip(reading, self.extra[seat])]
+            floor = self.floor.get(seat)
+            if floor and any(t < f for t, f in zip(total, floor)):
+                # Lower than what's on the HUD: the board's frame was from
+                # before a death the top bar caught, or the top bar counted
+                # one too many. Two boards running saying so: it's lower.
+                if self._lower.get(seat) == reading:
+                    self.floor[seat] = total
+                    self._lower.pop(seat, None)
+                else:
+                    self._lower[seat] = reading
+            else:
+                self._lower.pop(seat, None)
+            if self.dead.get(seat) and not any(e[1] == 1 for e in keep):
                 # (the board already has this death, and the kill for it: a
                 # kill bar still up, read after this, mustn't add them again)
                 life = self.life.get(seat, 0)
                 self.died[seat] = self.killed[seat] = life
+            return True
 
-    def _add(self, seat, i):
+    def _odd_board(self, seat, reading, rounds):
+        if rounds is not None and reading[1] > rounds:
+            return f"{reading[1]} deaths in {rounds} rounds"
+        if rounds is not None and reading[0] > 5 * rounds:
+            return f"{reading[0]} kills in {rounds} rounds"
+        prev = self.base.get(seat)
+        if prev is not None:
+            for i, what in enumerate(("kills", "deaths", "assists")):
+                if reading[i] < prev[i]:
+                    return f"{what} down from {prev[i]} to {reading[i]}"
+        return None
+
+    def _add(self, seat, i, at=None):
+        import time
         self.extra.setdefault(seat, [0, 0, 0])[i] += 1
+        self.events.setdefault(seat, []).append((time.time() if at is None else at, i))
 
-    def alive(self, seat, alive):
-        """The top bar's say on a seat (already steady). Returns True when a
-        new death was counted."""
+    def alive(self, seat, alive, at=None):
+        """The top bar's say on a seat (already steady). at: when the change
+        was first seen. Returns True when a new death was counted."""
         with self._lock:
             was_dead = self.dead.get(seat)
             self.dead[seat] = not alive
@@ -236,17 +314,17 @@ class LiveKda:
                 return False
             if was_dead is None:
                 return False   # dead when first seen: not a death we saw happen
-            return self._death(seat)
+            return self._death(seat, at)
 
-    def _death(self, seat):
+    def _death(self, seat, at=None):
         life = self.life.get(seat, 0)
         if self.died.get(seat) == life:
             return False
         self.died[seat] = life
-        self._add(seat, 1)
+        self._add(seat, 1, at)
         return True
 
-    def kill(self, killer, victim):
+    def kill(self, killer, victim, at=None):
         """A kill bar. Counts once per death, and only while the victim is
         dead (an old bar still up when the next round starts doesn't)."""
         with self._lock:
@@ -256,9 +334,9 @@ class LiveKda:
             if self.killed.get(victim) == life:
                 return False
             self.killed[victim] = life
-            self._death(victim)
+            self._death(victim, at)
             if killer and killer[0] != victim[0]:
-                self._add(killer, 0)
+                self._add(killer, 0, at)
             return True
 
     def values(self, seat):
@@ -266,4 +344,9 @@ class LiveKda:
         with self._lock:
             if seat not in self.base:
                 return None
-            return tuple(b + e for b, e in zip(self.base[seat], self.extra.get(seat, [0, 0, 0])))
+            now = [b + e for b, e in zip(self.base[seat], self.extra.get(seat, [0, 0, 0]))]
+            floor = self.floor.get(seat)
+            if floor:
+                now = [max(n, f) for n, f in zip(now, floor)]
+            self.floor[seat] = now
+            return tuple(now)

@@ -93,6 +93,7 @@ class HudApp:
         # PC (sent the same way as the screen reader's readings).
         self.riot = RiotClient(self._reader_update, config, DATA_DIR, log)
         self.riot.on_json = self._riot_json
+        self.riot.on_event = lambda kind, data: self.recorder.event(kind, data)
         self.riot_roster, self.riot_at, self._riot_select_at = None, 0.0, 0.0
         self._known_names = {}       # team name (normalised) -> {name (normalised): the name as written}
         self._sel = self._select_fresh()   # which source each team's agent select cards come from

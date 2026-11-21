@@ -1607,6 +1607,138 @@ class BuyBanner:
         return "buy" if self.on else "combat"
 
 
+def _name_key(text):
+    return "".join(ch for ch in str(text or "").lower() if ch.isalnum())
+
+
+def _close_names(a, b):
+    """Two readings of one name? (the same letters, one cut short, or a
+    letter or two off)."""
+    import difflib
+    a, b = _name_key(a), _name_key(b)
+    if not a or not b:
+        return False
+    if a == b or (min(len(a), len(b)) >= 3 and (a.startswith(b) or b.startswith(a))):
+        return True
+    return len(a) >= 4 and len(b) >= 4 and difflib.SequenceMatcher(None, a, b).ratio() >= 0.8
+
+
+class NameKeeper:
+    """Seat names for a map, read off the Tab scoreboard (a few times a
+    round). A name counts once it's been read the same twice; once it's been
+    read LOCK times it's the seat's name for the map. After that:
+      - a reading with the same letters (spaces apart), a team tag in front
+        ("SPHI f4ngz"), cut short or a letter off is a misread of it: the
+        name stays (written with the fewest spaces it's been read with);
+      - a plainly different name (the seats were swapped round) takes
+        CHANGE readings in a row."""
+
+    LOCK = 4
+    CHANGE = 6
+
+    def __init__(self):
+        self.seats = {}   # seat -> {"name", "counts": {text: n}, "locked", "pending", "run"}
+
+    def name(self, seat):
+        return (self.seats.get(seat) or {}).get("name")
+
+    def locked(self, seat):
+        return bool((self.seats.get(seat) or {}).get("locked"))
+
+    def offer(self, seat, text):
+        text = " ".join(str(text or "").split())
+        s = self.seats.setdefault(seat, {"name": None, "counts": {}, "locked": False, "pending": None, "run": 0})
+        have = s["name"]
+        if not text:
+            return have
+        if have and self._tagged(text, have):
+            return have   # (a team tag left on: not counted)
+        if have and (_close_names(text, have) or self._tagged(have, text)):
+            s["pending"], s["run"] = None, 0
+            if self._tagged(have, text):
+                # (the tag was on the first readings: the name is without it)
+                s["counts"] = {text: s["counts"].pop(have, 0)}
+            s["counts"][text] = s["counts"].get(text, 0) + 1
+            s["name"] = self._best(s["counts"])
+            s["locked"] = s["locked"] or sum(s["counts"].values()) >= self.LOCK
+            return s["name"]
+        # A different name.
+        s["run"] = s["run"] + 1 if s["pending"] and _name_key(s["pending"]) == _name_key(text) else 1
+        s["pending"] = text
+        need = self.CHANGE if s["locked"] else 2
+        if have is None and s["run"] >= 2 or have is not None and s["run"] >= need:
+            s.update(name=text, counts={text: s["run"]}, locked=False, pending=None, run=0)
+        return s["name"]
+
+    @staticmethod
+    def _best(counts):
+        """The name the readings of one name agree on: the letters read most
+        (the longer on a tie: names get cut short, not made longer), written
+        with the fewest spaces it's been read with twice."""
+        by_key = {}
+        for t, n in counts.items():
+            by_key[_name_key(t)] = by_key.get(_name_key(t), 0) + n
+        key = max(by_key, key=lambda k: (by_key[k], len(k)))
+        # (text recognition puts spaces into names more than it drops them:
+        # the fewest spaces of those read twice or more)
+        return max((t for t in counts if _name_key(t) == key),
+                   key=lambda t: (counts[t] >= 2, -t.count(" "), counts[t]))
+
+    @staticmethod
+    def _tagged(text, name):
+        """text is name with a short team tag in front ("SPHI f4ngz")."""
+        words = text.split()
+        return len(words) >= 2 and len(words[0]) <= 5 and _name_key(" ".join(words[1:])) == _name_key(name)
+
+
+class ReadingHealth:
+    """How the reading's going, in one line for Live data: what it's found on
+    the last minute's frames, how long a full read takes, and how many
+    readings the game's rules held back this map (each one kept as a frame
+    in frames/auto for the Problem report)."""
+
+    WINDOW = 60.0
+    SLOW = 1.5   # seconds a full read; slower and deaths, kills and the score lag
+
+    def __init__(self):
+        self.frames = []        # (time, what: "none" / "black" / "select" / "match" / "other")
+        self.reads = []         # (time, seconds a full read took)
+        self.held = {"score": 0, "kda": 0, "name": 0}
+
+    def new_map(self):
+        self.held = {k: 0 for k in self.held}
+
+    def frame(self, what, now=None):
+        now = time.time() if now is None else now
+        self.frames = [f for f in self.frames if now - f[0] < self.WINDOW] + [(now, what)]
+
+    def read(self, took, now=None):
+        now = time.time() if now is None else now
+        self.reads = [r for r in self.reads if now - r[0] < self.WINDOW] + [(now, took)]
+
+    def info(self, now=None):
+        now = time.time() if now is None else now
+        frames = [w for t, w in self.frames if now - t < self.WINDOW]
+        reads = [d for t, d in self.reads if now - t < self.WINDOW]
+        warn = []
+        if frames:
+            n = len(frames)
+            if frames.count("none") > n / 2:
+                warn.append("VALORANT's window isn't being found: pick it under Game window")
+            elif frames.count("black") > n / 4:
+                warn.append(f"{frames.count('black')} of the last {n} captures were black (the game hidden or minimised)")
+        took = sum(reads) / len(reads) if reads else None
+        if took and took > self.SLOW:
+            warn.append(f"a full read takes {took:.1f} s (the PC is busy): turn on 'Run game HUDs as separate "
+                        "programs' in Settings, or close what else is running")
+        held = ", ".join(f"{n} {k}" for k, n in self.held.items() if n)
+        line = ("Reading check: " + ("; ".join(warn) + "." if warn else "good.") +
+                (f" Misreads held back this map: {held}." if held else "") +
+                (f" Full read {took:.1f} s." if took and not warn else ""))
+        return {"line": line, "warn": bool(warn), "read_s": round(took, 2) if took else None,
+                "held": dict(self.held), "frames": {w: frames.count(w) for w in set(frames)}}
+
+
 class ScreenReader:
     """Reads the game in the background and hands each update to `send`."""
 
@@ -1637,6 +1769,7 @@ class ScreenReader:
         self.bank = GlyphBank(os.path.join(DATA_DIR, "glyphs.json"))   # digits by shape (glyphbank.py)
         self._bank_saved = time.time()
         self._shadow_differs = 0.0
+        self.health = ReadingHealth()
         self.available, self.reason = self._check()
 
     def _check(self):
@@ -1656,7 +1789,8 @@ class ScreenReader:
                 "detail": getattr(self, "detail", "") if self.enabled else "",
                 "window": CAPTURE.get("window", ""),
                 "spectate": self.spectate, "spectate_status": self.spectate_status if self.available else self.reason,
-                "age": round(time.time() - self.read_at, 1) if self.read_at else None}
+                "age": round(time.time() - self.read_at, 1) if self.read_at else None,
+                "health": self.health.info() if self.enabled else None}
 
     def set_enabled(self, on):
         self.enabled = bool(on) and self.available
@@ -1848,16 +1982,32 @@ class ScreenReader:
                 log_once("alive-loop", f"Health bar check failed: {e!r}")
             self._stop.wait(self.ALIVE_EVERY)
 
-    def _count_deaths(self, players):
+    DEAD_READS = 2     # a health bar gone this many reads running is a death...
+    BACK_FOR = 0.7     # ...and back (two reads or more) this many seconds is alive again
+
+    def _count_deaths(self, players, now=None):
         """A health bar gone for two reads running is a death (one for each
-        life: the player has to be back, two reads running, first)."""
+        life: the player has to be back first). Back to life takes 0.7 s of
+        the bar showing (by the clock, not reads: the loop slows down when the
+        PC's busy): a bar hidden for a moment mid-round (a flash, something
+        drawn over it) used to make a second death in the same round when it
+        came back and went again. A real comeback (the
+        next round, a revive) shows the bar for much longer. The death goes
+        in at the time the bar was first seen gone."""
+        now = time.time() if now is None else now
         for p in players:
             seat = (p["team"], p["slot"])
-            state, n = self._dead_reads.get(seat, (p["alive"], 0))
-            n = n + 1 if p["alive"] == state else 1
-            self._dead_reads[seat] = (p["alive"], n)
-            if n == 2:
-                self.kda.alive(seat, p["alive"])
+            state, n, since = self._dead_reads.get(seat, (p["alive"], 0, now))
+            if p["alive"] == state:
+                n += 1
+            else:
+                state, n, since = p["alive"], 1, now
+            if state and n >= self.DEAD_READS and now - since >= self.BACK_FOR and n > 0:
+                self.kda.alive(seat, True, at=since)
+                n = -10 ** 9   # (counted: not again until it changes)
+            elif not state and n == self.DEAD_READS:
+                self.kda.alive(seat, False, at=since)
+            self._dead_reads[seat] = (state, n, since)
 
     def _add_kda(self, players, skip=()):
         """Each player's K/D/A so far this round, where the scoreboard's been read."""
@@ -1867,7 +2017,7 @@ class ScreenReader:
             if values:
                 p["kills"], p["deaths"], p["assists"] = values
 
-    def _read_kill_feed(self, image, update):
+    def _read_kill_feed(self, image, update, at=None):
         """Kills (and the killer's gun) off the kill feed, mid-round."""
         from . import killfeed
         attackers = update["match"].get("attackers")
@@ -1876,7 +2026,7 @@ class ScreenReader:
         by_seat = {(p["team"], p["slot"]): p for p in update["players"]}
         for bar in self._kill_bars(Frame(image), attackers):
             if bar["killer"] and bar["victim"] and not bar["team_kill"]:
-                if self.kda.kill(bar["killer"], bar["victim"]):
+                if self.kda.kill(bar["killer"], bar["victim"], at=at):
                     log(f"Kill: {bar['killer']} -> {bar['victim']} ({bar['weapon'] or '?'})")
             if bar["killer"] and bar["weapon"] and bar["weapon"] in game.WEAPONS:
                 by_seat[bar["killer"]]["weapon"] = bar["weapon"]
@@ -1901,6 +2051,35 @@ class ScreenReader:
         self._bar_cache = cache
         return out
 
+    def _report_held(self, image):
+        """This frame's readings the rules held back: logged, kept with the
+        match recording, and the frame saved (a few) for the Problem report."""
+        held, self._held_now = getattr(self, "_held_now", []), []
+        if not held:
+            return
+        what = "; ".join(w for _, w in held)
+        log_once("held-" + held[0][0], f"Held back a misread (the game's rules don't allow it): {what}", "info", every=20)
+        rec = self.recorder
+        if rec is not None:
+            try:
+                rec.event("held", {"held": [{"kind": k, "what": w} for k, w in held]})
+            except Exception:
+                pass
+        self._keep_frame(image, "held-" + "-".join(sorted({k for k, _ in held})))
+
+    def _held(self, kind, what):
+        """A reading the game's rules held back: counted for Live data's
+        reading check, and the frame kept for the Problem report."""
+        health = self.__dict__.setdefault("health", ReadingHealth())
+        health.held[kind] = health.held.get(kind, 0) + 1
+        self._held_now = getattr(self, "_held_now", []) + [(kind, what)]
+
+    def _rounds_started(self):
+        """Rounds started so far in this map (the one on included), from the
+        steady score; None before a score's been read."""
+        score = getattr(self, "_score", None)
+        return None if score is None else sum(score) + 1
+
     def _steady_score(self, update):
         """A new score only counts once it's been read the same twice in a
         row: one misread (10 -> 1 -> 10) would otherwise play round-win
@@ -1911,8 +2090,16 @@ class ScreenReader:
             return
         key = (score["left"], score["right"])
         have = getattr(self, "_score", None)
+        now = time.time()
+        # A new map starts after agent select (or a long while with no score:
+        # agent select missed, the reader off between maps).
+        if now - getattr(self, "_score_read_at", now) > 60:
+            self._select_seen = True
+        between_maps = getattr(self, "_select_seen", False)
+        self._score_read_at = now
         if key == have:
             self._score_pending, self._score_seen = None, 0
+            self._select_seen = False
             return
         # A round on (one side +1) counts at its second read; anything else
         # (a score going down mid-map, a jump of several rounds: the usual
@@ -1921,39 +2108,39 @@ class ScreenReader:
         # have ended at, or from the first rounds) and going back to the
         # score before the last jump (one misread that got through) count at
         # two: "12-11" read as "1-1" twice used to stick for five reads, and
-        # cut the round history down to two rounds.
+        # cut the round history down to two rounds. Back near 0-0 only counts
+        # as a new map after agent select (or a long gap): mid-map it's a
+        # misread, and needs the five.
         step = have is None or key == getattr(self, "_score_before", None) or (
-            sum(key) <= 2 and (max(have) >= 12 or sum(have) <= 3)) or (
+            sum(key) <= 2 and between_maps and (max(have) >= 12 or sum(have) <= 3)) or (
             sorted((key[0] - have[0], key[1] - have[1])) == [0, 1])
         self._score_seen = getattr(self, "_score_seen", 0) + 1 if key == getattr(self, "_score_pending", None) else 1
         self._score_pending = key
         if self._score_seen >= (2 if step else 5):
             self._score_before = have
             self._score, self._score_pending, self._score_seen = key, None, 0
+            self._select_seen = False
             return
+        if self._score_seen == 1 and not step and have is not None:
+            self._held("score", f"score {key[0]}-{key[1]} after {have[0]}-{have[1]}")
         m.pop("score", None)
         m.pop("round", None)
 
     def _steady_names(self, update):
-        """A seat's name off the scoreboard counts once it's been read the
-        same twice (one misread, "chr" for "chronicle", used to show until
-        the next read); the name it had stays meanwhile."""
-        names = self.__dict__.setdefault("_seat_names", {})
+        """Each seat's name off the scoreboard, kept for the map (NameKeeper):
+        one misread ("chr" for "chronicle"), a split ("yoog ee") or a team
+        tag left on ("SPHI f4ngz") doesn't replace a name read the same many
+        times; the name it had stays meanwhile."""
+        keeper = self.__dict__.setdefault("names", NameKeeper())
         for p in update["players"]:
             text = p.pop("name", None)
-            if not text:
-                continue
             seat = (p["team"], p["slot"])
-            have, pending = names.get(seat, (None, None))
-            if text == have:
-                p["name"] = text
-            elif text == pending:
-                names[seat] = (text, None)
-                p["name"] = text
-            else:
-                names[seat] = (have, text)
-                if have:
-                    p["name"] = have
+            shown = keeper.offer(seat, text) if text else keeper.name(seat)
+            if shown:
+                p["name"] = shown
+            if text and shown and keeper.locked(seat) and _name_key(text) != _name_key(shown) \
+                    and not _close_names(text, shown) and not NameKeeper._tagged(text, shown):
+                self._held("name", f"{p['team']} {p['slot']}: \"{text}\" for {shown}")
 
     def _learn_agents(self, update):
         """An agent counts once it's been seen three times in the same seat on
@@ -2044,6 +2231,7 @@ class ScreenReader:
         while not self._stop.is_set():
             reason = None
             try:
+                shot_at = time.time()
                 image, reason = capture_valorant()
                 if image is not None and self.spectate and time.time() - self.select.checked_at < 0.4:
                     # (the spectate loop read agent select off a frame just
@@ -2052,7 +2240,13 @@ class ScreenReader:
                 else:
                     selecting = image is not None and self.select.check(image, self.ocr)
                 self._record(image, selecting)
+                if image is None:
+                    self.health.frame("black" if "black" in str(reason or "").lower() else "none")
+                elif selecting:
+                    self.health.frame("select")
                 if selecting:
+                    self._select_seen = True   # (the score may go back to 0-0 now)
+                    self.health.new_map()
                     self.tracker.agent_select()
                     if self.kda.base:   # a new game: last game's K/D/A is done with
                         from .killfeed import LiveKda
@@ -2061,7 +2255,7 @@ class ScreenReader:
                     # put last map's agents on this map's seats until
                     # learned again)
                     self.agents, self._agent_votes = {}, {}
-                    self._seat_names = {}
+                    self.names = NameKeeper()
                     if self.select.empty_for() > 20:
                         self._keep_frame(image, "agent-select-unread")
                     elif self.select.unread_for() > 8:
@@ -2076,8 +2270,11 @@ class ScreenReader:
                     self.detail = "Agent select on screen."   # (sent by the agent select tracker: no match to read)
                 elif not in_match(Frame(image)):
                     # (a loading screen, a menu, the end of the match: nothing to read)
+                    self.health.frame("other")
                     self.detail = "No match on screen (a menu, loading, or the match is over): waiting for the top bar."
                 else:
+                    self.health.frame("match")
+                    self._held_now = []
                     update = read_frame(image, self.ocr, self.agents, self.bank)
                     if time.time() - self._bank_saved > 60:
                         self._bank_saved = time.time()
@@ -2092,18 +2289,26 @@ class ScreenReader:
                     self._steady_score(update)
                     self._shadow_check(update)
                     self._steady_names(update)
-                    board = set()
                     if update["match"].get("scoreboard_open"):
                         for p in update["players"]:
                             if all(p.get(k) is not None for k in ("kills", "deaths", "assists")):
-                                self.kda.board((p["team"], p["slot"]), p["kills"], p["deaths"], p["assists"])
-                                board.add((p["team"], p["slot"]))
+                                if not self.kda.board((p["team"], p["slot"]), p["kills"], p["deaths"], p["assists"],
+                                                      at=shot_at, rounds=self._rounds_started()):
+                                    seat, read, why = self.kda.last_rejected
+                                    self._held("kda", f"{seat[0]} {seat[1]}: {why}")
                     else:
                         try:
-                            self._read_kill_feed(image, update)
+                            self._read_kill_feed(image, update, shot_at)
                         except Exception as e:
                             log(f"Kill feed read failed: {e!r}", "warn")
-                    self._add_kda(update["players"], skip=board)
+                    # Every seat's K/D/A from the tally, the board's too: the
+                    # board's frame is older than deaths the fast loop has
+                    # counted since, and a board reading the rules turned
+                    # away isn't shown.
+                    for p in update["players"]:
+                        for k in ("kills", "deaths", "assists"):
+                            p.pop(k, None)
+                    self._add_kda(update["players"])
                     if time.time() - getattr(self, "fast_at", 0) < 2:
                         # The fast loop has newer alive/health and phase than this frame.
                         update["match"].pop("phase", None)
@@ -2115,6 +2320,8 @@ class ScreenReader:
                         if seat in self.agents and fresh.get(seat, self.agents[seat]) == self.agents[seat]:
                             p["agent"] = self.agents[seat]
                     self.last, self.read_at = update, time.time()
+                    self.health.read(self.read_at - shot_at)
+                    self._report_held(image)
                     self.send(update)
             except Exception as e:
                 reason = f"Screen read failed: {e!r}"

@@ -87,6 +87,51 @@ def region_of(sessions):
     return None
 
 
+# The Riot Client's own region (/riotclient/region-locale) -> (glz region, shard),
+# for when the game's launch arguments don't say.
+REGION_SHARDS = {"na": ("na", "na"), "latam": ("latam", "na"), "br": ("br", "na"), "eu": ("eu", "eu"),
+                 "ap": ("ap", "ap"), "kr": ("kr", "kr"), "pbe": ("pbe", "pbe")}
+
+
+def region_from_locale(info):
+    r = str((info or {}).get("region") or "").lower() if isinstance(info, dict) else ""
+    r = {"euw": "eu", "eune": "eu", "tr": "eu", "ru": "eu", "me": "eu", "oc1": "ap", "oce": "ap", "jp": "ap",
+         "sea": "ap", "tw": "ap", "lan": "latam", "las": "latam", "kr1": "kr"}.get(r, r)
+    return REGION_SHARDS.get(r)
+
+
+def presence_of(presences, puuid):
+    """This account's VALORANT presence, decoded: {"state": "MENUS" /
+    "PREGAME" / "INGAME", "flow": "CustomGame" / "Matchmaking" / ...,
+    "map", "ally", "enemy"} (the score as the party owner's team sees it),
+    or None. Old and new presence layouts both."""
+    import binascii
+    for p in (presences or {}).get("presences") or [] if isinstance(presences, dict) else []:
+        if not isinstance(p, dict) or p.get("puuid") != puuid or p.get("product") != "valorant":
+            continue
+        try:
+            raw = p.get("private") or ""
+            data = json.loads(base64.b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8", "replace"))
+        except (ValueError, binascii.Error):
+            return None
+        if not isinstance(data, dict):
+            return None
+        match = data.get("matchPresenceData") if isinstance(data.get("matchPresenceData"), dict) else data
+        party = data.get("partyPresenceData") if isinstance(data.get("partyPresenceData"), dict) else data
+
+        def num(v):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+        return {"state": str(match.get("sessionLoopState") or ""),
+                "flow": str(match.get("provisioningFlow") or data.get("provisioningFlow") or ""),
+                "map": map_from_id(match.get("matchMap")) if match.get("matchMap") else "",
+                "ally": num(party.get("partyOwnerMatchScoreAllyTeam")),
+                "enemy": num(party.get("partyOwnerMatchScoreEnemyTeam"))}
+    return None
+
+
 def _side(team_id, attack_first):
     """Red attacks first: it's the side set to attack first."""
     other = "right" if attack_first == "left" else "left"
@@ -164,6 +209,8 @@ class RiotClient:
         self._was = ""           # "pregame" / "ingame" / ""
         self._ingame_at = 0.0
         self.on_json = None      # (kind, match id, data): pregame / core-game / match-details, for the recorder
+        self.on_event = None     # (kind, data): kept with the match recording (presence, status changes)
+        self.presence = None     # presence_of(): VALORANT's own state and score
         self._core_id = None     # the match being played, while it's on
         self._details_due = {}   # finished match id -> times to ask for its details
         self._ctx = ssl.create_default_context()
@@ -182,7 +229,8 @@ class RiotClient:
         self._stop.set()
 
     def info(self):
-        return {"status": self.status, "age": round(time.time() - self.sent_at, 1) if self.sent_at else None}
+        return {"status": self.status, "age": round(time.time() - self.sent_at, 1) if self.sent_at else None,
+                "presence": self.presence}
 
     # --- requests -------------------------------------------------------------
 
@@ -263,7 +311,18 @@ class RiotClient:
             t = self._local_get("/entitlements/v1/token")
             self._auth = (t["accessToken"], t["token"], t["subject"], time.time())
         if not self._region:
-            self._region = region_of(self._local_get("/product-session/v1/external-sessions"))
+            sessions = self._local_get("/product-session/v1/external-sessions")
+            self._region = region_of(sessions)
+            if not self._region and any(isinstance(v, dict) and v.get("productId") == "valorant"
+                                        for v in (sessions or {}).values() if isinstance(sessions, dict)):
+                # (VALORANT's running but its launch arguments don't name the
+                # region: the Riot Client's own region instead)
+                try:
+                    self._region = region_from_locale(self._local_get("/riotclient/region-locale"))
+                except Exception:
+                    self._region = None
+                if not self._region:
+                    return "VALORANT is running but its region couldn't be told"
             if not self._region:
                 return "VALORANT not running"
         if self._agents is None:
@@ -321,6 +380,27 @@ class RiotClient:
                 return None   # (not in one)
             raise
 
+    def _check_presence(self):
+        """VALORANT's own say on where this account is (menus, agent select,
+        in a match) and the score it shows, from the Riot Client's chat
+        presence. Kept for Live data's Riot Client line and with the match
+        recording (kind "riot-presence", on each change): whether an
+        observer's account gets the score this way is what the recordings
+        will show."""
+        try:
+            pres = presence_of(self._local_get("/chat/v4/presences"), self._auth[2])
+        except Exception:
+            pres = None
+        self.presence = pres
+        if pres != getattr(self, "_presence_sent", None):
+            self._presence_sent = pres
+            if pres and self.on_event:
+                try:
+                    self.on_event("riot-presence", pres)
+                except Exception:
+                    pass
+        return pres
+
     def _step(self):
         why = self._ready()
         if why:
@@ -329,6 +409,7 @@ class RiotClient:
             self._was = ""
             return why
         attack_first = self.config.get().get("attack_first") or "left"
+        pres = self._check_presence()
         pre = self._match_id("pregame")
         if pre:
             match = self._glz(f"/pregame/v1/matches/{pre}")
@@ -347,6 +428,11 @@ class RiotClient:
             return "In a match"
         self._ingame_at = time.time()
         core = self._match_id("core-game")
+        if not core and pres and pres.get("state") == "INGAME":
+            # (the game says it's in a match, but the game servers have no
+            # match for this account: an observer's account may not get one)
+            self._was = ""
+            return "In a match, but the game servers give this account no match (observer?)"
         if not core:
             if self._core_id:
                 # The match just ended: its details (every kill and round, from
@@ -426,5 +512,12 @@ class RiotClient:
             if self.status != last:
                 if last is not None and ("failed" in self.status or "answered" in self.status):
                     self.log(self.status, "warn")
+                else:
+                    self.log(f"Riot Client: {self.status}")
+                if self.on_event:
+                    try:
+                        self.on_event("riot-status", {"status": self.status})
+                    except Exception:
+                        pass
                 last = self.status
             self._stop.wait(self.EVERY if self._was == "pregame" else 2.0)
