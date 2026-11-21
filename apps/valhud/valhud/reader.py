@@ -1848,16 +1848,32 @@ class ScreenReader:
                 log_once("alive-loop", f"Health bar check failed: {e!r}")
             self._stop.wait(self.ALIVE_EVERY)
 
-    def _count_deaths(self, players):
+    DEAD_READS = 2     # a health bar gone this many reads running is a death...
+    BACK_FOR = 0.7     # ...and back (two reads or more) this many seconds is alive again
+
+    def _count_deaths(self, players, now=None):
         """A health bar gone for two reads running is a death (one for each
-        life: the player has to be back, two reads running, first)."""
+        life: the player has to be back first). Back to life takes 0.7 s of
+        the bar showing (by the clock, not reads: the loop slows down when the
+        PC's busy): a bar hidden for a moment mid-round (a flash, something
+        drawn over it) used to make a second death in the same round when it
+        came back and went again. A real comeback (the
+        next round, a revive) shows the bar for much longer. The death goes
+        in at the time the bar was first seen gone."""
+        now = time.time() if now is None else now
         for p in players:
             seat = (p["team"], p["slot"])
-            state, n = self._dead_reads.get(seat, (p["alive"], 0))
-            n = n + 1 if p["alive"] == state else 1
-            self._dead_reads[seat] = (p["alive"], n)
-            if n == 2:
-                self.kda.alive(seat, p["alive"])
+            state, n, since = self._dead_reads.get(seat, (p["alive"], 0, now))
+            if p["alive"] == state:
+                n += 1
+            else:
+                state, n, since = p["alive"], 1, now
+            if state and n >= self.DEAD_READS and now - since >= self.BACK_FOR and n > 0:
+                self.kda.alive(seat, True, at=since)
+                n = -10 ** 9   # (counted: not again until it changes)
+            elif not state and n == self.DEAD_READS:
+                self.kda.alive(seat, False, at=since)
+            self._dead_reads[seat] = (state, n, since)
 
     def _add_kda(self, players, skip=()):
         """Each player's K/D/A so far this round, where the scoreboard's been read."""
@@ -1867,7 +1883,7 @@ class ScreenReader:
             if values:
                 p["kills"], p["deaths"], p["assists"] = values
 
-    def _read_kill_feed(self, image, update):
+    def _read_kill_feed(self, image, update, at=None):
         """Kills (and the killer's gun) off the kill feed, mid-round."""
         from . import killfeed
         attackers = update["match"].get("attackers")
@@ -1876,7 +1892,7 @@ class ScreenReader:
         by_seat = {(p["team"], p["slot"]): p for p in update["players"]}
         for bar in self._kill_bars(Frame(image), attackers):
             if bar["killer"] and bar["victim"] and not bar["team_kill"]:
-                if self.kda.kill(bar["killer"], bar["victim"]):
+                if self.kda.kill(bar["killer"], bar["victim"], at=at):
                     log(f"Kill: {bar['killer']} -> {bar['victim']} ({bar['weapon'] or '?'})")
             if bar["killer"] and bar["weapon"] and bar["weapon"] in game.WEAPONS:
                 by_seat[bar["killer"]]["weapon"] = bar["weapon"]
@@ -1900,6 +1916,12 @@ class ScreenReader:
             out.append(cache[sig][1])
         self._bar_cache = cache
         return out
+
+    def _rounds_started(self):
+        """Rounds started so far in this map (the one on included), from the
+        steady score; None before a score's been read."""
+        score = getattr(self, "_score", None)
+        return None if score is None else sum(score) + 1
 
     def _steady_score(self, update):
         """A new score only counts once it's been read the same twice in a
@@ -2044,6 +2066,7 @@ class ScreenReader:
         while not self._stop.is_set():
             reason = None
             try:
+                shot_at = time.time()
                 image, reason = capture_valorant()
                 if image is not None and self.spectate and time.time() - self.select.checked_at < 0.4:
                     # (the spectate loop read agent select off a frame just
@@ -2092,18 +2115,24 @@ class ScreenReader:
                     self._steady_score(update)
                     self._shadow_check(update)
                     self._steady_names(update)
-                    board = set()
                     if update["match"].get("scoreboard_open"):
                         for p in update["players"]:
                             if all(p.get(k) is not None for k in ("kills", "deaths", "assists")):
-                                self.kda.board((p["team"], p["slot"]), p["kills"], p["deaths"], p["assists"])
-                                board.add((p["team"], p["slot"]))
+                                self.kda.board((p["team"], p["slot"]), p["kills"], p["deaths"], p["assists"],
+                                               at=shot_at, rounds=self._rounds_started())
                     else:
                         try:
-                            self._read_kill_feed(image, update)
+                            self._read_kill_feed(image, update, shot_at)
                         except Exception as e:
                             log(f"Kill feed read failed: {e!r}", "warn")
-                    self._add_kda(update["players"], skip=board)
+                    # Every seat's K/D/A from the tally, the board's too: the
+                    # board's frame is older than deaths the fast loop has
+                    # counted since, and a board reading the rules turned
+                    # away isn't shown.
+                    for p in update["players"]:
+                        for k in ("kills", "deaths", "assists"):
+                            p.pop(k, None)
+                    self._add_kda(update["players"])
                     if time.time() - getattr(self, "fast_at", 0) < 2:
                         # The fast loop has newer alive/health and phase than this frame.
                         update["match"].pop("phase", None)
