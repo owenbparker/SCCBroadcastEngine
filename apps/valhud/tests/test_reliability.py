@@ -184,5 +184,34 @@ class ReadingHealthTests(unittest.TestCase):
         self.assertEqual(len(r._held_now), 1)
 
 
+class RiotPresenceTests(unittest.TestCase):
+    def test_presence_old_and_new_layouts(self):
+        import base64
+        import json
+        from valhud import riotclient
+
+        def pres(private, puuid="me"):
+            return {"presences": [{"puuid": "someone", "product": "valorant", "private": ""},
+                                  {"puuid": puuid, "product": "valorant",
+                                   "private": base64.b64encode(json.dumps(private).encode()).decode().rstrip("=")}]}
+        old = pres({"sessionLoopState": "INGAME", "provisioningFlow": "CustomGame", "matchMap": "/Game/Maps/Jam/Jam",
+                    "partyOwnerMatchScoreAllyTeam": 7, "partyOwnerMatchScoreEnemyTeam": 3})
+        self.assertEqual(riotclient.presence_of(old, "me"),
+                         {"state": "INGAME", "flow": "CustomGame", "map": "Lotus", "ally": 7, "enemy": 3})
+        new = pres({"matchPresenceData": {"sessionLoopState": "PREGAME", "provisioningFlow": "CustomGame"},
+                    "partyPresenceData": {"partyOwnerMatchScoreAllyTeam": 0, "partyOwnerMatchScoreEnemyTeam": 0}})
+        self.assertEqual(riotclient.presence_of(new, "me")["state"], "PREGAME")
+        self.assertIsNone(riotclient.presence_of(new, "other"))
+        self.assertIsNone(riotclient.presence_of({"presences": [{"puuid": "me", "product": "valorant",
+                                                                  "private": "%%%"}]}, "me"))
+
+    def test_region_from_the_riot_clients_own_region(self):
+        from valhud import riotclient
+        self.assertEqual(riotclient.region_from_locale({"region": "NA", "locale": "en_US"}), ("na", "na"))
+        self.assertEqual(riotclient.region_from_locale({"region": "LAS"}), ("latam", "na"))
+        self.assertEqual(riotclient.region_from_locale({"region": "EUW"}), ("eu", "eu"))
+        self.assertIsNone(riotclient.region_from_locale({}))
+
+
 if __name__ == "__main__":
     unittest.main()

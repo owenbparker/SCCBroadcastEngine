@@ -744,9 +744,13 @@ function apply(s) {
   $("reader-health").textContent = health ? health.line : "";
   $("reader-health").style.color = health && health.warn ? "var(--warn, #e0a040)" : "";
   const riot = app.riot || {};
-  $("riot-status").textContent = riot.received != null && riot.received < 30
-    ? `Riot Client: agent select and Riot IDs coming in (${riot.received}s ago)`
-    : `Riot Client on this PC: ${riot.status || "off"}`;
+  const pres = riot.presence;
+  const presText = pres && pres.state ? ` VALORANT says: ${{ MENUS: "in the menus", PREGAME: "agent select", INGAME: "in a match" }[pres.state] || pres.state}` +
+    `${pres.flow ? ` (${pres.flow === "CustomGame" ? "custom game" : pres.flow})` : ""}` +
+    `${pres.state === "INGAME" && pres.ally != null && pres.enemy != null ? `, score ${pres.ally}-${pres.enemy}` : ""}.` : "";
+  $("riot-status").textContent = (riot.received != null && riot.received < 30
+    ? `Riot Client: agent select and Riot IDs coming in (${riot.received}s ago).`
+    : `Riot Client on this PC: ${riot.status || "off"}.`) + presText;
   const rec = app.recorder || {};
   $("rec-status").textContent = rec.recording
     ? `Recording this match for replay (${rec.frames} frames): ${rec.recording}`
