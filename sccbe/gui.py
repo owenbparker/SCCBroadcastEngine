@@ -39,19 +39,13 @@ def already_running(port):
 
 
 class Windows:
-    """The app's windows (pywebview): the main one, and the ones parts open
-    (Multistream's chat). The HUD-over-the-game windows open themselves."""
+    """The app's windows (pywebview): the main one. The HUD-over-the-game
+    windows open themselves."""
 
     def __init__(self, shell):
         self.shell = shell
         self.main = None
         self.extra = []
-
-    def chat_window(self, url):
-        import webview
-        w = webview.create_window("SCC Multistream chat", url, width=420, height=760, background_color="#08120c")
-        self.extra.append(w)
-        return w
 
     def close(self):
         """Closes the app (an update is about to restart it)."""
@@ -145,6 +139,18 @@ def smoke_test(shell, port, out_dir):
             results.append(f"{'OK  ' if found else 'FAIL' if FROZEN else 'WARN'} {t}: {path}")
     except Exception as e:
         results.append(f"WARN multistream tools: {e!r}")
+    # Multistream end to end: a test pattern through MediaMTX and out through
+    # FFmpeg (as sent, cropped, re-encoded), on spare ports.
+    try:
+        from multistream import selftest
+        from .config import FROZEN
+        passed, checks = selftest.run()
+        if FROZEN:
+            ok = ok and passed
+        results += [f"{'OK  ' if p else 'FAIL' if FROZEN else 'WARN'} Multistream: {t}" for p, t in checks]
+    except Exception as e:
+        ok = False
+        results.append(f"FAIL Multistream test: {e!r}")
     with open(os.path.join(out_dir, "smoke-test.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(results + ["PASSED" if ok else "FAILED"]) + "\n")
     return ok

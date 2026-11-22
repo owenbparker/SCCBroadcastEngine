@@ -5,297 +5,196 @@
 <link rel="icon" href="assets/app_icon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SCC Multistream</title>
-<!-- The control panel: what's coming in from OBS (and where OBS should
-     stream to), then a card per platform with an on/off switch, its status
-     and its server and stream key. -->
+<!-- The control panel. Multistream works off stream keys alone: where OBS /
+     vMix streams to, then one row per platform with its stream key and an
+     on/off switch. Every change is saved and applied at once. -->
 <style>
   @font-face { font-family: "Inter"; src: url("fonts/Inter.ttf") format("truetype"); font-weight: 100 900; }
-  :root { --text: #f2f5f2; --muted: rgba(242, 245, 242, .62); --line: rgba(255, 255, 255, .14);
-          --card: rgba(8, 14, 10, .72); --green: #1f9d55; --gold: #f5c400; --live: #39d97a; --bad: #ff6b5b; --warn: #f5a524; }
+  :root { --text: #fff; --muted: #8e8e93; --line: rgba(255,255,255,.1); --card: rgba(28,28,30,.72); --field: rgba(255,255,255,.08);
+          --gold: #f5c518; --live: #30d158; --bad: #ff453a; --warn: #ffd60a; --green: #30d158; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   html, body { height: 100%; margin: 0; }
-  body { background: #08120c; color: var(--text); font: 14px/1.45 "Inter", system-ui, sans-serif;
+  body { background: #0c0c0e; color: var(--text); font: 14px/1.45 -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
          display: flex; flex-direction: column; overflow: hidden; }
-  body::before { content: ""; position: fixed; inset: 0; z-index: -1;
-                 background: radial-gradient(ellipse at 0% 0%, rgba(31, 157, 85, .28), transparent 55%),
-                             radial-gradient(ellipse at 100% 100%, rgba(245, 196, 0, .16), transparent 55%), #08120c; }
   button, input, select { font: inherit; color: inherit; }
   button { cursor: pointer; }
 
-  header { flex: none; display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 22px;
-           border-bottom: 1px solid var(--line); background: rgba(0, 0, 0, .35); }
-  header img { height: 34px; }
-  header h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: .02em; }
+  header { flex: none; display: flex; align-items: center; gap: 14px; height: 58px; padding: 0 22px; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 700; }
   header .right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
   .upload { font-size: 13px; color: var(--muted); }
   .upload b { color: var(--text); font-variant-numeric: tabular-nums; }
-  .version { font-size: 12px; color: var(--muted); }
-  .update, .ghost, .primary { padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 13px; border: 0; }
-  .update, .primary { background: var(--gold); color: #1d1600; }
-  .update.check, .ghost { background: rgba(0, 0, 0, .45); color: var(--text); border: 1px solid var(--line); font-weight: 600; }
-  .update.check:hover, .ghost:hover { border-color: var(--gold); }
-  .update[disabled] { opacity: .7; cursor: default; }
-  .update.error { background: #8a2b2b; color: #fff; }
-  .danger { background: transparent; border: 1px solid rgba(255, 107, 91, .5); color: #ffb4a8; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 13px; }
+  .btn { padding: 7px 15px; border-radius: 999px; font-weight: 600; font-size: 13px; border: 1px solid transparent; background: rgba(255,255,255,.1); }
+  .btn:hover { background: rgba(255,255,255,.16); }
+  .btn.gold { background: var(--gold); color: #1d1600; font-weight: 700; }
+  .btn.small { padding: 4px 11px; font-size: 12px; }
+  .btn.danger { background: transparent; border-color: rgba(255,69,58,.5); color: #ffb4ae; }
+  .btn[disabled] { opacity: .55; cursor: default; }
 
-  .row { flex: 1; display: flex; min-height: 0; }
-  main { flex: 1; overflow: auto; padding: 22px; display: grid; gap: 22px; align-content: start; }
-  #chat { flex: none; width: 380px; border-left: 1px solid var(--line); background: rgba(0, 0, 0, .3); }
-  #chat iframe { width: 100%; height: 100%; border: 0; display: block; }
-  .watching { font-size: 13px; color: var(--muted); }
-  .watching b { color: var(--text); font-variant-numeric: tabular-nums; }
-  #chat-toggle.on { border-color: var(--gold); }
-  #profiles { display: flex; align-items: center; gap: 10px; padding: 12px 16px; flex-wrap: wrap; }
-  #profiles label { font-size: 13px; color: var(--muted); font-weight: 600; }
-  #profiles select { padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line); background: rgba(0, 0, 0, .5); min-width: 200px; font-weight: 600; }
-  #profiles select:focus { outline: none; border-color: var(--gold); }
-  #profiles .spacer { flex: 1; }
-  #dirty { font-size: 13px; color: var(--gold); }
-  #save { padding: 7px 18px; }
-  #save[disabled] { background: rgba(255, 255, 255, .12); color: var(--muted); cursor: default; }
-  .dest.dirty { border-style: dashed; border-color: rgba(245, 196, 0, .7); }
-  #info { padding: 14px 18px; display: grid; gap: 12px; }
-  #info.dirty { border-style: dashed; border-color: rgba(245, 196, 0, .7); }
-  #info .head { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-  #info .head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
-  #info .head .sub { font-size: 12px; color: var(--muted); margin-left: auto; }
-  #info .body { display: grid; gap: 14px; }
-  #info label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-  #info input[type=text], #info textarea, #info select { padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line); background: rgba(0, 0, 0, .5); font: inherit; color: var(--text); }
-  #info textarea { resize: vertical; min-height: 64px; }
-  #info input:focus, #info textarea:focus, #info select:focus { outline: none; border-color: var(--gold); }
-  #info .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  #info .col { display: grid; gap: 10px; align-content: start; padding: 12px; border-radius: 10px; background: rgba(0, 0, 0, .25); border: 1px solid var(--line); }
-  #info .col h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 14px; }
-  #info .col h3 img { width: 20px; height: 20px; object-fit: contain; }
-  #info .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  #info .checks { display: flex; gap: 16px; flex-wrap: wrap; }
-  #info .checks label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
-  #info .note { font-size: 12px; color: var(--muted); }
-  #info .push { font-size: 12px; min-height: 16px; }
-  #info .push.ok { color: var(--live); } #info .push.error { color: #ffb4a8; } #info .push.working { color: var(--warn); }
-  .cat { position: relative; display: grid; gap: 6px; }
-  .cat .chosen { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
-  .cat .chosen button { padding: 2px 8px; font-size: 12px; }
-  .cat .found { position: absolute; z-index: 5; left: 0; right: 0; top: 100%; margin-top: 4px; background: #101a13; border: 1px solid var(--line);
-                border-radius: 8px; max-height: 260px; overflow: auto; }
-  .cat .found button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border: 0; background: none; text-align: left; font-size: 13px; }
-  .cat .found button:hover { background: rgba(255, 255, 255, .08); }
-  .cat .found img { width: 26px; height: 36px; object-fit: cover; border-radius: 3px; }
-  .thumb { display: flex; align-items: center; gap: 10px; }
-  .thumb img { width: 128px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: #000; }
-  @media (max-width: 1100px) { #info .cols { grid-template-columns: 1fr; } }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(6px); }
+  main { flex: 1; overflow: auto; padding: 4px 22px 22px; display: grid; gap: 16px; align-content: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+  h2 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+  .muted { color: var(--muted); }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #5a5d63; flex: none; display: inline-block; }
+  .dot.live { background: var(--live); }
+  .dot.starting, .dot.retrying, .dot.setup { background: var(--warn); }
+  .dot.error { background: var(--bad); }
+  .dot.waiting { background: #9a9ca3; }
 
-  /* What's coming in from OBS. */
-  #input { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.3fr); gap: 22px; padding: 18px 20px; }
-  #input h2 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  /* Where OBS / vMix streams to. */
+  #input { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(320px, 1.4fr); gap: 22px; padding: 18px 20px; }
   .big { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 700; }
   .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; background: #5a625c; flex: none; }
-  .dot.live { background: var(--live); box-shadow: 0 0 10px var(--live); }
-  .dot.starting, .dot.retrying { background: var(--warn); }
-  .dot.error { background: var(--bad); }
-  .dot.waiting { background: #9aa39c; }
   .fields { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 10px; align-items: center; }
   .fields label { color: var(--muted); font-size: 13px; }
-  .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; padding: 6px 10px; border-radius: 6px;
-          background: rgba(0, 0, 0, .45); border: 1px solid var(--line); user-select: all; overflow-wrap: anywhere; }
+  .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; padding: 6px 10px; border-radius: 10px;
+          background: var(--field); user-select: all; overflow-wrap: anywhere; }
   .note { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
   .check-row { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin-top: 10px; cursor: pointer; }
 
-  /* A card per platform. */
-  #dests { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; align-items: start; }
-  .dest { padding: 16px; display: grid; gap: 12px; align-content: start; transition: border-color .15s; }
-  .dest.on { border-color: rgba(245, 196, 0, .35); }
-  .dest.is-live { border-color: rgba(57, 217, 122, .55); }
-  .dest .top { display: flex; align-items: center; gap: 12px; }
-  .badge { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; font-size: 18px; color: #fff; flex: none; overflow: hidden; }
+  /* One row per platform. */
+  #dests { padding: 6px 0; }
+  .dest { display: grid; grid-template-columns: 44px minmax(150px, 210px) 1fr auto; gap: 8px 16px; align-items: start; padding: 14px 20px;
+          border-top: 1px solid var(--line); }
+  .dest:first-child { border-top: 0; }
+  .badge { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; font-weight: 800; font-size: 18px; color: #fff; overflow: hidden; }
   .badge img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .badge.tiktok { background: #fff; padding: 6px; }
   .badge.x { border: 1px solid #444; }
   .badge.custom { background: var(--gold); color: #1d1600; }
-  .dest .name { font-size: 16px; font-weight: 700; }
-  .dest .mode { font-size: 12px; color: var(--muted); }
-  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 20px; }
-  .status .dot { width: 9px; height: 9px; }
-  .status .rate { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
-  .status.error, .status.retrying { color: #ffcfc8; }
-  .dest .actions { display: flex; gap: 8px; }
-  .login { display: grid; gap: 8px; padding: 12px; border-radius: 10px; background: rgba(0, 0, 0, .4); border: 1px solid var(--line); font-size: 13px; }
-  .login .code { font: 700 26px/1.2 Consolas, monospace; letter-spacing: .12em; color: var(--gold); user-select: all; }
-  .login .buttons { display: flex; gap: 8px; }
-  .bad { color: #ffb4a8; }
-
-  .switch { margin-left: auto; position: relative; width: 46px; height: 26px; border-radius: 13px; border: 0; padding: 0;
-            background: rgba(255, 255, 255, .18); transition: background .15s; flex: none; }
-  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .who .name { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .who .name input { width: 100%; font-size: 15px; font-weight: 700; }
+  .status { display: flex; align-items: center; gap: 7px; font-size: 13px; margin-top: 3px; color: var(--muted); }
+  .status .dot { width: 8px; height: 8px; }
+  .status.live { color: var(--live); } .status.error, .status.retrying { color: #ffb4ae; } .status.setup { color: var(--warn); }
+  .status .rate { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .cfg { display: grid; gap: 8px; min-width: 0; }
+  .line { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  .line > label { flex: none; width: 78px; color: var(--muted); font-size: 12px; }
+  input.field, select.field { flex: 1; min-width: 0; padding: 7px 11px; border-radius: 10px; border: 1px solid transparent; background: var(--field); }
+  input.field:focus, select.field:focus { outline: none; border-color: var(--gold); }
+  input.key { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; }
+  input.field.bad { border-color: var(--bad); }
+  select.field { flex: none; width: auto; }
+  input.kbps { flex: none; width: 92px; }
+  .help { font-size: 12px; color: var(--muted); }
+  .saved { font-size: 12px; color: var(--live); opacity: 0; transition: opacity .3s; flex: none; }
+  .saved.on { opacity: 1; }
+  .err { font-size: 12px; color: #ffb4ae; }
+  .switch { position: relative; width: 50px; height: 30px; border-radius: 15px; border: 0; padding: 0; margin-top: 7px;
+            background: rgba(255,255,255,.18); transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .15s; }
   .switch.on { background: var(--green); }
   .switch.on::after { transform: translateX(20px); }
+  .switch[disabled] { opacity: .4; cursor: default; }
+  .add-row { padding: 12px 20px 14px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .add-row input.field { flex: 1 1 180px; }
 
-  form { display: grid; gap: 10px; }
-  form label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-  form input, form select { padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line); background: rgba(0, 0, 0, .5); }
-  form input:focus, form select:focus { outline: none; border-color: var(--gold); }
-  form .key { display: flex; gap: 6px; } form .key input { flex: 1; min-width: 0; }
-  form .help { font-size: 12px; color: var(--muted); }
-  form .buttons { display: flex; gap: 8px; } form .buttons .danger { margin-left: auto; }
+  #test { padding: 16px 20px; }
+  #test ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+  #test li::before { content: "✓ "; color: var(--live); font-weight: 700; }
+  #test li.no::before { content: "✗ "; color: var(--bad); }
 
-  .add { padding: 16px; display: grid; place-items: center; min-height: 120px; border-style: dashed; color: var(--muted); cursor: pointer; }
-  .add:hover { border-color: var(--gold); color: var(--text); }
-  .add select { margin-top: 8px; }
-
-  footer { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 22px; border-top: 1px solid var(--line);
-           background: rgba(0, 0, 0, .35); font-size: 12px; color: var(--muted); }
-  footer .ghost { margin-left: auto; font-size: 12px; padding: 4px 10px; }
-  #log { flex: none; height: 0; overflow: auto; background: rgba(0, 0, 0, .55); font: 12px/1.5 Consolas, monospace; transition: height .2s; }
+  footer { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 22px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  footer .btn { margin-left: auto; }
+  #log { flex: none; height: 0; overflow: auto; background: rgba(0,0,0,.55); font: 12px/1.5 Consolas, monospace; transition: height .2s; }
   #log.open { height: 200px; border-top: 1px solid var(--line); }
-  #log div { padding: 0 22px; white-space: pre-wrap; } #log .warn { color: #ffd38a; } #log .error { color: #ffb4a8; }
-  #toast { position: fixed; left: 50%; bottom: 58px; transform: translateX(-50%); padding: 8px 14px; border-radius: 8px;
-           background: rgba(0, 0, 0, .8); border: 1px solid var(--line); font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #log div { padding: 0 22px; white-space: pre-wrap; } #log .warn { color: #ffd38a; } #log .error { color: #ffb4ae; }
+  #toast { position: fixed; left: 50%; bottom: 58px; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px;
+           background: rgba(0,0,0,.85); border: 1px solid var(--line); font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 9; }
   #toast.on { opacity: 1; }
-  /* Dark scroll bars (WebView2 otherwise draws the light Windows ones). */
+  #toast.bad { border-color: var(--bad); color: #ffb4ae; }
+  @media (max-width: 900px) {
+    #input { grid-template-columns: 1fr; }
+    .dest { grid-template-columns: 44px 1fr auto; }
+    .dest .cfg { grid-column: 1 / -1; }
+  }
   ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
   ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #3a3d44; border: 3px solid transparent; border-radius: 8px; background-clip: padding-box; }
-  ::-webkit-scrollbar-thumb:hover { background: #50545c; border: 3px solid transparent; background-clip: padding-box; }
   ::-webkit-scrollbar-button { display: none; }
 </style>
-<!-- SCC Broadcast Engine (overlays/) -->
+<!-- SCC Broadcast Engine -->
 <link rel="stylesheet" href="sccbe-embed.css"><script src="sccbe-embed.js"></script>
 </head>
 <body>
 <header>
-  <img src="assets/st-clair-saints.png" alt="">
-  <h1>SCC Multistream</h1>
+  <h1>Multistream</h1>
   <div class="right">
-    <span class="watching" id="watching-box" hidden><b id="watching">0</b> watching</span>
     <span class="upload">Upload <b id="upload">0.0 Mbps</b></span>
-    <button class="ghost" id="chat-toggle">Chat</button>
-    <span class="version" id="version"></span>
-    <button id="update" class="update" hidden></button>
+    <button class="btn" id="test-run" title="Sends a test pattern through the relay on this PC. Nothing goes live.">Test on this PC</button>
   </div>
 </header>
-<div class="row">
 <main>
   <section class="card" id="input">
     <div>
-      <h2>From OBS</h2>
+      <h2>Stream in</h2>
       <div class="big"><span class="dot" id="in-dot"></span><span id="in-title">Starting…</span></div>
       <div class="sub" id="in-sub"></div>
       <div class="sub" id="in-vertical"></div>
-      <div style="margin-top:10px" id="in-restart" hidden><button class="ghost" id="restart">Restart the RTMP server</button></div>
+      <div style="margin-top:10px" id="in-restart" hidden><button class="btn" id="restart">Restart the RTMP server</button></div>
     </div>
     <div>
-      <h2>OBS settings (Settings &gt; Stream &gt; Custom)</h2>
+      <h2>Stream settings in OBS / vMix</h2>
       <div class="fields">
-        <label>Server</label><span class="mono" id="server"></span><button class="ghost" data-copy="server">Copy</button>
-        <label>Stream key</label><span class="mono" id="key"></span><button class="ghost" data-copy="key">Copy</button>
-        <span class="note">For TikTok in true vertical, add a vertical canvas in OBS (the Aitum Vertical plugin) streaming to the same server with stream key <b id="vkey">vertical</b>, and set TikTok's video to "OBS vertical output". Set OBS's keyframe interval to 2 s.</span>
+        <label>Server</label><span class="mono" id="server"></span><button class="btn small" data-copy="server">Copy</button>
+        <label>Stream key</label><span class="mono" id="key"></span><button class="btn small" data-copy="key">Copy</button>
+        <span class="note">OBS: Settings &gt; Stream &gt; Service "Custom". vMix: Stream settings &gt; Destination "Custom RTMP Server". Keyframe interval 2 s.
+          For TikTok in true vertical, stream a vertical canvas to the same server with stream key <b id="vkey">vertical</b> and set TikTok to "Vertical output".</span>
       </div>
       <label class="check-row"><input type="checkbox" id="lan"> Let other PCs on the network stream in <span id="lan-server"></span></label>
+      <div class="sub" id="lan-note" hidden>The RTMP server restarts (live platforms drop for a moment). Windows may ask to allow it through the firewall.</div>
     </div>
   </section>
-  <section class="card" id="profiles">
-    <label for="profile">Profile</label>
-    <select id="profile" title="Switches on the platforms saved in this profile"></select>
-    <button class="ghost" id="profile-new">New profile</button>
-    <button class="ghost" id="profile-delete">Delete</button>
-    <span class="spacer"></span>
-    <span id="dirty"></span>
-    <button class="ghost" id="discard" hidden>Discard</button>
-    <button class="primary" id="save" disabled>Save</button>
+
+  <section class="card" id="test" hidden>
+    <h2 id="test-title"></h2>
+    <div class="sub" id="test-sub"></div>
+    <ul id="test-list"></ul>
   </section>
-  <section id="dests"></section>
-  <section class="card" id="info">
-    <div class="head" id="info-head"><h2>Stream info</h2><span class="sub" id="info-sub"></span><span id="info-arrow">▾</span></div>
-    <div class="body" id="info-body">
-      <label>Title (Twitch and YouTube)<input type="text" id="i-title" maxlength="140" placeholder="e.g. St. Clair Saints vs Lambton | VALORANT"></label>
-      <div class="cols">
-        <div class="col">
-          <h3><img src="assets/platforms/twitch.png" alt="">Twitch</h3>
-          <label>Category<span class="cat">
-            <span class="chosen" id="i-tw-chosen"></span>
-            <input type="text" id="i-tw-cat" placeholder="Search Twitch categories…" autocomplete="off">
-            <span class="found" id="i-tw-found" hidden></span></span></label>
-          <label>Tags (comma-separated, up to 10)<input type="text" id="i-tw-tags" placeholder="esports, collegeesports, valorant"></label>
-          <div class="row2">
-            <label>Language<select id="i-tw-lang">
-              <option value="en">English</option><option value="fr">French</option><option value="es">Spanish</option>
-              <option value="de">German</option><option value="pt">Portuguese</option><option value="it">Italian</option>
-              <option value="ja">Japanese</option><option value="ko">Korean</option><option value="zh">Chinese</option>
-              <option value="other">Other</option></select></label>
-            <div class="checks" style="align-self:end"><label><input type="checkbox" id="i-tw-branded"> Branded content</label></div>
-          </div>
-          <div class="note">Followers get Twitch's go-live notification by themselves. Its text and the stream thumbnail can't be set by apps: edit the text once in Twitch's Creator Dashboard &gt; Settings &gt; Stream.</div>
-          <div class="push" id="i-tw-push"></div>
-        </div>
-        <div class="col">
-          <h3><img src="assets/platforms/youtube.png" alt="">YouTube</h3>
-          <label>Description<textarea id="i-yt-desc" maxlength="5000"></textarea></label>
-          <div class="row2">
-            <label>Category<select id="i-yt-cat">
-              <option value="20">Gaming</option><option value="17">Sports</option><option value="24">Entertainment</option>
-              <option value="22">People &amp; Blogs</option><option value="27">Education</option><option value="10">Music</option>
-              <option value="23">Comedy</option><option value="28">Science &amp; Technology</option><option value="25">News &amp; Politics</option>
-              <option value="26">Howto &amp; Style</option><option value="1">Film &amp; Animation</option><option value="29">Nonprofits &amp; Activism</option></select></label>
-            <label>Visibility<select id="i-yt-privacy"><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label>
-            <label>Latency<select id="i-yt-latency"><option value="normal">Normal</option><option value="low">Low</option><option value="ultraLow">Ultra low</option></select></label>
-          </div>
-          <div class="checks"><label><input type="checkbox" id="i-yt-dvr"> DVR (viewers can rewind)</label><label><input type="checkbox" id="i-yt-kids"> Made for kids</label></div>
-          <label>Thumbnail (JPG or PNG, up to 2 MB, 1280x720)<span class="thumb"><img id="i-yt-thumb-img" alt="" hidden><input type="file" id="i-yt-thumb" accept="image/jpeg,image/png"><button class="ghost" type="button" id="i-yt-thumb-clear" hidden>Remove</button></span></label>
-          <div class="note">Subscribers are notified by YouTube when a public stream starts. The app makes the broadcast and ties it to your stream key, so it goes live when OBS starts.</div>
-          <div class="push" id="i-yt-push"></div>
-        </div>
-      </div>
-      <div class="note">Saved with the profile and sent to Twitch and YouTube when you press Save or pick the profile (both need "Log in" on their card).</div>
+
+  <section class="card">
+    <div id="dests"></div>
+    <div class="add-row" id="add-row">
+      <button class="btn" id="add-open">+ Add another RTMP destination</button>
+      <span id="add-form" hidden style="display:contents">
+        <input class="field" id="add-name" placeholder="Name (e.g. Kick)">
+        <input class="field" id="add-server" placeholder="Server (rtmp:// or rtmps://)">
+        <input class="field key" id="add-key" placeholder="Stream key" type="password" autocomplete="off">
+        <button class="btn gold" id="add-save">Add</button>
+        <button class="btn" id="add-cancel">Cancel</button>
+      </span>
     </div>
   </section>
 </main>
-<aside id="chat" hidden></aside>
-</div>
 <div id="log"></div>
-<footer><span id="summary"></span><button class="ghost" id="log-toggle">Show log</button></footer>
+<footer><span id="summary"></span><button class="btn small" id="log-toggle">Show log</button></footer>
 <div id="toast"></div>
-<script src="update.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const showUpdate = updateButton($("update"), $("version"));
-const MODES = { copy: "As OBS sends it", encode: "Re-encoded at a lower bitrate", crop: "Cropped to vertical (9:16)", vertical: "OBS vertical output" };
+const MODES = { copy: "Sent as it is", encode: "Re-encoded (lower bitrate)", crop: "Cropped to vertical (9:16)", vertical: "Vertical output (key \"vertical\")" };
 const REENCODED = ["crop", "encode"];
-const LOGOS = ["youtube", "twitch", "x", "tiktok", "facebook"];   // web/assets/platforms/<id>.png
-let state = null, editing = null;
-// Edits not saved yet: destination id -> changed fields (enabled included).
-// One Save button applies them all and stores the platforms in the profile.
-let drafts = {};
-const eff = d => ({ ...d, ...(drafts[d.id] || {}) });
-let infoDraft = null;   // Stream info edits not saved yet (the whole info), or null
-const dirty = () => Object.keys(drafts).length > 0 || !!infoDraft;
-function setDraft(id, field, value) {
-  const saved = state.destinations.find(x => x.id === id);
-  const draft = drafts[id] = drafts[id] || {};
-  if (saved && String(saved[field]) === String(value)) delete draft[field];
-  else draft[field] = value;
-  if (!Object.keys(draft).length) delete drafts[id];
-  render();
-}
+const LOGOS = ["youtube", "twitch", "x", "tiktok", "facebook"];   // assets/platforms/<id>.png
+let state = null;
 
 let toastTimer;
-function toast(text) {
+function toast(text, bad) {
   $("toast").textContent = text;
-  $("toast").classList.add("on");
+  $("toast").className = "on" + (bad ? " bad" : "");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $("toast").classList.remove("on"), 3500);
+  toastTimer = setTimeout(() => $("toast").className = "", bad ? 6000 : 2500);
 }
 
 async function post(url, body) {
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-  const data = await r.json();
-  if (data.error) { alert(data.error); return null; }
-  state = data;
-  render();
-  return data;
+  try {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const data = await r.json();
+    if (data.error) { toast(data.error, true); return null; }
+    state = data;
+    render();
+    return data;
+  } catch (e) { toast("Couldn't reach Multistream: " + e, true); return null; }
 }
 
 const mbps = kbps => (kbps / 1000).toFixed(1) + " Mbps";
@@ -310,9 +209,9 @@ const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 function renderInput(r) {
   const i = r.ingest;
   $("in-dot").className = "dot " + i.status;
-  $("in-title").textContent = { live: "Receiving", waiting: "Waiting for OBS", starting: "Starting…", error: "RTMP server stopped" }[i.status];
+  $("in-title").textContent = { live: "Receiving", waiting: "Waiting for OBS / vMix", starting: "Starting…", error: "RTMP server stopped" }[i.status];
   $("in-sub").textContent = i.status === "live" ? `${mbps(i.kbps)} · ${i.tracks.map(t => t === "MPEG-4 Audio" ? "AAC" : t).join(" + ")} · ${clock(i.since)}`
-    : i.status === "error" ? i.error : i.status === "waiting" ? "Start streaming in OBS and every platform that's switched on goes live." : "";
+    : i.status === "error" ? i.error : i.status === "waiting" ? "Start streaming and every platform that's switched on goes live." : "";
   $("in-vertical").textContent = i.vertical ? `Vertical output: receiving ${mbps(i.vertical.kbps)}` : "";
   $("in-restart").hidden = i.status !== "error";
   $("server").textContent = i.server;
@@ -322,353 +221,147 @@ function renderInput(r) {
   $("lan-server").textContent = i.lan_server ? `(other PCs use ${i.lan_server})` : "";
 }
 
-function statusLine(d, o) {
-  if (!o) return { cls: "off", text: d.enabled ? "…" : "Off" };
+function statusOf(d, o) {
+  if (!d.enabled) return { cls: "off", text: d.missing ? d.missing : "Off" };
+  if (d.missing) return { cls: "setup", text: d.missing };
+  if (!o) return { cls: "waiting", text: "…" };
   switch (o.status) {
     case "live": return { cls: "live", text: `Live · ${clock(o.live_since)}`, rate: mbps(o.kbps) };
-    case "retrying": return { cls: "retrying", text: `${o.message} · retrying in ${o.retry_in} s` };
+    case "retrying": return { cls: "retrying", text: `${o.message} · trying again in ${o.retry_in} s` };
     case "starting": return { cls: "starting", text: o.message || "Connecting…" };
-    case "waiting": return { cls: "waiting", text: o.message };
-    case "setup": return { cls: "error", text: o.message };
-    default: return { cls: "off", text: "Off" };
+    case "waiting": return { cls: "waiting", text: o.message === "Waiting for OBS" ? "On · goes live when you start streaming" : o.message };
+    case "setup": return { cls: "setup", text: o.message };
+    default: return { cls: o.status, text: o.message || "On" };
   }
 }
 
-function modeText(d) {
-  if (REENCODED.includes(d.video)) return `${MODES[d.video]} · ${d.bitrate} kbps` + (state.relay.encoder ? ` · ${state.relay.encoder}` : "");
-  return MODES[d.video];
+// Saves one field straight away (a stream key when it's pasted or typed, a
+// switch when it's pressed).
+async function save(id, fields, row) {
+  const data = await post("/api/destination", { id, ...fields });
+  if (data && row) {
+    const s = row.querySelector(".saved");
+    s.classList.add("on");
+    setTimeout(() => s.classList.remove("on"), 1500);
+  }
+  return data;
 }
 
-const PLATFORM_NAMES = { twitch: "Twitch", youtube: "YouTube", facebook: "Facebook" };
-
-function cardHtml(d) {
-  return `<div class="top"><div class="badge ${d.platform}">${LOGOS.includes(d.platform) ? `<img src="assets/platforms/${d.platform}.png" alt="">` : "R"}</div>
-      <div><div class="name"></div><div class="mode"></div></div>
-      <button class="switch" title="Send to this platform when OBS is streaming"></button></div>
-    <div class="status"><span class="dot"></span><span class="text"></span><span class="rate"></span></div>
-    <div class="login" hidden></div>
-    <div class="actions"><button class="ghost edit">Server and key</button><button class="primary login-btn" hidden>Log in with ${esc(PLATFORM_NAMES[d.platform] || "")}</button></div>`;
-}
-
-function formHtml(d) {
+function buildRow(d) {
   const p = state.platforms[d.platform] || state.platforms.custom;
-  const opts = Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${k === d.video ? "selected" : ""}>${v}</option>`).join("");
-  return `<form>
-    ${d.platform === "custom" ? `<label>Name<input name="name" value="${esc(d.name)}"></label>` : ""}
-    <label>Server<input name="server" value="${esc(d.server)}" placeholder="rtmp://… or rtmps://…" spellcheck="false"></label>
-    <label>Stream key<span class="key"><input name="key" type="password" value="${esc(d.key)}" spellcheck="false" autocomplete="off"><button type="button" class="ghost show">Show</button></span></label>
-    <div class="help">${esc(p.help)}</div>
-    <label>Video<select name="video">${opts}</select></label>
-    ${["twitch", "youtube"].includes(d.platform) ? `<label>Chat channel<input name="chat" value="${esc(d.chat)}" placeholder="${d.platform === "twitch" ? "your Twitch channel name" : "@handle or channel ID (UC…)"}" spellcheck="false"></label>
-    <div class="help">Shows this channel's chat and viewers in Chat. Logging in fills it in.</div>` : ""}
-    <label class="bitrate">Bitrate (kbps)<input name="bitrate" type="number" min="500" max="20000" step="500" value="${d.bitrate}"></label>
-    <div class="help encode-help">For a platform that takes less than you send from OBS: e.g. OBS at 14000 for YouTube, and Twitch re-encoded at 8000. Uses the graphics card when there is one.</div>
-    <div class="buttons"><button class="ghost cancel" type="button">Done</button>
-      ${d.platform === "custom" ? `<button class="danger remove" type="button">Remove</button>` : ""}</div>
-  </form>`;
-}
-
-function openForm(card, d) {
-  editing = d.id;
-  card.querySelector(".actions").hidden = true;
-  card.insertAdjacentHTML("beforeend", formHtml(d));
-  const f = card.querySelector("form"), el = n => f.elements.namedItem(n);
-  const syncBitrate = () => {
-    f.querySelector(".bitrate").hidden = !REENCODED.includes(el("video").value);
-    f.querySelector(".encode-help").hidden = el("video").value !== "encode";
-  };
-  syncBitrate();
-  el("video").onchange = syncBitrate;
-  f.querySelector(".show").onclick = e => { const k = el("key"); k.type = k.type === "password" ? "text" : "password"; e.target.textContent = k.type === "password" ? "Show" : "Hide"; };
-  f.querySelector(".cancel").onclick = () => closeForm(card);
-  const rm = f.querySelector(".remove");
-  if (rm) rm.onclick = async () => {
-    if (confirm(`Remove ${d.name}?`)) { closeForm(card); delete drafts[d.id]; await post("/api/destination/remove", { id: d.id }); }
-  };
-  for (const field of ["name", "server", "key", "video", "bitrate", "chat"]) {
-    const input = el(field);
-    if (input) input.addEventListener("input", () => setDraft(d.id, field, field === "bitrate" ? Number(input.value) : input.value));
+  const row = document.createElement("div");
+  row.className = "dest";
+  row.dataset.id = d.id;
+  const logo = LOGOS.includes(d.platform) ? `<img src="assets/platforms/${d.platform}.png" alt="">` : esc((d.name || "R")[0].toUpperCase());
+  const custom = d.platform === "custom";
+  row.innerHTML = `
+    <div class="badge ${d.platform}">${logo}</div>
+    <div class="who">
+      <div class="name">${custom ? `<input class="field" data-f="name" value="${esc(d.name)}">` : esc(d.name)}</div>
+      <div class="status"><span class="dot"></span><span class="st"></span><span class="rate"></span></div>
+    </div>
+    <div class="cfg">
+      ${d.fixed ? "" : `<div class="line"><label>Server URL</label><input class="field key" data-f="server" placeholder="rtmp:// or rtmps://" spellcheck="false"></div>`}
+      <div class="line"><label>Stream key</label>
+        <input class="field key" data-f="key" type="password" placeholder="Paste the stream key" autocomplete="off" spellcheck="false">
+        <button class="btn small" data-act="show">Show</button><span class="saved">Saved ✓</span></div>
+      <div class="help">${esc(p.help)}</div>
+      <div class="line"><label>Video</label>
+        <select class="field" data-f="video">${Object.entries(MODES).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("")}</select>
+        <input class="field kbps" data-f="bitrate" type="number" min="500" max="20000" step="500" title="kbps"><span class="help rate-l">kbps</span>
+        ${custom ? `<button class="btn small danger" data-act="remove" style="margin-left:auto">Remove</button>` : ""}</div>
+    </div>
+    <button class="switch" title="Switch on: goes live whenever OBS / vMix is streaming"></button>`;
+  for (const input of row.querySelectorAll("[data-f]")) {
+    const f = input.dataset.f;
+    input.addEventListener("change", () => {
+      let v = input.value;
+      if (f === "bitrate") v = +v || 6000;
+      save(d.id, { [f]: v }, row);
+    });
+    if (f === "key") input.addEventListener("paste", e => {
+      // A pasted key replaces the old one (never added onto it), and is saved at once.
+      const text = (e.clipboardData || window.clipboardData)?.getData("text");
+      if (text == null) return;
+      e.preventDefault();
+      input.value = text.trim();
+      input.dispatchEvent(new Event("change"));
+    });
+    if (f === "key" || f === "server" || f === "name") input.addEventListener("keydown", e => { if (e.key === "Enter") input.blur(); });
   }
-  f.onsubmit = e => { e.preventDefault(); closeForm(card); };
-  el("server").focus();
-}
-
-function closeForm(card) {
-  editing = null;
-  card.querySelector("form")?.remove();
-  card.querySelector(".actions").hidden = false;
-}
-
-// A login in progress (or just finished) on a card.
-const seenLogins = {};
-function renderLogin(card, d, l) {
-  const box = card.querySelector(".login");
-  const key = l ? `${l.status}|${l.code}|${l.message}` : "";
-  if (box.dataset.key === key) return;
-  box.dataset.key = key;
-  box.hidden = !l || (l.status === "done" && seenLogins[d.id] === "done");
-  if (!l) return;
-  const name = PLATFORM_NAMES[l.platform] || d.name;
-  if (l.status === "done") {
-    if (seenLogins[d.id] !== "done") {
-      toast(`${d.name}: ${l.message}`);
-      if (drafts[d.id]) { for (const f of ["server", "key", "chat"]) delete drafts[d.id][f]; if (!Object.keys(drafts[d.id]).length) delete drafts[d.id]; }
-    }
-    seenLogins[d.id] = "done";
-    box.hidden = true;
-    return;
-  }
-  seenLogins[d.id] = l.status;
-  const buttons = `<button class="ghost open" type="button">Open ${esc(name)}'s page</button><button class="ghost cancel" type="button">${l.status === "error" ? "Close" : "Cancel"}</button>`;
-  box.innerHTML = l.status === "error" ? `<div class="bad">Login failed: ${esc(l.message)}</div><div class="buttons"><button class="ghost cancel" type="button">Close</button></div>`
-    : l.code ? `<div>On ${esc(name)}'s page (opened in your browser), enter</div><div class="code">${esc(l.code)}</div><div class="buttons">${buttons}</div>`
-    : `<div>${esc(l.message || "Starting…")}</div><div class="buttons">${l.url ? buttons : ""}</div>`;
-  box.querySelector(".open")?.addEventListener("click", () => post("/api/login/open", { id: d.id }));
-  box.querySelector(".cancel").onclick = () => post("/api/login/cancel", { id: d.id });
+  row.querySelector("[data-act=show]").onclick = e => {
+    const k = row.querySelector("[data-f=key]");
+    k.type = k.type === "password" ? "text" : "password";
+    e.target.textContent = k.type === "password" ? "Show" : "Hide";
+  };
+  const rm = row.querySelector("[data-act=remove]");
+  if (rm) rm.onclick = () => {
+    if (rm.dataset.sure) return post("/api/destination/remove", { id: d.id });
+    rm.dataset.sure = "1";
+    rm.textContent = "Remove it?";
+    setTimeout(() => { delete rm.dataset.sure; rm.textContent = "Remove"; }, 3000);
+  };
+  row.querySelector(".switch").onclick = () => {
+    const cur = state.destinations.find(x => x.id === d.id);
+    save(d.id, { enabled: !cur.enabled });
+  };
+  return row;
 }
 
 function renderDests() {
-  const box = $("dests"), outs = Object.fromEntries(state.relay.outputs.map(o => [o.id, o]));
+  const box = $("dests");
   const ids = state.destinations.map(d => d.id);
-  [...box.querySelectorAll(".dest")].forEach(c => { if (!ids.includes(c.dataset.id)) c.remove(); });
-  for (const saved of state.destinations) {
-    const d = eff(saved);
-    let card = box.querySelector(`.dest[data-id="${CSS.escape(d.id)}"]`);
-    if (!card) {
-      card = document.createElement("div");
-      card.className = "card dest";
-      card.dataset.id = d.id;
-      card.innerHTML = cardHtml(d);
-      card.querySelector(".switch").onclick = () => {
-        const cur = eff(state.destinations.find(x => x.id === d.id));
-        setDraft(d.id, "enabled", !cur.enabled);
-      };
-      card.querySelector(".login-btn").onclick = () => post("/api/login", { id: d.id });
-      card.querySelector(".edit").onclick = () => {
-        if (editing) closeForm(box.querySelector(`.dest[data-id="${CSS.escape(editing)}"]`));
-        openForm(card, eff(state.destinations.find(x => x.id === d.id)));
-      };
-      box.insertBefore(card, box.querySelector(".add"));
+  if (box.dataset.ids !== ids.join(",")) {
+    box.innerHTML = "";
+    for (const d of state.destinations) box.appendChild(buildRow(d));
+    box.dataset.ids = ids.join(",");
+  }
+  const outs = Object.fromEntries(state.relay.outputs.map(o => [o.id, o]));
+  for (const d of state.destinations) {
+    const row = box.querySelector(`.dest[data-id="${CSS.escape(d.id)}"]`);
+    for (const input of row.querySelectorAll("[data-f]")) {
+      if (document.activeElement === input) continue;   // (being typed in)
+      const v = String(d[input.dataset.f] ?? "");
+      if (input.value !== v) input.value = v;
     }
-    const o = outs[d.id], s = drafts[d.id] ? { cls: "starting", text: "Not saved yet: press Save" } : statusLine(d, o);
-    card.classList.toggle("on", d.enabled);
-    card.classList.toggle("dirty", !!drafts[d.id]);
-    card.classList.toggle("is-live", o?.status === "live");
-    card.querySelector(".name").textContent = d.name;
-    card.querySelector(".mode").textContent = modeText(d) + (d.account ? ` · ${d.account}` : "");
-    const canLogin = !!state.can_log_in[d.platform];
-    const busy = ["starting", "waiting"].includes(state.logins[d.id]?.status);
-    card.querySelector(".login-btn").hidden = !canLogin || busy;
-    renderLogin(card, d, state.logins[d.id]);
-    card.querySelector(".switch").classList.toggle("on", d.enabled);
-    const st = card.querySelector(".status");
-    st.className = "status " + s.cls;
-    st.querySelector(".dot").className = "dot " + s.cls;
-    st.querySelector(".text").textContent = s.text;
-    const v = state.viewers[d.id]?.viewers;
-    st.querySelector(".rate").textContent = [s.rate, v != null ? `${v.toLocaleString()} watching` : ""].filter(Boolean).join(" · ");
+    const keyBox = row.querySelector("[data-f=key]");
+    keyBox.classList.toggle("bad", d.enabled && !d.key && d.platform !== "custom");
+    const re = REENCODED.includes(d.video);
+    row.querySelector("[data-f=bitrate]").hidden = !re;
+    row.querySelector(".rate-l").hidden = !re;
+    const st = statusOf(d, outs[d.id]);
+    const s = row.querySelector(".status");
+    s.className = "status " + st.cls;
+    s.querySelector(".dot").className = "dot " + st.cls;
+    s.querySelector(".st").textContent = st.text;
+    s.querySelector(".rate").textContent = st.rate ? "· " + st.rate : "";
+    row.querySelector(".switch").classList.toggle("on", d.enabled);
   }
-  if (!box.querySelector(".add")) {
-    const add = document.createElement("div");
-    add.className = "card add";
-    add.innerHTML = `<div>+ Add another RTMP destination</div>`;
-    add.onclick = async () => {
-      const name = prompt("Name for this destination (e.g. Kick):");
-      if (name === null) return;
-      const data = await post("/api/destination", { platform: "custom", name: name.trim() || "RTMP" });
-      const d = data && data.destinations[data.destinations.length - 1];
-      const card = d && box.querySelector(`.dest[data-id="${CSS.escape(d.id)}"]`);
-      if (card) openForm(card, d);
-    };
-    box.appendChild(add);
-  }
+}
+
+function renderTest(t) {
+  const box = $("test");
+  if (t.status === "idle") { box.hidden = true; return; }
+  box.hidden = false;
+  $("test-run").disabled = t.status === "running";
+  $("test-title").textContent = { running: "Testing the relay on this PC…", passed: "Test passed: the relay works on this PC",
+                                  failed: "Test failed" }[t.status];
+  $("test-sub").textContent = t.status === "running" ? "A test pattern goes through the relay and back. Nothing goes live. Takes up to a minute."
+    : t.status === "passed" ? "If a platform still doesn't go live, its stream key is wrong or the platform isn't ready for a stream (YouTube: a reusable stream key)."
+    : "What didn't work is below, and in the log.";
+  $("test-list").innerHTML = t.results.map(r => `<li class="${r.ok ? "" : "no"}">${esc(r.text)}</li>`).join("");
 }
 
 function render() {
   if (!state) return;
   renderInput(state.relay);
   renderDests();
-  showUpdate(state.update);
+  renderTest(state.test);
   $("upload").textContent = mbps(state.relay.upload_kbps);
-  const counts = Object.values(state.viewers).map(v => v.viewers).filter(v => v != null);
-  $("watching-box").hidden = !counts.length;
-  $("watching").textContent = counts.reduce((a, b) => a + b, 0).toLocaleString();
-  renderProfiles();
-  renderInfo();
-  const outs = state.relay.outputs, on = state.destinations.map(eff).filter(d => d.enabled).length;
+  const outs = state.relay.outputs, on = state.destinations.filter(d => d.enabled).length;
   const live = outs.filter(o => o.status === "live").length;
   $("summary").textContent = `${on} of ${state.destinations.length} platforms switched on` + (live ? ` · ${live} live` : "");
 }
-
-function renderProfiles() {
-  const sel = $("profile");
-  const names = state.profiles.map(p => p.name);
-  if (sel.dataset.names !== names.join("\n")) {
-    sel.innerHTML = state.profiles.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("");
-    sel.dataset.names = names.join("\n");
-  }
-  if (document.activeElement !== sel) sel.value = state.profile;
-  const p = state.profiles.find(x => x.name === state.profile);
-  sel.title = p ? `${p.name}: ${p.platforms.map(id => state.destinations.find(d => d.id === id)?.name || id).join(", ") || "no platforms"}` : "";
-  $("profile-delete").hidden = state.profiles.length < 2;
-  const n = Object.keys(drafts).length;
-  const parts = [n ? `${n} platform${n > 1 ? "s" : ""}` : "", infoDraft ? "stream info" : ""].filter(Boolean);
-  $("dirty").textContent = parts.length ? `Unsaved changes: ${parts.join(" and ")}` : "";
-  $("save").disabled = !dirty();
-  $("discard").hidden = !dirty();
-}
-
-function closeAllForms() {
-  document.querySelectorAll(".dest form").forEach(f => closeForm(f.closest(".dest")));
-}
-
-$("save").onclick = async () => {
-  const changes = Object.entries(drafts).map(([id, f]) => ({ id, ...f }));
-  const body = { changes, profile: $("profile").value };
-  if (infoDraft) body.info = infoDraft;
-  if (await post("/api/save", body)) {
-    drafts = {};
-    infoDraft = null;
-    render();
-    toast(`Saved to profile "${state.profile}"`);
-  }
-};
-$("discard").onclick = () => {
-  if (!confirm("Discard the unsaved changes?")) return;
-  drafts = {};
-  infoDraft = null;
-  closeAllForms();
-  render();
-};
-$("profile").onchange = async e => {
-  const name = e.target.value;
-  if (dirty() && !confirm(`Switch to "${name}" and discard the unsaved changes?`)) { e.target.value = state.profile; return; }
-  drafts = {};
-  infoDraft = null;
-  closeAllForms();
-  if (await post("/api/profile/select", { name })) toast(`Profile "${name}": its platforms are switched on`);
-};
-$("profile-new").onclick = async () => {
-  const name = prompt("Name for the new profile (it starts with the platforms switched on now, plus any unsaved changes):");
-  if (!name) return;
-  const platforms = state.destinations.map(eff).filter(d => d.enabled).map(d => d.id);
-  const changes = Object.entries(drafts).map(([id, f]) => ({ id, ...f }));
-  if (await post("/api/profile/add", { name, platforms, changes, info: infoDraft || state.stream_info })) {
-    drafts = {};
-    infoDraft = null;
-    render();
-    toast(`Profile "${name.trim()}" saved`);
-  }
-};
-$("profile-delete").onclick = async () => {
-  const name = state.profile;
-  if (confirm(`Delete the profile "${name}"? (The platforms' servers and keys stay.)`)) await post("/api/profile/delete", { name });
-};
-window.addEventListener("beforeunload", e => { if (dirty()) e.preventDefault(); });
-
-// --- Stream info ------------------------------------------------------------
-const infoNow = () => infoDraft || state.stream_info;
-let infoShown = "";
-function fillInfo(info) {
-  $("i-title").value = info.title;
-  $("i-tw-tags").value = info.twitch.tags;
-  $("i-tw-lang").value = info.twitch.language || "en";
-  $("i-tw-branded").checked = !!info.twitch.branded;
-  $("i-yt-desc").value = info.youtube.description;
-  $("i-yt-cat").value = String(info.youtube.category || "20");
-  $("i-yt-privacy").value = info.youtube.privacy || "public";
-  $("i-yt-latency").value = info.youtube.latency || "normal";
-  $("i-yt-dvr").checked = info.youtube.dvr !== false;
-  $("i-yt-kids").checked = !!info.youtube.kids;
-  $("i-yt-thumb").value = "";
-  showCategory(info);
-  showThumb(info);
-}
-function showCategory(info) {
-  const c = info.twitch;
-  $("i-tw-chosen").innerHTML = c.category_id ? `${esc(c.category)} <button class="ghost" type="button" id="i-tw-clear">Change</button>` : "";
-  $("i-tw-cat").hidden = !!c.category_id;
-  $("i-tw-clear")?.addEventListener("click", () => { editInfo(i => { i.twitch.category_id = ""; i.twitch.category = ""; }); showCategory(infoNow()); $("i-tw-cat").focus(); });
-}
-function showThumb(info) {
-  const t = info.youtube.thumbnail;
-  $("i-yt-thumb-img").hidden = !t;
-  if (t) $("i-yt-thumb-img").src = "thumbs/" + encodeURIComponent(t);
-  $("i-yt-thumb-clear").hidden = !t;
-}
-function editInfo(change) {
-  const next = JSON.parse(JSON.stringify(infoNow()));
-  change(next);
-  infoDraft = JSON.stringify(next) === JSON.stringify(state.stream_info) ? null : next;
-  render();
-}
-function renderInfo() {
-  const key = state.profile + "|" + JSON.stringify(state.stream_info);
-  if (!infoDraft && key !== infoShown) { fillInfo(state.stream_info); infoShown = key; }
-  $("info").classList.toggle("dirty", !!infoDraft);
-  $("info-sub").textContent = `Profile "${state.profile}"` + (infoNow().title ? ` · ${infoNow().title}` : "");
-  for (const [p, el] of [["twitch", "i-tw-push"], ["youtube", "i-yt-push"]]) {
-    const r = state.info_push[p];
-    const name = p === "twitch" ? "Twitch" : "YouTube";
-    const ready = state.info_ready[p];
-    $(el).className = "push " + (r ? r.status : "");
-    $(el).textContent = r ? r.message : ready ? "" : `Log in with ${name} on its card to use this (log in again if you did before this version).`;
-  }
-}
-const bindInfo = (id, set, ev = "input") => $(id).addEventListener(ev, e => editInfo(i => set(i, e.target)));
-bindInfo("i-title", (i, el) => i.title = el.value);
-bindInfo("i-tw-tags", (i, el) => i.twitch.tags = el.value);
-bindInfo("i-tw-lang", (i, el) => i.twitch.language = el.value, "change");
-bindInfo("i-tw-branded", (i, el) => i.twitch.branded = el.checked, "change");
-bindInfo("i-yt-desc", (i, el) => i.youtube.description = el.value);
-bindInfo("i-yt-cat", (i, el) => i.youtube.category = el.value, "change");
-bindInfo("i-yt-privacy", (i, el) => i.youtube.privacy = el.value, "change");
-bindInfo("i-yt-latency", (i, el) => i.youtube.latency = el.value, "change");
-bindInfo("i-yt-dvr", (i, el) => i.youtube.dvr = el.checked, "change");
-bindInfo("i-yt-kids", (i, el) => i.youtube.kids = el.checked, "change");
-$("i-yt-thumb").onchange = e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) { alert("YouTube thumbnails can be at most 2 MB"); e.target.value = ""; return; }
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const r = await fetch("/api/thumbnail", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: reader.result }) });
-    const data = await r.json();
-    if (data.error) { alert(data.error); return; }
-    editInfo(i => i.youtube.thumbnail = data.name);
-    showThumb(infoNow());
-  };
-  reader.readAsDataURL(file);
-};
-$("i-yt-thumb-clear").onclick = () => { editInfo(i => i.youtube.thumbnail = ""); $("i-yt-thumb").value = ""; showThumb(infoNow()); };
-let catTimer;
-$("i-tw-cat").addEventListener("input", e => {
-  clearTimeout(catTimer);
-  const q = e.target.value.trim();
-  if (!q) { $("i-tw-found").hidden = true; return; }
-  catTimer = setTimeout(async () => {
-    const data = await (await fetch("/api/twitch/categories?q=" + encodeURIComponent(q))).json();
-    const box = $("i-tw-found");
-    box.innerHTML = data.error ? `<div class="note" style="padding:8px 10px">${esc(data.error)}</div>`
-      : data.categories.map(c => `<button type="button" data-id="${esc(c.id)}" data-name="${esc(c.name)}"><img src="${esc(c.art)}" alt="">${esc(c.name)}</button>`).join("")
-        || `<div class="note" style="padding:8px 10px">No categories found</div>`;
-    box.hidden = false;
-    box.querySelectorAll("button").forEach(b => b.onclick = () => {
-      editInfo(i => { i.twitch.category_id = b.dataset.id; i.twitch.category = b.dataset.name; });
-      box.hidden = true;
-      $("i-tw-cat").value = "";
-      showCategory(infoNow());
-    });
-  }, 300);
-});
-document.addEventListener("click", e => { if (!e.target.closest(".cat")) $("i-tw-found").hidden = true; });
-function showInfo(open) {
-  $("info-body").hidden = !open;
-  $("info-arrow").textContent = open ? "▾" : "▸";
-  try { localStorage.setItem("info", open ? "1" : "0"); } catch (e) {}
-}
-$("info-head").onclick = () => showInfo($("info-body").hidden);
-try { showInfo(localStorage.getItem("info") !== "0"); } catch (e) {}
 
 async function refresh() {
   try {
@@ -678,26 +371,25 @@ async function refresh() {
 }
 
 document.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
-  await navigator.clipboard.writeText($(b.dataset.copy).textContent);
-  toast("Copied");
+  try { await navigator.clipboard.writeText($(b.dataset.copy).textContent); toast("Copied"); }
+  catch (e) { toast("Select it and press Ctrl+C", true); }
 });
 $("restart").onclick = () => post("/api/restart");
+$("test-run").onclick = () => post("/api/test");
+$("lan").onchange = e => { $("lan-note").hidden = false; post("/api/lan", { lan: e.target.checked }); };
 
-// The chat beside the panel (remembered between runs).
-function showChat(on) {
-  $("chat").hidden = !on;
-  $("chat-toggle").classList.toggle("on", on);
-  if (on && !$("chat").firstChild) $("chat").innerHTML = `<iframe src="chat.html?embed=1" title="Chat"></iframe>`;
-  try { localStorage.setItem("chat", on ? "1" : ""); } catch (e) {}
+// + Add another RTMP destination (a form in the row, no pop-ups).
+function showAdd(on) {
+  $("add-open").hidden = on;
+  $("add-form").hidden = !on;
+  if (on) { for (const k of ["add-name", "add-server", "add-key"]) $(k).value = ""; $("add-name").focus(); }
 }
-$("chat-toggle").onclick = () => showChat($("chat").hidden);
-try { showChat(!!localStorage.getItem("chat")); } catch (e) {}
-$("lan").onchange = e => {
-  const msg = e.target.checked
-    ? "Let other PCs on the network stream in? The RTMP server restarts (any live platforms drop for a moment), and Windows may ask to allow it through the firewall."
-    : "Only accept streams from this PC? The RTMP server restarts (any live platforms drop for a moment).";
-  if (confirm(msg)) post("/api/lan", { lan: e.target.checked });
-  else e.target.checked = !e.target.checked;
+$("add-open").onclick = () => showAdd(true);
+$("add-cancel").onclick = () => showAdd(false);
+$("add-save").onclick = async () => {
+  const data = await post("/api/destination", { platform: "custom", name: $("add-name").value.trim() || "RTMP",
+                                                server: $("add-server").value.trim(), key: $("add-key").value });
+  if (data) showAdd(false);
 };
 
 let logAfter = 0;

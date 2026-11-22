@@ -8,17 +8,13 @@ import argparse
 import json
 import os
 import sys
-import tempfile
-import time
 import urllib.request
 import webbrowser
 
-from . import procs
+from . import selftest
 from .app import StreamApp, start, stop
-from .config import DATA_DIR, PORT, tool
+from .config import DATA_DIR, PORT
 from .log import log
-from .relay import Ingest, Relay
-from .settings import CROP, ENCODE, Settings, new_destination
 
 TITLE = "SCC Multistream"
 
@@ -39,76 +35,25 @@ def already_running(port):
         return False
 
 
-def smoke_test(port, rtmp_port=19350, api_port=19987, timeout=60):
-    """Used by the build: the packaged app serves its page, and the relay
-    works end to end. A test pattern goes into the RTMP server, and two
-    destinations (copied, cropped to vertical, and re-encoded at a lower bitrate) point back at the same
-    server, so both must come out the other side. Writes smoke-test.txt
-    next to the app; True if all went well."""
+def smoke_test(port):
+    """Used by a build: the app serves its page, and the relay works end to
+    end on this PC (see selftest.py). Writes smoke-test.txt next to the app;
+    True if all went well."""
     results, ok = [], True
-
-    def check(name, passed, detail=""):
-        nonlocal ok
-        ok = ok and passed
-        results.append(f"{'OK  ' if passed else 'FAIL'} {name}{f' ({detail})' if detail else ''}")
-
-    work = tempfile.mkdtemp(prefix="sccms-smoke-")
-    settings = Settings(os.path.join(work, "config.json"))
-    settings.data["destinations"] = [
-        new_destination("custom", id="copy", name="Copy", enabled=True, server=f"rtmp://127.0.0.1:{rtmp_port}/out", key="copy"),
-        new_destination("custom", id="crop", name="Crop", enabled=True, server=f"rtmp://127.0.0.1:{rtmp_port}/out", key="crop",
-                        video=CROP, bitrate=2000),
-        new_destination("custom", id="encode", name="Encode", enabled=True, server=f"rtmp://127.0.0.1:{rtmp_port}/out",
-                        key="encode", video=ENCODE, bitrate=1500),
-    ]
-    app = StreamApp(settings, Relay(settings, Ingest(rtmp_port=rtmp_port, api_port=api_port, data_dir=work)))
-    publisher = None
+    app = StreamApp()
     try:
         start(app, port)
-        for path in ("/", "/api/state", "/update.js", "/fonts/Inter.ttf", "/assets/st-clair-saints.png", "/assets/platforms/youtube.png", "/chat.html", "/api/chat"):
+        for path in ("/", "/api/state", "/update.js", "/fonts/Inter.ttf", "/assets/platforms/youtube.png"):
             try:
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
-                    check(path, True, f"{len(r.read())} bytes")
+                    results.append(f"OK   {path} ({len(r.read())} bytes)")
             except Exception as e:
-                check(path, False, str(e))
-        try:
-            import webview  # noqa: F401
-            if sys.platform == "win32":
-                import webview.platforms.winforms  # noqa: F401
-            check("window library", True)
-        except Exception as e:
-            check("window library", False, repr(e))
-        for name in ("ffmpeg", "mediamtx"):
-            check(f"{name} bundled", os.path.isfile(tool(name)), tool(name))
-
-        publisher = procs.popen([tool("ffmpeg"), "-hide_banner", "-loglevel", "error", "-re",
-                                 "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30",
-                                 "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-                                 "-c:v", "libx264", "-preset", "ultrafast", "-g", "60", "-pix_fmt", "yuv420p",
-                                 "-c:a", "aac", "-t", str(timeout + 10), "-f", "flv",
-                                 f"rtmp://127.0.0.1:{rtmp_port}/live/main"])
-        deadline = time.monotonic() + timeout
-        state = {}
-        while time.monotonic() < deadline:
-            state = app.relay.state()
-            outs = {o["id"]: o for o in state["outputs"]}
-            if all(outs.get(i, {}).get("status") == "live" for i in ("copy", "crop", "encode")) \
-                    and {"out/copy", "out/crop", "out/encode"} <= set(app.relay.ingest.paths):
-                break
-            time.sleep(1)
-        check("OBS stream received", state.get("ingest", {}).get("status") == "live",
-              f"{state.get('ingest', {}).get('kbps')} kbps, {state.get('ingest', {}).get('tracks')}")
-        outs = {o["id"]: o for o in state.get("outputs", [])}
-        for i in ("copy", "crop", "encode"):
-            o = outs.get(i, {})
-            arrived = f"out/{i}" in app.relay.ingest.paths
-            check(f"{i} output live", o.get("status") == "live" and arrived,
-                  f"{o.get('status')}: {o.get('message') or ''} {o.get('kbps')} kbps".strip())
-        check("encoder", bool(app.relay.encoder), app.relay.encoder or "none")
-    except Exception as e:
-        check("smoke test", False, f"{type(e).__name__}: {e}")
+                ok = False
+                results.append(f"FAIL {path} ({e})")
+        passed, checks = selftest.run()
+        ok = ok and passed
+        results += [f"{'OK  ' if p else 'FAIL'} {t}" for p, t in checks]
     finally:
-        procs.stop(publisher)
         stop(app)
     with open(os.path.join(DATA_DIR, "smoke-test.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(results + ["PASSED" if ok else "FAILED"]) + "\n")
@@ -148,8 +93,6 @@ def main():
                                        min_size=(900, 560), background_color="#08120c")
         if app:
             app.updater.on_exit = window.destroy
-            app.open_chat_window = lambda u: webview.create_window("SCC Multistream chat", u, width=420, height=760,
-                                                                   background_color="#08120c")
         webview.start(debug=args.debug)
     except Exception as e:
         log(f"Couldn't open the app window ({e!r}); using the web browser instead", "warn")

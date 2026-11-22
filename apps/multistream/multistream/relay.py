@@ -24,7 +24,7 @@ import urllib.request
 from . import procs
 from .config import API_PORT, DATA_DIR, RTMP_PORT, tool
 from .log import log
-from .settings import CROP, ENCODE, REENCODED, VERTICAL, target_url
+from .settings import CROP, ENCODE, REENCODED, VERTICAL, missing, target_url
 
 VERTICAL_KEY = "vertical"
 RETRY_DELAYS = (2, 4, 8, 15, 30)
@@ -415,8 +415,9 @@ class Relay:
                 out.stop()
                 out.failures = 0
             return
-        if not dest.get("server"):
-            out.stop("setup", "Add the server and stream key")
+        need = missing(dest)
+        if need:
+            out.stop("setup", need)
             return
         vertical = dest.get("video") == VERTICAL
         source = self.ingest.source(vertical=vertical)
