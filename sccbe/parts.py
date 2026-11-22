@@ -286,8 +286,6 @@ class Part:
         if self.overlay:
             mod = importlib.import_module(f"{self.package}.overlay_window")
             self.app.overlay_window = mod.OverlayWindow(self.app.config, self.port)
-        if self.key == "stream":
-            self.app.open_chat_window = windows.chat_window
         self.app.updater.on_exit = windows.close
 
     def stop(self):

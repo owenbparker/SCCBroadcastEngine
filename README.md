@@ -36,7 +36,9 @@ the top right), and the role changed.
 
 - **Home**: tonight's match, what's on air, the games and what's running.
 - **Control**, **Cameras**: the GFX Engine's Control page and Camera Control Room.
-- **Stream**: Multistream.
+- **Stream**: Multistream. OBS / vMix streams to it once; paste each platform's
+  stream key, switch the platform on, and it goes live with the stream.
+  "Test on this PC" checks the relay without going live anywhere.
 - **Games**: each game HUD's own pages (League and VALORANT open on the
   GFX Controller / Observer Client choice, as before).
 - **Build**: Composer, HUD Builder, Assets, Transitions.
@@ -86,8 +88,8 @@ itself (top bar, Home, Settings, starting the parts, the updater) is in
 How it's put together: every part runs in this one process (its web server in
 a thread, on its usual port). The window is a pywebview window showing the
 top bar from `sccbe/app.py` (port 8770), with each part's own pages in a
-frame below it. The HUD-over-the-game windows and Multistream's chat window
-are pywebview windows of the same app.
+frame below it. The HUD-over-the-game windows are pywebview windows of the
+same app.
 
 ## Releases
 
