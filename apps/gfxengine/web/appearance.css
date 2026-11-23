@@ -290,3 +290,6 @@ html[data-look="glass"] .ap-dialog { background: rgba(14,22,18,.92); }
 .ap-dialog-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .ap-dialog-head h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
 
+/* Composer graphics list: the trash icon on each row stays a bare icon */
+.comp-item .comp-trash { background-color: transparent !important; box-shadow: none !important; padding: 0 !important; min-width: 0 !important; }
+.comp-item .comp-trash:hover { background-color: rgba(255, 92, 92, .14) !important; color: #ff5c5c !important; }
