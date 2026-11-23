@@ -311,7 +311,7 @@
 <main id="page-composer" class="page" hidden>
   <aside class="comp-left panel">
     <div class="panel-head"><h3>Graphics</h3>
-      <div class="row-gap"><button class="small" id="comp-import" title="A new graphic from a Photoshop file (layers and text come across), OpenRaster or picture; or from a video (.mov from After Effects keeps its transparency), Lottie animation (.json / .lottie) or After Effects project (.aep, rendered with After Effects on this PC). Affinity, Krita, GIMP, Procreate: save as .psd first. A vMix title (.gtzip) comes across with its pictures, its text as fields and its spinning parts. A .sccgfx file exported from another GFX Engine brings its graphics in with their files">Import</button>
+      <div class="row-gap"><button class="small" id="comp-import" title="A new graphic from a Photoshop file (layers and text come across), OpenRaster or picture; or from a video (.mov from After Effects keeps its transparency), Lottie animation (.json / .lottie) or After Effects project (.aep, rendered with After Effects on this PC). A Figma file (.fig, from File &gt; Save local copy) makes a graphic of each frame, with its text, shapes and pictures. Affinity, Krita, GIMP, Procreate: save as .psd first. A vMix title (.gtzip) comes across with its pictures, its text as fields and its spinning parts. A .sccgfx file exported from another GFX Engine brings its graphics in with their files">Import</button>
         <button class="small" id="comp-new" title="New, empty graphic">+ New</button>
         <input type="file" id="comp-import-file" accept=".psd,.psb,.ora,.gtzip,.png,.jpg,.jpeg,.webp,.gif,.svg,.avif,.bmp,.afdesign,.afphoto,.afpub,.af,.kra,.xcf,.procreate,.clip,.ptg,.ai,.sketch,.fig,.mov,.mp4,.webm,.m4v,.mxf,.avi,.mkv,.json,.lottie,.zip,.aep,.aepx,.sccgfx" hidden></div></div>
     <div id="comp-list" class="comp-list"></div>
@@ -360,7 +360,7 @@
   </div>
   <div id="jobs" class="jobs"></div>
   <div id="missing-fonts" class="notice" hidden></div>
-  <div class="drop" id="asset-drop">Drop files here: Photoshop (.psd) becomes a graphic; video (.mov with alpha from After Effects, .mp4, .webm, PNG sequences in a .zip) is made web-ready;
+  <div class="drop" id="asset-drop">Drop files here: Photoshop (.psd) or Figma (.fig) becomes a graphic; video (.mov with alpha from After Effects, .mp4, .webm, PNG sequences in a .zip) is made web-ready;
     After Effects projects (.aep) are rendered by After Effects on this PC; fonts (.ttf, .otf), pictures, Lottie (.json / .lottie from After Effects), and spreadsheets (.csv, .xlsx).</div>
   <div id="asset-grid" class="asset-grid"></div>
 </main>
