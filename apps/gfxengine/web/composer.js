@@ -55,7 +55,9 @@
     if (list.dataset.sig === sig) return;
     list.dataset.sig = sig;
     list.replaceChildren(...comps.map(c => h("div", { class: "comp-item" + (c.id === compId ? " sel" : ""), onclick: () => open(c.id) },
-      thumb(c, {}, 48), h("span", { class: "nm" }, c.name))));
+      thumb(c, {}, 48), h("span", { class: "nm" }, c.name),
+      h("button", { class: "comp-trash", title: `Delete "${c.name}"`, "aria-label": `Delete ${c.name}`,
+        onclick: e => { e.stopPropagation(); deleteComp(c.id); } }))));
     if (!comps.length) list.replaceChildren(h("div", { class: "empty" }, "No graphics yet."));
   }
   function open(id) {
@@ -109,12 +111,15 @@
     location.href = `/api/share?comps=${compId}`;
   });
   $("#comp-dup").addEventListener("click", async () => { if (compId) open((await api("/api/comp/duplicate", { id: compId })).comp.id); });
-  $("#comp-del").addEventListener("click", async () => {
-    if (!comp || !confirm(`Delete "${comp.name}"? It comes off air too.`)) return;
-    await api("/api/comp/delete", { id: compId });
-    compId = null;
+  // Asks first: a deleted graphic is gone (Undo doesn't bring it back).
+  async function deleteComp(id) {
+    const c = App.comp(id);
+    if (!c || !confirm(`Delete the graphic "${c.name}"? It comes off air too, and it can't be undone.`)) return;
+    await api("/api/comp/delete", { id });
+    if (id === compId) compId = null;
     adopt(true);
-  });
+  }
+  $("#comp-del").addEventListener("click", () => { if (compId) deleteComp(compId); });
 
   // --- layers ---------------------------------------------------------------
   let dragLayer = null;

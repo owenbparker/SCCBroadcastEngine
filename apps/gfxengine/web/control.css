@@ -131,6 +131,12 @@ label > input, label > select, label > textarea { margin-top: 3px; color: var(--
 .comp-item.sel { background: #1d3b5e; }
 .comp-item .thumb { width: 48px; height: 27px; border-radius: 3px; }
 .comp-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comp-item .comp-trash { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; opacity: .35; color: inherit; }
+.comp-item .comp-trash::before { content: ""; display: block; width: 14px; height: 14px; margin: auto; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'/%3E%3C/svg%3E") center / contain no-repeat; }
+.comp-item:hover .comp-trash, .comp-item.sel .comp-trash { opacity: .7; }
+.comp-item .comp-trash:hover { opacity: 1; color: #ff5c5c; background: rgba(255, 92, 92, .14); }
 .add-layer { display: flex; gap: 3px; }
 .add-layer button { width: 26px; padding: 3px 0; }
 .layer-list { overflow-y: auto; flex: 1; padding: 6px; }
