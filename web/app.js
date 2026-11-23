@@ -372,8 +372,33 @@ function renderWorkspaceMenu() {
   $("#menu-ws").innerHTML = `<div class="hd">Workspaces</div>` + ws.map(w => `<button class="mi${w.id === wsList.current ? " on" : ""}" data-ws="${esc(w.id)}">
       <span class="wspic"${w.picture ? ` style="background-image:url('${e.base}/api/workspace-picture/${encodeURIComponent(w.id)}?v=${Math.round(w.updated || 0)}')"` : ""}>${w.picture ? "" : esc((w.name || "?").slice(0, 1))}</span>
       <span class="wsn">${esc(w.name)}<small>${w.graphics || 0} graphics</small></span>${w.id === wsList.current ? `<span class="st">open</span>` : ""}</button>`).join("")
-    + `<a class="mi" href="#engine/home">${icon("settings")}Manage workspaces<span class="st">new, rename, picture</span></a>`;
+    + `<a class="mi" href="#engine/home">${icon("settings")}Manage workspaces<span class="st">new, rename, picture</span></a>`
+    + (REMOTE || !wsList.current ? "" :
+      `<a class="mi" id="ws-export" href="${BASE}/api/engine/workspace-export?id=${encodeURIComponent(wsList.current)}" download>${icon("outputs")}Export this workspace<span class="st">.sccws file</span></a>
+      <label class="mi" style="cursor:pointer">${icon("plus")}Import a workspace…<span class="st">added as new</span><input type="file" id="ws-import" accept=".sccws" hidden></label>`);
 }
+// (Export / Import a whole workspace: graphics, files, Global, tournaments, teams, run of show templates)
+$("#menu-ws").addEventListener("change", async ev => {
+  if (ev.target.id !== "ws-import") return;
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  closeMenus();
+  if (!f) return;
+  if (!/\.sccws$/i.test(f.name)) return alertBox("That isn't a workspace file (.sccws): export one from the Workspaces menu on the other PC");
+  alertBox(`Importing ${f.name}…`);
+  try {
+    const r = await fetch(BASE + "/api/engine/workspace-import", { method: "POST", headers: { "X-Filename": encodeURIComponent(f.name) }, body: f });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+    const ros = d.extras && d.extras.run_of_show && d.extras.run_of_show.added ? d.extras.run_of_show.added.length : 0;
+    alertBox(`Added "${d.name}": ${d.graphics} graphics` + (d.teams.length ? `, ${d.teams.length} new teams` : "")
+      + (ros ? `, ${ros} run of show templates` : "") + ". Pick it here to open it.");
+    loadWorkspaces();
+  } catch (err) { alertBox("Couldn't import it: " + err.message); }
+});
+$("#menu-ws").addEventListener("click", ev => {
+  if (ev.target.closest("#ws-export")) { closeMenus(); alertBox("Exporting the workspace… (a big one takes a moment)"); }
+});
 $("#menu-ws").addEventListener("click", async ev => {
   const b = ev.target.closest("[data-ws]");
   if (!b) return;

@@ -278,6 +278,13 @@ table.sheet td.c:hover { background: #1d3b5e; }
 .home-hero { display: flex; justify-content: center; padding: 8px 0 18px; }
 .home-logo { height: 190px; filter: drop-shadow(0 8px 24px rgba(0,0,0,.45)); }
 .home-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.home-head .btn input { display: none; }
+.ws-share { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ws-share h4 { margin: 0 0 8px; font-size: 13px; }
+.ws-share .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ws-share select { flex: 1; min-width: 140px; }
+.ws-share p { margin: 8px 0 0; }
+.ws-grid.dropping { outline: 2px dashed var(--gold); outline-offset: 6px; border-radius: 12px; }
 .ws-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
 .ws-card { position: relative; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   overflow: hidden; cursor: pointer; transition: transform .12s ease, border-color .12s ease; text-align: left; padding: 0; }

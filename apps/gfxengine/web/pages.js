@@ -70,7 +70,10 @@ addEventListener("drop", e => {
   e.preventDefault();
   dragDepth = 0;
   document.body.classList.remove("dragging");
-  uploadAll([...e.dataTransfer.files]);
+  // (a whole workspace, .sccws: added as a new workspace on Home, not as a file)
+  const files = [...e.dataTransfer.files], isWs = f => /\.sccws$/i.test(f.name);
+  if (files.some(isWs) && window.importWorkspace) files.filter(isWs).forEach(f => window.importWorkspace(f));
+  uploadAll(files.filter(f => !isWs(f)));
 });
 
 // --- ASSETS ------------------------------------------------------------------------

@@ -6,21 +6,23 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unicodedata
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from . import parts as P
 from .config import APP_DIR, DATA_DIR, FROZEN, ROLES, Settings, control_pc_url, web_file
 from .log import log, lines
 from . import rosnet
-from .ros import EXT, RunOfShow, graphic_rows, read_doc
+from .ros import EXT, RunOfShow, clean_template, export_doc, graphic_rows, read_doc
 from .updater import Updater, clean_up_old_update
 from .version import VERSION
 
@@ -54,6 +56,33 @@ class Shell:
         self._engine = {"t": 0, "data": None}
         self._engine_lock = threading.Lock()
         self.ros = RunOfShow(os.path.join(DATA_DIR, "shell", "run-of-show.json"))
+        self._share_ros_with_workspaces()
+
+    def _share_ros_with_workspaces(self):
+        """A workspace exported from the GFX Engine (Home > Export) takes this
+        PC's run of show templates along; importing one adds the templates
+        this PC hasn't got (one with a name that's here but different comes
+        in as "Name 2"; nothing here is replaced)."""
+        try:
+            from gfxengine import wsshare
+        except ImportError:
+            return
+        ros = self.ros
+
+        def export():
+            ts = ros.state().get("templates") or []
+            return export_doc(ts, rosnet.pc_name()) if ts else None
+
+        def bring(data):
+            templates = read_doc(data)
+            # (the same template, maybe kept as "Name 2" by an earlier import: not again)
+            strip = lambda t: json.dumps({k: v for k, v in clean_template(t).items() if k not in ("id", "name")},   # noqa: E731
+                                         sort_keys=True)
+            have = {strip(t) for t in ros.state().get("templates") or []}
+            new = [t for t in templates if strip(t) not in have]
+            return ros.import_templates(new, "keep") if new else {"added": [], "replaced": []}
+
+        wsshare.EXTRAS["run_of_show"] = (export, bring)
 
     def _busy(self):
         for part in self.parts:
@@ -199,8 +228,38 @@ class Shell:
             self._engine = {"t": time.monotonic(), "data": out, "base": base}
         return out
 
-    def engine_call(self, path, body=None, timeout=4):
+    def engine_open(self, path, body=None, timeout=4, raw=None, filename=""):
+        """Ask the GFX Engine this PC uses (its own or the Control PC's): its answer, open.
+        raw: body is a file of that many bytes (sent as it is)."""
+        base, _ = self.engine_base()
+        if not base:
+            raise ValueError("No GFX Engine: switch it on, or set the Control PC in Settings")
+        if raw is not None:
+            data, headers = body, {"Content-Type": "application/octet-stream", "Content-Length": str(raw),
+                                   "X-Filename": filename}
+        else:
+            data = None if body is None else json.dumps(body).encode("utf-8")
+            headers = {"Content-Type": "application/json"}
+        key = self.settings.get().get("control_pc_key") or ""
+        if key:
+            headers["X-SCC-Key"] = key   # (the Control PC's engine can ask for its pairing code)
+        req = urllib.request.Request(base + path, data=data, headers=headers, method="POST" if data is not None else "GET")
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            try:
+                msg = json.loads(e.read().decode("utf-8")).get("error")
+            except Exception:
+                msg = None
+            raise ValueError(msg or f"The GFX Engine said {e.code}")
+        except (urllib.error.URLError, OSError) as e:
+            raise ValueError(f"Can't reach the GFX Engine at {base} ({getattr(e, 'reason', e)})")
+
+    def engine_call(self, path, body=None, timeout=4, raw=None, filename=""):
         """Ask the GFX Engine this PC uses (its own or the Control PC's)."""
+        if raw is not None:
+            with self.engine_open(path, body, timeout, raw, filename) as r:
+                return json.loads(r.read().decode("utf-8") or "{}")
         base, _ = self.engine_base()
         if not base:
             raise ValueError("No GFX Engine: switch it on, or set the Control PC in Settings")
@@ -443,6 +502,22 @@ def make_handler(shell):
                     return self._json(shell.engine_call("/api/tournaments"))
                 except ValueError as e:
                     return self._json({"error": str(e)}, 400)
+            if path == "/api/engine/workspace-export":
+                # (the top bar's Workspaces menu: Export this workspace, from the engine)
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    r = shell.engine_open("/api/workspaces/export?id=" + quote((q.get("id") or [""])[0]))
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 400)
+                with r:
+                    self.send_response(200)
+                    for h in ("Content-Type", "Content-Length", "Content-Disposition"):
+                        if r.headers.get(h):
+                            self.send_header(h, r.headers[h])
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    shutil.copyfileobj(r, self.wfile, 1 << 20)
+                return
             if path in ("/", "/index.html"):
                 path = "/index.html"
             f = web_file(path)
@@ -475,6 +550,24 @@ def make_handler(shell):
                 self._drain()
                 self.close_connection = True
                 return self._json({"error": "Only in the app on that PC"}, 403)
+            if path == "/api/engine/workspace-import":
+                # (the top bar's Workspaces menu: Import a workspace file, into the engine)
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                    with tempfile.TemporaryFile() as tmp:
+                        left = n
+                        while left > 0:
+                            chunk = self.rfile.read(min(1 << 20, left))
+                            if not chunk:
+                                raise ValueError("The upload was cut short")
+                            tmp.write(chunk)
+                            left -= len(chunk)
+                        tmp.seek(0)
+                        out = shell.engine_call("/api/workspaces/import", tmp, timeout=600, raw=n,
+                                                filename=self.headers.get("X-Filename") or "workspace.sccws")
+                    return self._json(out)
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 400)
             try:
                 body = self._body()
                 if path.startswith("/api/ros/"):

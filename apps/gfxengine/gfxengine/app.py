@@ -31,7 +31,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import appearance, companion, discover, export, globalcfg, media, pack, share
+from . import appearance, companion, discover, export, globalcfg, media, pack, share, wsshare
 from scc_shared.enginelink import PROTOCOL as LINK_PROTOCOL
 from .assets import Assets
 from .config import DATA_DIR, WEB_DIR, Settings, safe_join
@@ -912,6 +912,64 @@ class Engine:
         self.workspaces.delete(wid)
         self.changed()
 
+    def export_workspace(self, wid):
+        """A .sccws of the workspace (the open one as it is now). Returns (temp file path, name):
+        the caller removes the file."""
+        if wid == self.workspace_id:
+            folder, project = self.ws.folder, self.ws.get()
+        else:
+            folder = self.workspaces.path(wid)
+            if not folder:
+                raise KeyError("No such workspace")
+            project = self.workspaces._read(folder)
+        fd, out = tempfile.mkstemp(suffix=wsshare.EXT)
+        os.close(fd)
+        try:
+            # (the fonts are found from the open workspace's Assets: they're shared)
+            wsshare.build(folder, project, self.library_dir, self.teams.list(), self.assets.fonts(), out)
+        except BaseException:
+            os.remove(out)
+            raise
+        log(f"Exported the workspace {project.get('name') or wid}")
+        return out, project.get("name") or wid
+
+    def import_workspace(self, name, rfile, length):
+        """Brings in a .sccws as a NEW workspace. Never opens it, never changes one that's here."""
+        tmp_dir = os.path.join(self.workspaces.root, ".uploads")
+        os.makedirs(tmp_dir, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=tmp_dir, suffix=wsshare.EXT)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                left = length
+                while left > 0:
+                    chunk = rfile.read(min(1 << 20, left))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    left -= len(chunk)
+            if left > 0:
+                raise ValueError("The upload was cut short")
+            if not wsshare.is_package(tmp):
+                raise ValueError("That isn't a workspace file (.sccws): export one from Home on the other PC")
+            result = wsshare.import_package(tmp, self.workspaces, self.library_dir, self.teams)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        self.assets_rev += 1
+        self.changed()
+        return result
+
+    def send_workspace(self, wid, url, key=""):
+        path, name = self.export_workspace(wid)
+        try:
+            got = wsshare.send(path, url, name, key)
+        finally:
+            os.remove(path)
+        log(f"Sent the workspace {name} to {url}")
+        return got
+
     def pack(self):
         """The SCC graphics that come with the engine, and which this workspace has."""
         have = {c["name"] for c in self.ws.get()["compositions"]}
@@ -1284,6 +1342,26 @@ def make_handler(engine):
                 name = re.sub(r"[^\w\- ]+", "", (q.get("name") or [engine.ws.get()["name"]])[0]).strip() or "graphics"
                 return self._send(blob, "application/zip", headers={
                     "Content-Disposition": f"attachment; filename=\"{name}.zip\"; filename*=UTF-8''{quote(name)}.zip"})
+            if path == "/api/workspaces/export":
+                # A whole workspace as one file, for Home > Import on another PC.
+                try:
+                    full, name = engine.export_workspace((q.get("id") or [engine.workspace_id])[0])
+                except KeyError as e:
+                    return self._json({"error": e.args[0]}, 404)
+                try:
+                    size = os.path.getsize(full)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(size))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Disposition", f"attachment; filename=\"{wsshare.safe_name(name)}{wsshare.EXT}\"")
+                    self.end_headers()
+                    with open(full, "rb") as f:
+                        shutil.copyfileobj(f, self.wfile, 1 << 20)
+                finally:
+                    os.remove(full)
+                return
             if path == "/api/share":
                 # Graphics with their files, as one file for another GFX Engine's Import.
                 ids = [i for i in (q.get("comps") or [""])[0].split(",") if i]
@@ -1343,6 +1421,10 @@ def make_handler(engine):
                     fps = float((q.get("fps") or ["0"])[0]) or None
                     return self._json(engine.upload(name, self.rfile, length, fps, graphic=(q.get("graphic") or [""])[0] == "1",
                                                     comp=(q.get("comp") or [None])[0]))
+                if path == "/api/workspaces/import":
+                    # (the .sccws file's bytes are the body)
+                    name = unquote(self.headers.get("X-Filename") or (q.get("name") or [""])[0])
+                    return self._json(engine.import_workspace(name, self.rfile, length))
                 if path in ("/api/teams/import", "/api/teams/logo", "/api/teams/photo"):
                     if length > 30 << 20:
                         raise ValueError("That file is too big (30 MB at most)")
@@ -1423,6 +1505,8 @@ def make_handler(engine):
                     engine.open(body["id"])
                 elif path == "/api/workspaces/rename":
                     engine.rename_workspace(body["id"], body.get("name", ""))
+                elif path == "/api/workspaces/send":
+                    result = engine.send_workspace(str(body.get("id") or ""), str(body.get("url") or ""), body.get("key") or "")
                 elif path == "/api/workspaces/delete":
                     engine.delete_workspace(body["id"])
                 elif path == "/api/pack/import":
