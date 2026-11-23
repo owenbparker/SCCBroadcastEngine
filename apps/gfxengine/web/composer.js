@@ -27,6 +27,7 @@
     api("/api/comp/save", { comp }).finally(() => { pending = false; });
   }
   function changed(opts) {
+    tidyGroups();
     pending = true;
     saveSoon();
     redraw();
@@ -122,30 +123,98 @@
   $("#comp-del").addEventListener("click", () => { if (compId) deleteComp(compId); });
 
   // --- layers ---------------------------------------------------------------
+  // Groups: layers with the same "group" id (and "groupName") sit together in
+  // the stack and are picked, moved, lined up, hidden and locked as one (the
+  // same as HUD Builder's groups). Alt + click on the canvas, or a click on
+  // its row in Layers, picks one layer inside. A group's row folds up.
   let dragLayer = null;
+  const GROUP_CLOSED_KEY = "gfx-groups-closed";
+  let closedGroups = new Set();
+  try { closedGroups = new Set(JSON.parse(localStorage.getItem(GROUP_CLOSED_KEY) || "[]")); } catch (e) { /* */ }
+  function foldGroup(g, closed) {
+    if (closed) closedGroups.add(g); else closedGroups.delete(g);
+    try { localStorage.setItem(GROUP_CLOSED_KEY, JSON.stringify([...closedGroups].slice(-300))); } catch (e) { /* */ }
+    renderLayers();
+  }
+  // (the picked layers, in stacking order)
+  const picked = () => !comp ? [] : multi.size > 1 ? comp.layers.filter(x => multi.has(x.id)) : comp.layers.filter(x => x.id === selected);
+  const membersOf = g => comp ? comp.layers.filter(x => x.group === g) : [];
+  const groupNameOf = g => (membersOf(g).find(x => x.groupName) || {}).groupName || "Group";
+  // (the layers a click on this one picks: its whole group, or just it)
+  const withGroup = l => l && l.group ? membersOf(l.group) : l ? [l] : [];
   function renderLayers() {
     const list = $("#layer-list");
     if (!comp) { list.replaceChildren(); return; }
     // Top layer first, as in Photoshop.
-    list.replaceChildren(...[...comp.layers].reverse().map(l => h("div", {
-      class: "ly" + (l.id === selected || multi.has(l.id) ? " sel" : ""), draggable: true,
+    const rows = [], done = new Set();
+    for (const l of [...comp.layers].reverse()) {
+      if (done.has(l.group)) continue;
+      if (l.group && membersOf(l.group).length > 1) {
+        done.add(l.group);
+        const members = membersOf(l.group).reverse();
+        const closed = closedGroups.has(l.group);
+        rows.push(groupRow(l.group, members, closed));
+        if (!closed) members.forEach(m => rows.push(layerRow(m, true)));
+      } else rows.push(layerRow(l, false));
+    }
+    list.replaceChildren(...rows);
+  }
+  // Dropped on a row: the dragged layer (or group) goes just above it. On a
+  // layer in a group it joins that group; a grouped layer dropped on one
+  // that isn't in a group leaves its group.
+  function dropOn(target) {
+    const ids = dragLayer;
+    dragLayer = null;
+    if (!ids || !comp) return;
+    const targetIds = target.group ? membersOf(target.group).map(x => x.id) : [target.id];
+    if (target.row === "group" ? targetIds.some(id => ids.includes(id)) : ids.includes(target.id)) return;
+    snapshot();
+    const moving = comp.layers.filter(x => ids.includes(x.id));
+    comp.layers = comp.layers.filter(x => !ids.includes(x.id));
+    const over = target.row === "group" ? targetIds : [target.id];
+    const onLayer = target.row !== "group" && comp.layers.find(x => x.id === target.id);
+    // (a whole group dropped in another group goes above that group)
+    const whole = moving.length > 1 && moving[0].group && moving.every(m => m.group === moving[0].group) && !membersOf(moving[0].group).length;
+    let at = Math.max(...over.map(id => comp.layers.findIndex(x => x.id === id))) + 1;
+    if (onLayer && whole && onLayer.group) at = Math.max(...membersOf(onLayer.group).map(x => comp.layers.indexOf(x))) + 1;
+    else if (onLayer && onLayer.group) moving.forEach(m => { m.group = onLayer.group; m.groupName = groupNameOf(onLayer.group); });
+    else if (onLayer && !whole) moving.forEach(m => { delete m.group; delete m.groupName; });
+    comp.layers.splice(at, 0, ...moving);
+    changed();
+  }
+  const dragProps = (ids, target) => ({
+    draggable: true,
+    ondragstart: e => { dragLayer = ids(); e.dataTransfer.effectAllowed = "move"; e.stopPropagation(); },
+    ondragover: e => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); },
+    ondragleave: e => e.currentTarget.classList.remove("drag-over"),
+    ondrop: e => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("drag-over"); dropOn(target); },
+  });
+  function groupRow(g, members, closed) {
+    const allPicked = members.every(m => m.id === selected || multi.has(m.id)) && (members.length < 2 || multi.size > 1);
+    const hidden = members.every(m => m.visible === false), locked = members.every(m => m.locked);
+    const name = groupNameOf(g);
+    return h("div", Object.assign({
+      class: "ly grp" + (allPicked ? " sel" : ""),
+      onmousedown: e => { if (e.shiftKey) e.preventDefault(); },
+      onclick: e => (e.ctrlKey || e.metaKey || e.shiftKey) ? pickToo(members[0].id, members) : pickLayers(members, members[0].id),
+      ondblclick: e => { e.stopPropagation(); renameGroup(g); },
+    }, dragProps(() => membersOf(g).map(x => x.id), { group: g, row: "group" })),
+      h("span", { class: "eye" + (hidden ? " off" : ""), title: hidden ? "Show the group" : "Hide the group",
+        onclick: e => { e.stopPropagation(); snapshot(); members.forEach(m => { m.visible = hidden; }); changed(); } }, "👁"),
+      h("span", { class: "fold", title: closed ? "Open the group" : "Fold the group up",
+        onclick: e => { e.stopPropagation(); foldGroup(g, !closed); } }, closed ? "▸" : "▾"),
+      h("span", { class: "ic" }, "▣"),
+      h("span", { class: "nm", title: `${name}: double-click to rename` }, name),
+      h("span", { class: "cnt" }, String(members.length)),
+      h("span", { class: "lock" + (locked ? " on" : ""), title: locked ? "Unlock the group" : "Lock the group (can't be picked, moved or deleted on the canvas)",
+        onclick: e => { e.stopPropagation(); setLocked(members, !locked); } }, locked ? "🔒" : "🔓"));
+  }
+  function layerRow(l, inGroup) {
+    return h("div", Object.assign({
+      class: "ly" + (inGroup ? " in" : "") + (l.id === selected || multi.has(l.id) ? " sel" : ""),
       onmousedown: e => { if (e.shiftKey) e.preventDefault(); },  // no text highlight on Shift+click
       onclick: e => e.shiftKey ? pickRange(l.id, e.ctrlKey || e.metaKey) : (e.ctrlKey || e.metaKey) ? pickToo(l.id) : selectLayer(l.id),
-      ondragstart: e => { dragLayer = l.id; e.dataTransfer.effectAllowed = "move"; },
-      ondragover: e => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); },
-      ondragleave: e => e.currentTarget.classList.remove("drag-over"),
-      ondrop: e => {
-        e.preventDefault();
-        e.currentTarget.classList.remove("drag-over");
-        if (!dragLayer || dragLayer === l.id) return;
-        snapshot();
-        const moving = comp.layers.find(x => x.id === dragLayer);
-        comp.layers = comp.layers.filter(x => x.id !== dragLayer);
-        // Dropped on a row: goes just above it.
-        comp.layers.splice(comp.layers.findIndex(x => x.id === l.id) + 1, 0, moving);
-        changed();
-      },
-    },
+    }, dragProps(() => [l.id], { id: l.id, group: l.group, row: "layer" })),
       h("span", { class: "eye" + (l.visible === false ? " off" : ""), title: "Show / hide",
         onclick: e => { e.stopPropagation(); snapshot(); l.visible = l.visible === false; changed(); } }, "👁"),
       h("span", { class: "ic" }, TYPE_ICON[l.type] || "?"),
@@ -153,7 +222,60 @@
       l.field ? h("span", { class: "fld", title: `Changed from Control as "${l.field}"` }, "field") : null,
       linked(l) ? h("span", { class: "fld live", title: "Follows live data" }, "live") : null,
       h("span", { class: "lock" + (l.locked ? " on" : ""), title: l.locked ? "Unlock" : "Lock (can't be picked, moved or deleted on the canvas)",
-        onclick: e => { e.stopPropagation(); setLocked([l], !l.locked); } }, l.locked ? "🔒" : "🔓"))));
+        onclick: e => { e.stopPropagation(); setLocked([l], !l.locked); } }, l.locked ? "🔒" : "🔓"));
+  }
+  function renameGroup(g) {
+    const v = prompt("Name of the group", groupNameOf(g));
+    if (v == null || !v.trim()) return;
+    snapshot();
+    membersOf(g).forEach(m => { m.groupName = v.trim().slice(0, 80); });
+    changed({ props: true });
+  }
+  // Ctrl+G: the picked layers become one group (where the top one is in the
+  // stack). Layers already in a group move into the new one.
+  function groupLayers() {
+    if (!comp) return;
+    const list = picked();
+    if (list.length < 2) return toast("Pick two or more layers to group (Ctrl or Shift + click)", true);
+    snapshot();
+    const ids = new Set(list.map(x => x.id));
+    const g = "g" + Math.random().toString(16).slice(2, 10);
+    const taken = new Set(comp.layers.map(x => x.groupName).filter(Boolean));
+    let n = 1;
+    while (taken.has("Group " + n)) n++;
+    const top = Math.max(...list.map(x => comp.layers.indexOf(x)));
+    const rest = comp.layers.filter(x => !ids.has(x.id));
+    const at = rest.filter(x => comp.layers.indexOf(x) < top).length;
+    list.forEach(x => { x.group = g; x.groupName = "Group " + n; });
+    rest.splice(at, 0, ...list);
+    comp.layers = rest;
+    multi.clear();
+    list.forEach(x => multi.add(x.id));
+    changed({ props: true });
+    toast("Grouped: they're picked, moved, hidden and locked together. Alt + click picks one inside.");
+  }
+  // Ctrl+Shift+G: the picked layers leave their groups (all of a group
+  // picked: the group goes).
+  function ungroupLayers() {
+    if (!comp) return;
+    const list = picked().filter(x => x.group);
+    if (!list.length) return toast("Pick a group to ungroup", true);
+    snapshot();
+    list.forEach(x => { delete x.group; delete x.groupName; });
+    changed({ props: true });
+  }
+  // Groups stay whole: one layer left is no group, and a group's layers sit
+  // together in the stack (where its top one is).
+  function tidyGroups() {
+    if (!comp) return;
+    const count = {};
+    comp.layers.forEach(x => { if (x.group) count[x.group] = (count[x.group] || 0) + 1; });
+    comp.layers.forEach(x => { if (x.group && count[x.group] < 2) { delete x.group; delete x.groupName; } });
+    const top = {};
+    comp.layers.forEach((x, i) => { if (x.group) top[x.group] = i; });
+    const out = [];
+    comp.layers.forEach((x, i) => { if (!x.group) out.push(x); else if (top[x.group] === i) out.push(...comp.layers.filter(m => m.group === x.group)); });
+    comp.layers = out;
   }
   // Lock: a locked layer can't be clicked, dragged, resized, nudged or
   // deleted on the canvas. Pick it in the list to change it in the panel.
@@ -181,13 +303,25 @@
     renderProps();
     drawSelection();
   }
-  // Ctrl + click: one more layer (or one less).
-  function pickToo(id) {
+  // Ctrl + click: one more layer (or one less); a group's row: the group.
+  function pickToo(id, also) {
     rangeFrom = id;
     if (!multi.size && selected) multi.add(selected);
-    if (multi.has(id)) multi.delete(id); else multi.add(id);
+    const ids = (also || [layerById(id)]).filter(Boolean).map(x => x.id);
+    const all = ids.every(x => multi.has(x));
+    ids.forEach(x => all ? multi.delete(x) : multi.add(x));
     selected = multi.has(id) ? id : [...multi].pop() || null;
     if (multi.size < 2) multi.clear();
+    renderLayers();
+    renderProps();
+    drawSelection();
+  }
+  // A group (or any set of layers), picked together; id is the main one.
+  function pickLayers(layers, id) {
+    rangeFrom = id;
+    multi.clear();
+    if (layers.length > 1) layers.forEach(x => multi.add(x.id));
+    selected = id;
     renderLayers();
     renderProps();
     drawSelection();
@@ -381,6 +515,11 @@
   const layerById = id => comp && comp.layers.find(l => l.id === id);
   const toScreen = (x, y) => [offX + x * scale, offY + y * scale];
 
+  // The box around some layers.
+  const boundsOf = layers => {
+    const x = Math.min(...layers.map(o => o.x)), y = Math.min(...layers.map(o => o.y));
+    return { x, y, w: Math.max(...layers.map(o => o.x + o.w)) - x, h: Math.max(...layers.map(o => o.y + o.h)) - y };
+  };
   const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   function drawSelection(guides) {
     selLayer.replaceChildren();
@@ -393,11 +532,21 @@
     }
     const l = layerById(selected);
     if (!l) { $("#canvas-pos").textContent = ""; return; }
+    // A group picked whole: a box around it.
+    const groups = new Set(picked().map(o => o.group).filter(g => g && membersOf(g).every(m => m.id === selected || multi.has(m.id))));
+    for (const g of groups) {
+      const b = boundsOf(membersOf(g));
+      const [gx, gy] = toScreen(b.x, b.y);
+      selLayer.appendChild(h("div", { class: "sel-box group", style: { left: gx + "px", top: gy + "px", width: b.w * scale + "px", height: b.h * scale + "px" } },
+        h("span", { class: "sel-tag" }, groupNameOf(g))));
+    }
     const [x, y] = toScreen(l.x, l.y);
     const w = l.w * scale, hgt = l.h * scale;
-    const box = h("div", { class: "sel-box" + (l.locked ? " locked" : ""), style: { left: x + "px", top: y + "px", width: w + "px", height: hgt + "px",
+    const many = multi.size > 1;
+    const box = h("div", { class: "sel-box" + (l.locked ? " locked" : "") + (many ? " also" : ""), style: { left: x + "px", top: y + "px", width: w + "px", height: hgt + "px",
       transform: l.rotation ? `rotate(${l.rotation}deg)` : "" } });
-    if (!l.locked) for (const hd of HANDLES) {
+    // (handles: one layer picked; in a group, Alt + click picks one to resize)
+    if (!l.locked && !many) for (const hd of HANDLES) {
       const hx = hd.includes("w") ? 0 : hd.includes("e") ? 100 : 50;
       const hy = hd.includes("n") ? 0 : hd.includes("s") ? 100 : 50;
       box.appendChild(h("div", { class: "handle", "data-h": hd, style: { left: hx + "%", top: hy + "%", cursor: hd + "-resize" } }));
@@ -407,7 +556,9 @@
       if (g.x != null) { const [gx] = toScreen(g.x, 0); selLayer.appendChild(h("div", { class: "guide", style: { left: gx + "px", top: 0, bottom: 0, width: "1px" } })); }
       if (g.y != null) { const [, gy] = toScreen(0, g.y); selLayer.appendChild(h("div", { class: "guide", style: { top: gy + "px", left: 0, right: 0, height: "1px" } })); }
     }
-    $("#canvas-pos").textContent = `${Math.round(l.x)}, ${Math.round(l.y)} · ${Math.round(l.w)}×${Math.round(l.h)}` + (l.locked ? " · locked" : "");
+    const p = many ? boundsOf(picked()) : l;
+    $("#canvas-pos").textContent = `${Math.round(p.x)}, ${Math.round(p.y)} · ${Math.round(p.w)}×${Math.round(p.h)}` +
+      (many ? ` · ${multi.size} layers` : l.locked ? " · locked" : "");
   }
 
   // Which layer is at a point (top first, visible ones only).
@@ -419,11 +570,12 @@
     return null;
   }
   // Snapping to the canvas' edges and middle and other layers' edges and middles.
-  function snap(l, moving) {
+  // (l: the box that moves, a layer or a group's bounds; skip: the layers in it)
+  function snap(l, moving, skip) {
     const tol = 6 / scale;
     const xs = [0, GFX.W / 2, GFX.W], ys = [0, GFX.H / 2, GFX.H];
     for (const o of comp.layers) {
-      if (o.id === l.id || o.visible === false) continue;
+      if (o.id === l.id || (skip && skip.has(o.id)) || o.visible === false) continue;
       xs.push(o.x, o.x + o.w / 2, o.x + o.w);
       ys.push(o.y, o.y + o.h / 2, o.y + o.h);
     }
@@ -442,6 +594,7 @@
     return guides;
   }
 
+  const inside = (o, px, py) => px >= o.x && px <= o.x + o.w && py >= o.y && py <= o.y + o.h;
   canvas.addEventListener("mousedown", e => {
     if (!comp || e.button !== 0) return;
     const r = canvas.getBoundingClientRect();
@@ -450,23 +603,41 @@
     let l = layerById(selected);
     if (!handle) {
       const under = hit(px, py);
-      // Ctrl / Shift + click on another layer picks it too (or drops it).
+      // Ctrl / Shift + click on another layer picks it too (or drops it), with its group.
       if ((e.shiftKey || e.ctrlKey || e.metaKey) && !e.altKey && under && (under.id !== selected || multi.size > 1) && (selected || multi.size)) {
         e.preventDefault();
-        return pickToo(under.id);
+        return pickToo(under.id, withGroup(under));
       }
-      // Clicking inside the selected layer keeps it (it may be under another).
-      if (!(l && !l.locked && px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h) || e.altKey) l = under;
-      if (!l || !multi.has(l.id)) multi.clear();
-      selected = l ? l.id : null;
-      renderLayers();
-      renderProps();
-      drawSelection();
+      // Clicking inside what's picked keeps it (it may be under another).
+      // Alt + click: just the layer under the mouse, even in a group.
+      const keep = !e.altKey && picked().find(o => !o.locked && o.visible !== false && inside(o, px, py));
+      if (keep) l = keep;
+      else {
+        l = under;
+        if (l && !e.altKey && l.group) {
+          pickLayers(withGroup(l), l.id);
+          return drag(e, l, null, px, py, r);
+        }
+        if (!l || !multi.has(l.id) || e.altKey) multi.clear();
+        selected = l ? l.id : null;
+        rangeFrom = selected;
+        renderLayers();
+        renderProps();
+        drawSelection();
+      }
       if (!l) return;
     }
     if (l.locked) return;
+    drag(e, l, handle, px, py, r);
+  });
+  // Dragging the picked layers (locked ones stay put), or a handle of the one picked.
+  function drag(e, l, handle, px, py, r) {
     e.preventDefault();
-    const start = { x: l.x, y: l.y, w: l.w, h: l.h, px, py };
+    const group = handle ? [l] : picked().filter(o => !o.locked);
+    if (!group.length) return;
+    const starts = group.map(o => ({ o, x: o.x, y: o.y }));
+    const skip = new Set(group.map(o => o.id));
+    const start = Object.assign(handle ? { x: l.x, y: l.y, w: l.w, h: l.h } : boundsOf(group), { px, py });
     const ratio = l.w / Math.max(1, l.h);
     let moved = false;
     const move = ev => {
@@ -477,9 +648,11 @@
       let guides = [];
       if (!handle) {
         if (ev.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
-        l.x = Math.round(start.x + dx); l.y = Math.round(start.y + dy);
-        if (!ev.ctrlKey) guides = snap(l, true);
-        l.x = Math.round(l.x); l.y = Math.round(l.y);
+        // (the whole box snaps, then every layer in it moves the same)
+        const box = { id: null, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: start.w, h: start.h };
+        if (!ev.ctrlKey) guides = snap(box, true, skip);
+        const mx = Math.round(box.x) - start.x, my = Math.round(box.y) - start.y;
+        for (const st of starts) { st.o.x = st.x + mx; st.o.y = st.y + my; }
       } else {
         let { x, y, w, h: hh } = start;
         if (handle.includes("e")) w = Math.max(4, start.w + dx);
@@ -507,7 +680,7 @@
     };
     addEventListener("mousemove", move);
     addEventListener("mouseup", up);
-  });
+  }
   canvas.addEventListener("dblclick", () => {
     const l = layerById(selected);
     if (l && l.type === "text") { const t = document.querySelector("#props textarea[data-k=text]"); if (t) { t.focus(); t.select(); } }
@@ -525,6 +698,7 @@
     }
     if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); if (redo.length) { undo.push(JSON.stringify(comp)); restore(redo.pop()); } return; }
     if (mod && e.key.toLowerCase() === "v" && !e.altKey) { e.preventDefault(); pasteLayers(); return; }
+    if (mod && e.key.toLowerCase() === "g" && !e.altKey) { e.preventDefault(); if (e.shiftKey) ungroupLayers(); else groupLayers(); return; }
     if (!l) return;
     if (mod && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "x") && !e.altKey) {
       e.preventDefault();
@@ -535,9 +709,10 @@
     const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     if (moves[e.key]) {
       e.preventDefault();
-      if (l.locked) return toast("That layer is locked: unlock it (🔒 in Layers) to move it", true);
+      const free = picked().filter(o => !o.locked);
+      if (!free.length) return toast("That layer is locked: unlock it (🔒 in Layers) to move it", true);
       snapshot();
-      l.x += moves[e.key][0]; l.y += moves[e.key][1];
+      free.forEach(o => { o.x += moves[e.key][0]; o.y += moves[e.key][1]; });
       changed({ keepList: true });
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
@@ -560,7 +735,6 @@
   // another workspace the engine brings the files over too.
   const CLIP_KEY = "gfx-layer-clip";
   let clip = null, pastes = {};
-  const picked = () => multi.size > 1 ? comp.layers.filter(x => multi.has(x.id)) : [layerById(selected)].filter(Boolean);
   const newLayerId = () => "l" + Math.random().toString(16).slice(2, 10);
   const workspaceId = () => (App.state && App.state.workspace && App.state.workspace.id) || "";
   function copyLayers(cut) {
@@ -613,6 +787,9 @@
     });
     // (a field of the same name would be one field with another layer here)
     for (const l of made) if (l.field) l.field = uniqueField(l.field);
+    // (copies of a group are a group of their own)
+    const regroup = {};
+    for (const l of made) if (l.group) l.group = regroup[l.group] = regroup[l.group] || "g" + Math.random().toString(16).slice(2, 10);
     const anchor = picked().reduce((i, x) => Math.max(i, comp.layers.indexOf(x)), -1);
     comp.layers.splice(anchor >= 0 ? anchor + 1 : comp.layers.length, 0, ...made);
     multi.clear();
@@ -771,7 +948,12 @@
         h("div", { class: "spacer" }),
         h("button", { class: "small danger", onclick: () => removeLayers([l]) }, "Delete")),
       h("label", { class: "toggle", title: "A locked layer can't be picked, moved, resized or deleted on the canvas" },
-        h("input", { type: "checkbox", checked: !!l.locked, onchange: e => setLocked([l], e.target.checked) }), "Locked")));
+        h("input", { type: "checkbox", checked: !!l.locked, onchange: e => setLocked([l], e.target.checked) }), "Locked"),
+      l.group ? h("div", { class: "row-gap in-group" },
+        h("span", { class: "muted small" }, `In the group "${groupNameOf(l.group)}"`),
+        h("div", { class: "spacer" }),
+        h("button", { class: "small", onclick: () => pickLayers(membersOf(l.group), l.id) }, "Pick the group"),
+        h("button", { class: "small", title: "Ctrl+Shift+G", onclick: ungroupLayers }, "Take out")) : null));
     sections.push(alignSection([l]));
 
     if (l.type === "text") {
@@ -917,11 +1099,27 @@
   function renderMulti() {
     const layers = comp.layers.filter(l => multi.has(l.id));
     const setAnim = (dir, type) => { if (!type) return; snapshot(); layers.forEach(l => { l.anim = l.anim || {}; l.anim[dir] = Object.assign({ dur: 300, delay: 0 }, l.anim[dir], { type }); }); changed({ props: true }); };
+    // (one group, picked whole)
+    const g = layers[0].group && layers.every(l => l.group === layers[0].group) && membersOf(layers[0].group).length === layers.length ? layers[0].group : null;
+    const grouped = layers.some(l => l.group);
     props.replaceChildren(
-      h("div", { class: "sect" }, h("h3", {}, `${layers.length} layers`),
+      g ? h("div", { class: "sect" }, h("h3", {}, "Group"),
+        lab("Name", h("input", { value: groupNameOf(g), onchange: e => {
+          if (!e.target.value.trim()) return;
+          snapshot(); membersOf(g).forEach(m => { m.groupName = e.target.value.trim().slice(0, 80); }); changed({ props: true }); } })),
+        h("p", { class: "muted small" }, `${layers.length} layers: ${layers.map(l => l.name).join(", ")}`),
+        h("p", { class: "muted small" }, "Picked, moved, lined up, hidden and locked together. Alt + click on the canvas (or a click on its row in Layers) picks one layer inside."),
+        h("div", { class: "row-gap" },
+          h("button", { class: "small", title: "Ctrl+Shift+G", onclick: ungroupLayers }, "Ungroup"),
+          h("button", { class: "small", onclick: () => setLocked(layers, !layers.every(l => l.locked)) }, layers.every(l => l.locked) ? "🔓 Unlock group" : "🔒 Lock group"),
+          h("div", { class: "spacer" }),
+          h("button", { class: "small danger", onclick: () => removeLayers(layers) }, "Delete")))
+      : h("div", { class: "sect" }, h("h3", {}, `${layers.length} layers`),
         h("p", { class: "muted small" }, layers.map(l => l.name).join(", ")),
         h("p", { class: "muted small" }, "Ctrl + click in the list picks one more (or fewer). Shift + click picks every layer between the last one clicked and this one."),
         h("div", { class: "row-gap" },
+          h("button", { class: "small", title: "Ctrl+G", onclick: groupLayers }, "▣ Group"),
+          grouped ? h("button", { class: "small", title: "Ctrl+Shift+G: takes them out of their groups", onclick: ungroupLayers }, "Ungroup") : null,
           h("button", { class: "small", onclick: () => setLocked(layers, true) }, "🔒 Lock all"),
           h("button", { class: "small", onclick: () => setLocked(layers, false) }, "🔓 Unlock all"))),
       alignSection(layers),
@@ -959,10 +1157,26 @@
     s.innerHTML = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">${ALIGN_ICON[kind]}</svg>`;
     return s;
   };
+  // A group picked whole lines up as one box (its layers keep their places
+  // in it); its locked layers stay put.
+  function units(list) {
+    const out = [], seen = new Set();
+    for (const l of list) {
+      const g = l.group && membersOf(l.group).every(m => list.includes(m)) ? l.group : null;
+      if (g && seen.has(g)) continue;
+      if (!g) { out.push(l); continue; }
+      seen.add(g);
+      const members = membersOf(g);
+      const b = boundsOf(members);
+      out.push({ x: b.x, y: b.y, w: b.w, h: b.h, members, locked: members.every(m => m.locked) });
+    }
+    return out;
+  }
   function arrange(kind) {
     if (!comp) return;
-    const layers = picked();
-    if (!layers.length) return toast("Pick the layers to line up first (Ctrl or Shift + click)", true);
+    const pickedNow = picked();
+    if (!pickedNow.length) return toast("Pick the layers to line up first (Ctrl or Shift + click)", true);
+    const layers = units(pickedNow);
     const free = layers.filter(l => !l.locked);
     if (!free.length) return toast(layers.length > 1 ? "Those layers are locked: unlock them (🔒 in Layers) to line them up" : "That layer is locked: unlock it (🔒 in Layers) to move it", true);
     const spread = kind === "hspace" || kind === "vspace" || kind === "tidy";
@@ -972,7 +1186,13 @@
       x: Math.min(...layers.map(l => l.x)), y: Math.min(...layers.map(l => l.y)),
       r: Math.max(...layers.map(l => l.x + l.w)), b: Math.max(...layers.map(l => l.y + l.h)) };
     const before = JSON.stringify(comp);
-    const put = (l, x, y) => { if (l.locked) return; if (x != null) l.x = Math.round(x); if (y != null) l.y = Math.round(y); };
+    const put = (l, x, y) => {
+      if (l.locked) return;
+      if (!l.members) { if (x != null) l.x = Math.round(x); if (y != null) l.y = Math.round(y); return; }
+      const dx = x != null ? Math.round(x - l.x) : 0, dy = y != null ? Math.round(y - l.y) : 0;
+      l.members.forEach(m => { if (!m.locked) { m.x += dx; m.y += dy; } });
+      l.x += dx; l.y += dy;
+    };
     if (kind === "left") layers.forEach(l => put(l, box.x));
     else if (kind === "hcenter") layers.forEach(l => put(l, (box.x + box.r) / 2 - l.w / 2));
     else if (kind === "right") layers.forEach(l => put(l, box.r - l.w));
@@ -993,7 +1213,7 @@
     undo.push(before);
     if (undo.length > 100) undo.shift();
     redo.length = 0;
-    const kept = layers.length - free.length;
+    const kept = pickedNow.filter(l => l.locked).length;
     if (kept) toast(`${kept} locked layer(s) stayed put`);
     changed({ keepList: true });
     drawSelection();
@@ -1028,14 +1248,15 @@
     });
   }
   function alignSection(layers) {
-    const one = layers.length === 1;
+    const one = units(layers).length === 1;
     const btn = kind => h("button", { class: "al-btn", title: ALIGN_TIP[kind] + (one && !/space|tidy/.test(kind) ? ": to the canvas" : ""),
       "aria-label": ALIGN_TIP[kind], onclick: () => arrange(kind) }, alignIcon(kind));
     return h("div", { class: "sect align-sect" }, h("h3", {}, "Alignment"),
       h("div", { class: "al-row" },
         h("div", { class: "al-group" }, btn("left"), btn("hcenter"), btn("right")),
         h("div", { class: "al-group" }, btn("top"), btn("vcenter"), btn("bottom"))),
-      one ? h("p", { class: "muted small" }, "One layer lines up with the canvas. Ctrl or Shift + click picks more to line them up with each other.")
+      one ? h("p", { class: "muted small" }, layers.length > 1 ? "The group lines up with the canvas, as one. Ctrl or Shift + click picks more to line them up with each other."
+        : "One layer lines up with the canvas. Ctrl or Shift + click picks more to line them up with each other.")
         : h("div", { class: "al-row" },
           h("div", { class: "al-group" }, btn("hspace"), btn("vspace"), btn("tidy"))));
   }

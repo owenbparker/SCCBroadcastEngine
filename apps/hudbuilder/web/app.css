@@ -95,6 +95,8 @@ html:is(:not([data-look]), [data-look="studio"]) .nav.on svg { color: #000; }
 .lrow.sel { background: color-mix(in srgb, var(--x-accent) 22%, transparent); }
 .lrow.in { padding-left: 22px; }
 .lrow.group { font-weight: 600; }
+.lrow.group .fold { cursor: pointer; }
+.lrow.group .fold:hover { color: var(--x-text, #fff); }
 .lrow.ref .lname { font-style: italic; opacity: .7; }
 .lic, .vk { width: 20px; text-align: center; color: var(--x-muted); flex: 0 0 20px; font-size: 12px; }
 .lname, .vname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

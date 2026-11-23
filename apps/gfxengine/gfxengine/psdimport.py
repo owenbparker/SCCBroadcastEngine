@@ -4,7 +4,8 @@ Each layer becomes a layer of the graphic: text layers stay text (same
 font, size, colour, tracking and alignment, editable from Control), every
 other layer becomes a PNG of its pixels (with its layer effects) at its
 place on the canvas. Groups are flattened, keeping their visibility and
-opacity. Layers named like "Layer 3" or "Rectangle 5 copy" are fixed;
+opacity, and the layers of a group become a Composer group (picked and
+moved together). Layers named like "Layer 3" or "Rectangle 5 copy" are fixed;
 others ("TEAM LEFT", "SPONSOR") are fields that can be changed from Control.
 """
 
@@ -12,7 +13,7 @@ import os
 import re
 
 from .log import log
-from .project import ANIM_NONE, blank_comp, new_id
+from .project import ANIM_NONE, blank_comp, new_id, tidy_groups
 
 GENERIC = re.compile(r"^(layer|rectangle|ellipse|line|shape|group|polygon|path|vector|background|bg|color fill|"
                      r"gradient fill|pattern fill|brightness|levels|curves|hue|vibrance|exposure|copy)\b", re.I)
@@ -91,15 +92,16 @@ def _text_layer(layer, fonts, taken):
     }
 
 
-def _leaves(group, opacity=1.0, visible=True):
-    """(layer, opacity, visible) for every non-group layer, bottom to top."""
+def _leaves(group, opacity=1.0, visible=True, parent=None):
+    """(layer, opacity, visible, the group it's in) for every non-group layer,
+    bottom to top."""
     for layer in group:
         op = opacity * (layer.opacity / 255)
         vis = visible and layer.visible
         if layer.is_group():
-            yield from _leaves(layer, op, vis)
+            yield from _leaves(layer, op, vis, layer)
         else:
-            yield layer, op, vis
+            yield layer, op, vis, parent
 
 
 def guess_kind(layers):
@@ -127,7 +129,17 @@ def import_psd(path, workspace, name=None):
     os.makedirs(folder, exist_ok=True)
     sub = folder_rel[len("assets/"):]
     fonts, taken, used_names = set(), set(), set()
-    for layer, opacity, visible in _leaves(psd):
+    groups = {}
+
+    def in_group(item, parent):
+        # (the Photoshop group it's in: the innermost one)
+        if parent is not None:
+            if id(parent) not in groups:
+                groups[id(parent)] = (new_id("g"), (parent.name or "Group").strip()[:80] or "Group", parent)
+            item["group"], item["groupName"] = groups[id(parent)][:2]
+        return item
+
+    for layer, opacity, visible, parent in _leaves(psd):
         kind = layer.kind
         if kind in ("adjustment", "brightnesscontrast", "curves", "levels", "huesaturation"):
             continue
@@ -138,7 +150,7 @@ def import_psd(path, workspace, name=None):
                 item = _text_layer(layer, fonts, taken)
                 item["opacity"] = round(opacity, 3)
                 item["visible"] = visible
-                comp["layers"].append(item)
+                comp["layers"].append(in_group(item, parent))
                 continue
             left, top, right, bottom = layer.bbox
             if right - left <= 0 or bottom - top <= 0:
@@ -158,7 +170,7 @@ def import_psd(path, workspace, name=None):
             used_names.add(fname.lower())
             image.save(os.path.join(folder, fname + ".png"), optimize=True)
             generic = bool(GENERIC.match(layer.name.strip()))
-            comp["layers"].append({
+            comp["layers"].append(in_group({
                 "id": new_id("l"), "name": layer.name, "type": "image",
                 "x": left, "y": top, "w": image.size[0], "h": image.size[1],
                 "opacity": round(opacity, 3), "rotation": 0, "visible": visible,
@@ -166,7 +178,7 @@ def import_psd(path, workspace, name=None):
                 "field": "" if generic else _field_name(layer.name, taken),
                 "anim": {"in": dict(ANIM_NONE), "out": dict(ANIM_NONE)},
                 "src": f"assets/{sub}/{fname}.png", "fit": "fill", "loop": True,
-            })
+            }, parent))
         except Exception as e:
             log(f"{name}: skipped layer {layer.name!r} ({e})", "warn")
     if not comp["layers"]:
@@ -178,6 +190,7 @@ def import_psd(path, workspace, name=None):
                 "id": new_id("l"), "name": "Image", "type": "image", "x": 0, "y": 0, "w": width, "h": height,
                 "opacity": 1, "rotation": 0, "visible": True, "blend": "normal", "field": "",
                 "anim": {"in": dict(ANIM_NONE), "out": dict(ANIM_NONE)}, "src": f"assets/{sub}/Image.png", "fit": "fill", "loop": True})
+    tidy_groups(comp["layers"], keep_order=True)
     auto_animate(comp["layers"], width, height)
     comp["kind"] = guess_kind(comp["layers"])
     log(f"Imported {name}: {len(comp['layers'])} layers")

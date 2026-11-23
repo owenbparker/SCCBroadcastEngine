@@ -572,15 +572,25 @@ window.Editor = (function () {
         const hidden = members.every(o => o.visible === false);
         rows.push(h("div", { class: "lrow group" + (allSel ? " sel" : ""), draggable: true, dataset: { group: l.group },
           onclick: ev => { if (!(ev.ctrlKey || ev.metaKey || ev.shiftKey)) selected.clear(); members.forEach(o => selected.add(o.id)); renderAll(); } },
-          eye(members, hidden), h("span", { class: "lic" }, "▾"),
+          eye(members, hidden),
+          h("span", { class: "lic fold", title: closedGroups.has(l.group) ? "Open the group" : "Fold the group up",
+            onclick: ev => { ev.stopPropagation(); foldGroup(l.group); } }, closedGroups.has(l.group) ? "▸" : "▾"),
           h("span", { class: "lname", title: "Double-click to rename", ondblclick: ev => { ev.stopPropagation(); rename(name, val => { snapshot(); members.forEach(o => { o.groupName = val; }); changed(); }); } }, name),
           h("span", { class: "lmeta" }, String(members.length)), lock(members, members.every(o => o.locked))));
-        members.forEach(o => rows.push(row(o, true)));
+        if (!closedGroups.has(l.group)) members.forEach(o => rows.push(row(o, true)));
       } else rows.push(row(l, false));
       done.add(l.id);
     }
     if (!rows.length) rows.push(h("p", { class: "muted hint" }, "No layers yet."));
     box.replaceChildren(...rows);
+  }
+  // A group's row folds up (remembered on this PC), as in the GFX Engine's Composer.
+  let closedGroups = new Set();
+  try { closedGroups = new Set(JSON.parse(localStorage.getItem("hb-groups-closed") || "[]")); } catch (e) { /* */ }
+  function foldGroup(g) {
+    if (closedGroups.has(g)) closedGroups.delete(g); else closedGroups.add(g);
+    try { localStorage.setItem("hb-groups-closed", JSON.stringify([...closedGroups].slice(-300))); } catch (e) { /* */ }
+    renderLayers();
   }
   const ICON = { rect: "▭", text: "T", image: "🖼", video: "▶", lottie: "✦", web: "◫" };
   // Lock: a locked layer can't be clicked, dragged, resized, nudged or
