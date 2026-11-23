@@ -214,15 +214,31 @@ window.GameHuds = (function () {
       onchange: e => onSet(e.target.value) });
     return h("div", { class: "colour-row" }, pick, text, value ? h("button", { class: "small ghost", title: "Back to the HUD's own colour", onclick: () => onSet(null) }, "×") : null);
   }
+  // Recent fonts: shared with the Composer and the custom HUD editor (same key).
+  const RECENT_FONTS = "sccbe-recent-fonts";
+  function recentFonts() {
+    try { const a = JSON.parse(localStorage.getItem(RECENT_FONTS) || "[]"); return Array.isArray(a) ? a.filter(f => typeof f === "string" && f) : []; }
+    catch (e) { return []; }
+  }
+  function useFont(name) {
+    if (!name) return;
+    try { localStorage.setItem(RECENT_FONTS, JSON.stringify([name, ...recentFonts().filter(f => f !== name)].slice(0, 12))); } catch (e) { }
+  }
   function fontIn(value, now, onSet) {
     const fonts = (info && info.fonts) || [];
     const all = [...new Set([...fonts, value, now, "Arial", "Arial Black", "Segoe UI", "Impact", "Verdana", "Tahoma", "Georgia", "Bahnschrift", "Consolas"].filter(Boolean))];
+    const recent = recentFonts().filter(f => all.includes(f)).slice(0, 8);
+    let picked = false;
+    const opt = f => h("option", { value: f, selected: !picked && f === value ? (picked = true) : false }, f);
+    const set = v => { useFont(v); onSet(v); };
     const s = h("select", { dataset: { k: "font" }, onchange: e => {
-      if (e.target.value === "\u0000upload") { e.target.value = value || ""; return uploadFont(onSet); }
-      onSet(e.target.value || null);
+      if (e.target.value === "\u0000upload") { e.target.value = value || ""; return uploadFont(set); }
+      set(e.target.value || null);
     } },
       h("option", { value: "" }, now ? `${now} (as it is)` : "As it is"),
-      ...all.map(f => h("option", { value: f, selected: f === value }, f)),
+      recent.length ? h("optgroup", { label: "Recent" }, recent.map(opt)) : null,
+      recent.length ? h("optgroup", { label: "All fonts" }, all.map(opt)) : null,
+      ...(recent.length ? [] : all.map(opt)),
       h("option", { value: "\u0000upload" }, "Add a font file…"));
     return s;
   }

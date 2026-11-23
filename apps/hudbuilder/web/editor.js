@@ -778,8 +778,12 @@ window.Editor = (function () {
       return h("label", { class: "check" }, input, extra.label);
     }
     if (kind === "select") {
+      const cur = String(l[key] ?? extra.def ?? "");
+      let picked = false;   // with groups the same value can be listed twice: select the first
+      const opt = ([v, t]) => h("option", { value: v, selected: !picked && cur === String(v) ? (picked = true) : false }, t);
       input = h("select", { onchange: e => { set(e.target.value); if (extra.rerender) renderProps(); } },
-        extra.options.map(([v, t]) => h("option", { value: v, selected: String(l[key] ?? extra.def ?? "") === String(v) }, t)));
+        extra.groups ? extra.groups.filter(([, os]) => os.length).map(([g, os]) => g ? h("optgroup", { label: g }, os.map(opt)) : os.map(opt))
+          : extra.options.map(opt));
     } else if (kind === "textarea") {
       input = h("textarea", { rows: 3, dataset: { k: key }, oninput: e => set(e.target.value) }, l[key] ?? "");
     } else {
@@ -903,9 +907,21 @@ window.Editor = (function () {
     return sect("Shadow / glow", grid(num("blur", "Blur"), num("x", "Across"), num("y", "Down"),
       lab("Colour", h("input", { type: "color", value: /^#[0-9a-f]{6}$/i.test(g.color || "") ? g.color : "#000000", onfocus: () => { fresh = true; }, oninput: e => set("color", e.target.value) }))));
   }
+  // Recent fonts: the last ones picked, newest first, kept in this browser
+  // (same key as the Composer's and the Game HUDs editor's, so they share one list).
+  const RECENT_FONTS = "sccbe-recent-fonts";
+  function recentFonts() {
+    try { const a = JSON.parse(localStorage.getItem(RECENT_FONTS) || "[]"); return Array.isArray(a) ? a.filter(f => typeof f === "string" && f) : []; }
+    catch (e) { return []; }
+  }
+  function useFont(name) {
+    if (!name) return;
+    try { localStorage.setItem(RECENT_FONTS, JSON.stringify([name, ...recentFonts().filter(f => f !== name)].slice(0, 12))); } catch (e) { }
+  }
   function textProps(l) {
     const fonts = [...GFX.builtinFonts, ...live.assets.filter(a => /\.(ttf|otf|woff2?)$/i.test(a)).map(a => a.replace(/^assets\//, "").replace(/\.[^.]+$/, "")),
       ...(live.adobe_fonts || []).map(f => f.postscript)];   // (Adobe Fonts, from the GFX Engine)
+    const recent = recentFonts().filter(f => fonts.includes(f)).slice(0, 8);
     if (l.font && !fonts.includes(l.font)) fonts.push(l.font);
     const ta = bind(l, "text", "textarea", { label: "Text" });
     const insert = h("select", { class: "var-pick", onchange: e => {
@@ -924,10 +940,11 @@ window.Editor = (function () {
     const file = h("input", { type: "file", hidden: true, accept: ".ttf,.otf,.woff,.woff2", onchange: async e => {
       const f = e.target.files[0];
       if (!f) return;
-      try { const p = await upload(f); snapshot(); l.font = p.replace(/^assets\//, "").replace(/\.[^.]+$/, ""); changed(); } catch (err) { toast(err.message, true); }
+      try { const p = await upload(f); snapshot(); l.font = p.replace(/^assets\//, "").replace(/\.[^.]+$/, ""); useFont(l.font); changed(); } catch (err) { toast(err.message, true); }
     } });
     return sect("Text", ta, insert,
-      h("div", { class: "row-gap" }, bind(l, "font", "select", { label: "Font", options: fonts.map(f => [f, f]), rerender: true }), h("button", { class: "small", title: "Add a font file (.ttf, .otf, .woff2)", onclick: () => file.click() }, "Add font…"), file),
+      h("div", { class: "row-gap" }, bind(l, "font", "select", { label: "Font", rerender: true, after: useFont,
+        groups: [["Recent", recent.map(f => [f, f])], [recent.length ? "All fonts" : "", fonts.map(f => [f, f])]] }), h("button", { class: "small", title: "Add a font file (.ttf, .otf, .woff2)", onclick: () => file.click() }, "Add font…"), file),
       grid(bind(l, "size", "number", { label: "Size", min: 4 }),
         bind(l, "weight", "select", { label: "Weight", options: [[300, "Light"], [400, "Regular"], [500, "Medium"], [600, "Semibold"], [700, "Bold"], [800, "Extra bold"], [900, "Black"]], def: 700 }),
         bind(l, "tracking", "number", { label: "Spacing", step: 10 })),
