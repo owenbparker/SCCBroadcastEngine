@@ -450,6 +450,11 @@
     let l = layerById(selected);
     if (!handle) {
       const under = hit(px, py);
+      // Ctrl / Shift + click on another layer picks it too (or drops it).
+      if ((e.shiftKey || e.ctrlKey || e.metaKey) && !e.altKey && under && (under.id !== selected || multi.size > 1) && (selected || multi.size)) {
+        e.preventDefault();
+        return pickToo(under.id);
+      }
       // Clicking inside the selected layer keeps it (it may be under another).
       if (!(l && !l.locked && px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h) || e.altKey) l = under;
       if (!l || !multi.has(l.id)) multi.clear();
@@ -759,6 +764,7 @@
         h("button", { class: "small danger", onclick: () => removeLayers([l]) }, "Delete")),
       h("label", { class: "toggle", title: "A locked layer can't be picked, moved, resized or deleted on the canvas" },
         h("input", { type: "checkbox", checked: !!l.locked, onchange: e => setLocked([l], e.target.checked) }), "Locked")));
+    sections.push(alignSection([l]));
 
     if (l.type === "text") {
       const missing = !GFX.hasFont(l.font);
@@ -910,12 +916,134 @@
         h("div", { class: "row-gap" },
           h("button", { class: "small", onclick: () => setLocked(layers, true) }, "🔒 Lock all"),
           h("button", { class: "small", onclick: () => setLocked(layers, false) }, "🔓 Unlock all"))),
+      alignSection(layers),
       liveSection(layers),
       h("div", { class: "sect" }, h("h3", {}, "Animation"),
         h("div", { class: "grid2" },
           lab("All in", h("select", { onchange: e => setAnim("in", e.target.value) }, h("option", { value: "" }, "(as they are)"), GFX.animTypes.map(t => h("option", { value: t }, t)))),
           lab("All out", h("select", { onchange: e => setAnim("out", e.target.value) }, h("option", { value: "" }, "(as they are)"), GFX.animTypes.map(t => h("option", { value: t }, t)))))));
   }
+  // --- align and distribute -----------------------------------------------
+  // Lines up the picked layers with each other (their left edges, middles,
+  // right edges, tops, middles, bottoms), or one layer with the canvas.
+  // Distribute evens out the gaps between three or more (the outer two stay),
+  // and Tidy up sets them in a neat grid with the same gap. Locked layers
+  // don't move, but the others line up with them.
+  const ALIGN_ICON = {
+    left: '<path d="M3 2v16"/><rect x="6" y="5" width="11" height="3.5" rx="1"/><rect x="6" y="11.5" width="7" height="3.5" rx="1"/>',
+    hcenter: '<path d="M10 2v16"/><rect x="4" y="5" width="12" height="3.5" rx="1"/><rect x="6" y="11.5" width="8" height="3.5" rx="1"/>',
+    right: '<path d="M17 2v16"/><rect x="3" y="5" width="11" height="3.5" rx="1"/><rect x="7" y="11.5" width="7" height="3.5" rx="1"/>',
+    top: '<path d="M2 3h16"/><rect x="5" y="6" width="3.5" height="11" rx="1"/><rect x="11.5" y="6" width="3.5" height="7" rx="1"/>',
+    vcenter: '<path d="M2 10h16"/><rect x="5" y="4" width="3.5" height="12" rx="1"/><rect x="11.5" y="6" width="3.5" height="8" rx="1"/>',
+    bottom: '<path d="M2 17h16"/><rect x="5" y="3" width="3.5" height="11" rx="1"/><rect x="11.5" y="7" width="3.5" height="7" rx="1"/>',
+    hspace: '<path d="M2 3v14M18 3v14"/><rect x="8" y="5" width="4" height="10" rx="1"/>',
+    vspace: '<path d="M3 2h14M3 18h14"/><rect x="5" y="8" width="10" height="4" rx="1"/>',
+    tidy: '<rect x="3" y="3" width="5.5" height="5.5" rx="1"/><rect x="11.5" y="3" width="5.5" height="5.5" rx="1"/><rect x="3" y="11.5" width="5.5" height="5.5" rx="1"/><rect x="11.5" y="11.5" width="5.5" height="5.5" rx="1"/>',
+  };
+  const ALIGN_TIP = {
+    left: "Align left (Alt+A)", hcenter: "Align horizontal centres (Alt+H)", right: "Align right (Alt+D)",
+    top: "Align top (Alt+W)", vcenter: "Align vertical centres (Alt+V)", bottom: "Align bottom (Alt+S)",
+    hspace: "Distribute horizontal spacing (Alt+Shift+H)", vspace: "Distribute vertical spacing (Alt+Shift+V)",
+    tidy: "Tidy up: a neat grid with even gaps (Ctrl+Alt+Shift+T)",
+  };
+  const alignIcon = kind => {
+    const s = h("span", { class: "al-ic" });
+    s.innerHTML = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">${ALIGN_ICON[kind]}</svg>`;
+    return s;
+  };
+  function arrange(kind) {
+    if (!comp) return;
+    const layers = picked();
+    if (!layers.length) return toast("Pick the layers to line up first (Ctrl or Shift + click)", true);
+    const free = layers.filter(l => !l.locked);
+    if (!free.length) return toast(layers.length > 1 ? "Those layers are locked: unlock them (🔒 in Layers) to line them up" : "That layer is locked: unlock it (🔒 in Layers) to move it", true);
+    const spread = kind === "hspace" || kind === "vspace" || kind === "tidy";
+    if (spread && layers.length < (kind === "tidy" ? 2 : 3)) return toast(kind === "tidy" ? "Pick two or more layers to tidy up" : "Pick three or more layers to even out the gaps", true);
+    // With one layer, line it up with the canvas; with more, with all of them.
+    const box = layers.length === 1 ? { x: 0, y: 0, r: GFX.W, b: GFX.H } : {
+      x: Math.min(...layers.map(l => l.x)), y: Math.min(...layers.map(l => l.y)),
+      r: Math.max(...layers.map(l => l.x + l.w)), b: Math.max(...layers.map(l => l.y + l.h)) };
+    const before = JSON.stringify(comp);
+    const put = (l, x, y) => { if (l.locked) return; if (x != null) l.x = Math.round(x); if (y != null) l.y = Math.round(y); };
+    if (kind === "left") layers.forEach(l => put(l, box.x));
+    else if (kind === "hcenter") layers.forEach(l => put(l, (box.x + box.r) / 2 - l.w / 2));
+    else if (kind === "right") layers.forEach(l => put(l, box.r - l.w));
+    else if (kind === "top") layers.forEach(l => put(l, null, box.y));
+    else if (kind === "vcenter") layers.forEach(l => put(l, null, (box.y + box.b) / 2 - l.h / 2));
+    else if (kind === "bottom") layers.forEach(l => put(l, null, box.b - l.h));
+    else if (kind === "hspace" || kind === "vspace") {
+      // Even gaps between the layers; the first and last stay where they are.
+      const [p, s] = kind === "hspace" ? ["x", "w"] : ["y", "h"];
+      const order = [...layers].sort((a, b) => (a[p] + a[s] / 2) - (b[p] + b[s] / 2));
+      const first = order[0], last = order[order.length - 1];
+      const room = (last[p] + last[s]) - first[p] - order.reduce((t, l) => t + l[s], 0);
+      const gap = room / (order.length - 1);
+      let at = first[p] + first[s] + gap;
+      for (const l of order.slice(1, -1)) { if (p === "x") put(l, at); else put(l, null, at); at += l[s] + gap; }
+    } else if (kind === "tidy") tidyUp(layers, box, put);
+    if (JSON.stringify(comp) === before) return toast("They're already lined up");
+    undo.push(before);
+    if (undo.length > 100) undo.shift();
+    redo.length = 0;
+    const kept = layers.length - free.length;
+    if (kept) toast(`${kept} locked layer(s) stayed put`);
+    changed({ keepList: true });
+    drawSelection();
+  }
+  // Tidy up: sorts the layers into rows (by where they are now) and columns,
+  // and sets them out from the top left with the same gap everywhere (the
+  // gap they have now, on average).
+  function tidyUp(layers, box, put) {
+    const rows = [];
+    for (const l of [...layers].sort((a, b) => (a.y + a.h / 2) - (b.y + b.h / 2))) {
+      const row = rows[rows.length - 1];
+      const mid = l.y + l.h / 2;
+      if (row && Math.abs(mid - row.mid) < Math.max(row.h, l.h) / 2) { row.items.push(l); row.h = Math.max(row.h, l.h); }
+      else rows.push({ mid, h: l.h, items: [l] });
+    }
+    rows.forEach(r => r.items.sort((a, b) => a.x - b.x));
+    const cols = Math.max(...rows.map(r => r.items.length));
+    const colW = [...Array(cols)].map((_, c) => Math.max(0, ...rows.map(r => r.items[c] ? r.items[c].w : 0)));
+    const rowH = rows.map(r => Math.max(...r.items.map(l => l.h)));
+    // The gap they have now: the space between neighbours in a row (or
+    // between rows when it's one column), never less than 0.
+    const gaps = [];
+    rows.forEach(r => r.items.slice(1).forEach((l, i) => gaps.push(l.x - (r.items[i].x + r.items[i].w))));
+    if (!gaps.length) rows.slice(1).forEach((r, i) => gaps.push(Math.min(...r.items.map(l => l.y)) - Math.max(...rows[i].items.map(l => l.y + l.h))));
+    const avg = gaps.reduce((t, g) => t + g, 0) / Math.max(1, gaps.length);
+    const gap = avg < 0 ? 20 : Math.round(avg);   // piled on top of each other: 20 px apart
+    let y = box.y;
+    rows.forEach((r, ri) => {
+      let x = box.x;
+      r.items.forEach((l, c) => { put(l, x, y); x += colW[c] + gap; });
+      y += rowH[ri] + gap;
+    });
+  }
+  function alignSection(layers) {
+    const one = layers.length === 1;
+    const btn = kind => h("button", { class: "al-btn", title: ALIGN_TIP[kind] + (one && !/space|tidy/.test(kind) ? ": to the canvas" : ""),
+      "aria-label": ALIGN_TIP[kind], onclick: () => arrange(kind) }, alignIcon(kind));
+    return h("div", { class: "sect align-sect" }, h("h3", {}, "Alignment"),
+      h("div", { class: "al-row" },
+        h("div", { class: "al-group" }, btn("left"), btn("hcenter"), btn("right")),
+        h("div", { class: "al-group" }, btn("top"), btn("vcenter"), btn("bottom"))),
+      one ? h("p", { class: "muted small" }, "One layer lines up with the canvas. Ctrl or Shift + click picks more to line them up with each other.")
+        : h("div", { class: "al-row" },
+          h("div", { class: "al-group" }, btn("hspace"), btn("vspace"), btn("tidy"))));
+  }
+  addEventListener("keydown", e => {
+    if (App.tab !== "composer" || !comp || !e.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const key = { KeyA: "left", KeyH: "hcenter", KeyD: "right", KeyW: "top", KeyV: "vcenter", KeyS: "bottom" }[e.code];
+    let kind = null;
+    if (mod && e.shiftKey && e.code === "KeyT") kind = "tidy";
+    else if (!mod && e.shiftKey && e.code === "KeyH") kind = "hspace";
+    else if (!mod && e.shiftKey && e.code === "KeyV") kind = "vspace";
+    else if (!mod && !e.shiftKey && key) kind = key;
+    if (!kind || !picked().length) return;
+    e.preventDefault();
+    arrange(kind);
+  });
   function uniqueFieldExcept(name, layer) {
     const taken = new Set(comp.layers.filter(x => x !== layer).map(x => (x.field || "").toLowerCase()));
     let n = 2, out = name;
@@ -964,7 +1092,7 @@
       hudSection(),
       linksSection(),
       h("div", { class: "sect" }, h("h3", {}, "Shortcuts"),
-        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl + click picks more, Shift + click picks a range) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. 🔒 in Layers locks a layer: it can't be picked, moved or deleted on the canvas (pick it in the list to change it). Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed.")));
+        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl + click picks more, Shift + click picks a range) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. Ctrl or Shift + click on the canvas picks more layers; Alignment lines them up (Alt+A / H / D left, centre, right, Alt+W / V / S top, middle, bottom, Alt+Shift+H / V evens out the gaps, Ctrl+Alt+Shift+T tidies up), one layer lines up with the canvas. 🔒 in Layers locks a layer: it can't be picked, moved or deleted on the canvas (pick it in the list to change it). Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed.")));
   }
   // --- Add to a HUD: this graphic as a game HUD's own overlay -------------------
   let hudGame = "rl";
