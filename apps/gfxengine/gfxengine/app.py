@@ -31,7 +31,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import appearance, companion, discover, export, globalcfg, media, pack, share, wsshare
+from . import adobefonts, appearance, companion, discover, export, globalcfg, media, pack, share, wsshare
 from scc_shared.enginelink import PROTOCOL as LINK_PROTOCOL
 from .assets import Assets
 from .config import DATA_DIR, WEB_DIR, Settings, safe_join
@@ -151,6 +151,7 @@ class Engine:
                                      legacy=config.LEGACY_WORKSPACE_DIR if legacy_dir is None else legacy_dir)
         self.library_dir = library_dir or config.LIBRARY_DIR
         self.teams = Teams(self.library_dir)
+        self.adobe_kit = adobefonts.Kit(self.library_dir)
         self.jobs = Jobs()
         self.updater = Updater()
         self.server = None
@@ -340,14 +341,27 @@ class Engine:
             "teams": self.teams.list(),
             "games": list(GAMES.values()),   # (the games there are HUDs for)
             "camera_looks": s.get("camera_looks") or [],
-            "fonts": self._fonts(), "jobs": self.jobs.list(), "update": self.updater.info(),
+            "fonts": self._fonts(), "adobe_fonts": self.adobe_info(), "jobs": self.jobs.list(), "update": self.updater.info(),
         }
 
     def _fonts(self):
         key = (id(self.ws), self.assets_rev)
         if self._fonts_cache[0] != key or time.monotonic() - self._fonts_cache[1] > 5:
-            self._fonts_cache = (key, time.monotonic(), self.assets.fonts())
+            # (the added fonts, then Adobe Fonts: on this PC and the web project)
+            self._fonts_cache = (key, time.monotonic(), self.assets.fonts() + adobefonts.all_fonts(self.adobe_kit))
         return self._fonts_cache[2]
+
+    def adobe_info(self):
+        """The Adobe Fonts web project saved (its ID) and how many Adobe fonts this PC has."""
+        kit = self.adobe_kit.get()
+        return {"kit": kit.get("id", ""), "kit_fonts": len(kit.get("faces") or []),
+                "pc_fonts": len(adobefonts.pc_fonts()), "pc_possible": bool(adobefonts.entitlements_paths())}
+
+    def set_adobe_kit(self, text=None, refresh=False):
+        self.adobe_kit.refresh() if refresh else self.adobe_kit.set(text or "")
+        self._fonts_cache = (None, 0, [])
+        self.changed()
+        return self.adobe_info()
 
     def _has_ffmpeg(self):
         if time.monotonic() - self._ffmpeg_cache[0] > 30:
@@ -1606,6 +1620,9 @@ def make_handler(engine):
                     engine.settings.update({"camera_looks": [lk for lk in looks if isinstance(lk, dict) and lk.get("name")
                                                              and isinstance(lk.get("cams"), dict)]})
                     engine.changed()
+                elif path == "/api/adobe-fonts":
+                    # The Adobe Fonts web project (its ID or embed code; "" removes it).
+                    result = {"adobe_fonts": engine.set_adobe_kit(body.get("kit"), refresh=bool(body.get("refresh")))}
                 elif path == "/api/update/check":
                     engine.updater.check()
                     engine.changed()

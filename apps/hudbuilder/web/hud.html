@@ -43,7 +43,7 @@
     const list = (hud.assets || []).filter(a => /\.(ttf|otf|woff2?)$/i.test(a)).map(p => {
       const name = p.replace(/^assets\//, "").replace(/\.[^.]+$/, "");
       return { path: p, postscript: name, aliases: [name] };
-    });
+    }).concat(hud.adobe_fonts || []);
     const key = JSON.stringify(list);
     if (key !== fontsKey) { fontsKey = key; GFX.loadFonts(list); }
   }

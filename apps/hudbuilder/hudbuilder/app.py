@@ -93,6 +93,7 @@ class HudBuilderApp:
         hud = self.store.get(hud_id)
         hud["tables"] = dict(self.engine.tables, **tables(hud))
         hud["assets"] = self.store.assets(hud_id)
+        hud["adobe_fonts"] = adobe_fonts()
         hud["engine"] = self.engine_brief()
         return hud
 
@@ -110,6 +111,16 @@ class HudBuilderApp:
         self.engine.stop()
         if self.server:
             self.server.stop()
+
+
+def adobe_fonts():
+    """The GFX Engine's Adobe Fonts (on this PC through Creative Cloud, and its
+    web project), so HUDs use them too; [] where the engine isn't there."""
+    try:
+        from gfxengine import adobefonts, config as gfxconfig
+        return adobefonts.all_fonts(adobefonts.Kit(gfxconfig.LIBRARY_DIR))
+    except Exception:
+        return []
 
 
 def lan_ip():

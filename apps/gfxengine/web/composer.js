@@ -663,12 +663,20 @@
   // --- properties ----------------------------------------------------------------
   const props = $("#props");
   function fontOptions(current) {
-    const assetFonts = (App.state.fonts || []).map(f => f.postscript);
-    const all = [...GFX.builtinFonts, ...assetFonts];
+    const fonts = App.state.fonts || [];
+    const assetFonts = fonts.filter(f => !f.adobe).map(f => f.postscript);
+    const adobe = fonts.filter(f => f.adobe);
+    const all = [...GFX.builtinFonts, ...assetFonts, ...adobe.map(f => f.postscript)];
     const out = [];
-    if (current && !all.includes(current)) out.push(h("option", { value: current, selected: true }, `${current} (not added: stand-in)`));
+    if (current && !all.includes(current)) out.push(h("option", { value: current, selected: true },
+      GFX.hasFont(current) ? `${current} (Adobe Fonts)` : `${current} (not added: stand-in)`));
     out.push(h("optgroup", { label: "Built in" }, GFX.builtinFonts.map(f => h("option", { value: f, selected: f === current }, f))));
     if (assetFonts.length) out.push(h("optgroup", { label: "Added fonts" }, [...new Set(assetFonts)].sort().map(f => h("option", { value: f, selected: f === current }, f))));
+    if (adobe.length) out.push(h("optgroup", { label: "Adobe Fonts" }, adobe.slice().sort((a, b) => a.postscript.localeCompare(b.postscript)).map(f =>
+      h("option", { value: f.postscript, selected: f.postscript === current,
+        title: f.adobe === "pc" ? (f.kit ? "On this PC (Creative Cloud) and in the web project" : "On this PC through Creative Cloud: other PCs need it too, or add it to the web project")
+          : "From the Adobe Fonts web project (any PC with internet)" },
+        `${f.family} ${f.style}`.trim() + (f.adobe === "pc" && !f.kit ? " · this PC" : "")))));
     return out;
   }
   function assetSelect(kind, value, onChange) {
