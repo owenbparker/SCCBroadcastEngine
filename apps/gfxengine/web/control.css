@@ -584,3 +584,12 @@ table.sheet td.c:hover { background: #1d3b5e; }
 .rs-heads { padding: 0 7px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .rs-heads span:nth-child(4), .rs-heads span:nth-child(5) { text-align: center; }
 .rs-empty { padding: 10px; text-align: center; }
+
+/* Composer: Alignment buttons */
+.align-sect .al-row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.align-sect .al-group { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.align-sect .al-btn { width: 34px; height: 30px; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
+.align-sect .al-btn + .al-btn { border-left: 1px solid var(--line); }
+.align-sect .al-btn:hover { background: rgba(127, 127, 127, .16); }
+.align-sect .al-btn:active { background: rgba(127, 127, 127, .28); }
+.align-sect .al-ic { display: grid; place-items: center; line-height: 0; }
