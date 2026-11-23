@@ -20,7 +20,11 @@ async function upload(file, graphic) {
   else if (data.imported) toast(data.comps.length === 1 ? `Imported the graphic "${data.comps[0].name}"` : `Imported ${data.comps.length} graphics`);
   else if (data.comps && data.comps.length) {
     const c = data.comps[0];
-    toast(`Made the graphic "${c.name}" (${c.layers.length} layers)` + (data.missing_fonts && data.missing_fonts.length ? ` - add these fonts: ${data.missing_fonts.join(", ")}` : ""));
+    toast((data.comps.length > 1 ? `Made ${data.comps.length} graphics (${data.comps.map(x => `"${x.name}"`).join(", ")})`
+      : `Made the graphic "${c.name}" (${c.layers.length} layers)`)
+      + (data.missing_fonts && data.missing_fonts.length ? ` - add these fonts: ${data.missing_fonts.join(", ")}` : "")
+      + (data.notes && data.notes.length ? ` - ${data.notes.join("; ")}` : ""), false,
+      (data.notes && data.notes.length) || (data.missing_fonts && data.missing_fonts.length) ? 9000 : 0);
   } else if (data.job) toast(`Converting ${file.name}…`);
   else if (data.sources && data.sources.length) toast(`Added ${file.name} as a data source`);
   else toast(`Added ${file.name}`);

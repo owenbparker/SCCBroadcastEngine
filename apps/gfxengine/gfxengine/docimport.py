@@ -3,6 +3,8 @@
     .psd .psb        Photoshop: layers, text kept as text (see psdimport)
     .ora             OpenRaster (Krita, MyPaint, Pinta...): its layers as pictures
     .gtzip           vMix GT title: pictures, text as fields, spins (see gtimport)
+    .fig             Figma (File > Save local copy): a graphic per frame, text
+                     kept as text, shapes, pictures, masks (see figimport)
     .png .jpg ...    one picture, as a graphic of its own
     video, Lottie, After Effects
                      one layer playing it (made in assets: media_comp)
@@ -36,9 +38,8 @@ SAVE_AS_PSD = {
     ".ai": "Illustrator files can't be read directly: File > Export > Export As > Photoshop (.psd) "
            "with \"Write Layers\" on, then import that.",
     ".sketch": "Sketch files can't be read directly: export the artboard as PNG or SVG, then import that.",
-    ".fig": "Figma files can't be read directly: export the frame as PNG or SVG, then import that.",
 }
-LAYERED = (".psd", ".psb", ".ora", ".gtzip")
+LAYERED = (".psd", ".psb", ".ora", ".gtzip", ".fig")
 PICTURES = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".bmp")
 ACCEPT = LAYERED + PICTURES + tuple(SAVE_AS_PSD)
 
@@ -54,7 +55,8 @@ def importable(name):
 
 
 def import_file(path, workspace, name):
-    """Makes a graphic from a design file. Returns (composition, [fonts it uses])."""
+    """Makes a graphic from a design file. Returns (composition, [fonts it uses]),
+    or for a Figma file ([compositions], [fonts], [notes on what was left out])."""
     ext = os.path.splitext(name.lower())[1]
     title = os.path.splitext(os.path.basename(name))[0]
     if ext in SAVE_AS_PSD:
@@ -63,12 +65,15 @@ def import_file(path, workspace, name):
         return import_psd(path, workspace, title)
     if ext == ".ora":
         return import_ora(path, workspace, title), []
+    if ext == ".fig":
+        from .figimport import import_fig
+        return import_fig(path, workspace, title)
     if ext == ".gtzip" or (ext == ".zip" and is_gt(path)):
         return import_gtzip(path, workspace, title)
     if ext in PICTURES:
         return import_picture(path, workspace, title, ext), []
     raise ValueError(f"{os.path.basename(name)} can't be imported as a graphic: use a .psd (Photoshop, "
-                     "or saved as Photoshop from Affinity, Krita, GIMP, Procreate ...), .ora, a vMix .gtzip or a picture.")
+                     "or saved as Photoshop from Affinity, Krita, GIMP, Procreate ...), .ora, a Figma .fig, a vMix .gtzip or a picture.")
 
 
 def _layer(name, x, y, w, h, src, opacity=1, visible=True, blend="normal"):

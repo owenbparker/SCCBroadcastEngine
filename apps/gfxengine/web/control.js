@@ -80,13 +80,13 @@ const Pairing = (() => {
 })();
 const esc =s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 let toastTimer;
-function toast(msg, error) {
+function toast(msg, error, ms) {
   const t = $("#toast");
   t.textContent = msg;
   t.className = "toast" + (error ? " error" : "");
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), error ? 6000 : 2200);
+  toastTimer = setTimeout(() => (t.hidden = true), ms || (error ? 6000 : 2200));
 }
 async function api(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });

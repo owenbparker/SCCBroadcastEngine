@@ -197,19 +197,27 @@ class Assets:
             if result["job"] is None and not result["comps"]:
                 raise ValueError(f"{os.path.basename(name)} has no video or Lottie animation in it")
             return result
-        if kind == "psd" or graphic:
+        if kind == "psd" or graphic or ext == ".fig":
             from .docimport import import_file
             try:
-                comp, used_fonts = import_file(src_path, self.ws, os.path.basename(name))
+                made = import_file(src_path, self.ws, os.path.basename(name))
             finally:
                 if os.path.exists(src_path):
                     os.remove(src_path)
-            self.ws.add_comp(comp)
-            result["comps"].append(comp)
-            have = {f["postscript"] for f in self.fonts()}
+            comps, used_fonts = made[0], made[1]
+            if isinstance(comps, dict):
+                comps = [comps]
+            for comp in comps:
+                self.ws.add_comp(comp)
+                result["comps"].append(comp)
+            if len(made) > 2 and made[2]:
+                result["notes"] = made[2]
+            have = set()
+            for f in self.fonts():
+                have.update(a for a in [f["postscript"], f.get("family")] + list(f.get("aliases") or []) if a)
             missing = [f for f in used_fonts if f not in have]
             if missing:
-                log(f"{comp['name']} uses fonts that aren't added yet: {', '.join(missing)}", "warn")
+                log(f"{os.path.basename(name)} uses fonts that aren't added yet: {', '.join(missing)}", "warn")
             result["missing_fonts"] = missing
             return result
         if ext in (".zip", ".lottie"):
