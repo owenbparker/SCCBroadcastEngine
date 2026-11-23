@@ -129,7 +129,8 @@
     // Top layer first, as in Photoshop.
     list.replaceChildren(...[...comp.layers].reverse().map(l => h("div", {
       class: "ly" + (l.id === selected || multi.has(l.id) ? " sel" : ""), draggable: true,
-      onclick: e => (e.ctrlKey || e.metaKey || e.shiftKey) ? pickToo(l.id) : selectLayer(l.id),
+      onmousedown: e => { if (e.shiftKey) e.preventDefault(); },  // no text highlight on Shift+click
+      onclick: e => e.shiftKey ? pickRange(l.id, e.ctrlKey || e.metaKey) : (e.ctrlKey || e.metaKey) ? pickToo(l.id) : selectLayer(l.id),
       ondragstart: e => { dragLayer = l.id; e.dataTransfer.effectAllowed = "move"; },
       ondragover: e => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); },
       ondragleave: e => e.currentTarget.classList.remove("drag-over"),
@@ -163,8 +164,26 @@
   }
   // Does the layer follow live data (a link, a fill or a "Show when")?
   const linked = l => !!(l.meter || l.when || [l.text, l.src, l.fill].some(v => /\{\{\s*(Rocket League HUD|Global)!/i.test(v || "")));
-  // Ctrl / Shift + click: one more layer (or one less).
+  // Shift + click: every layer from the last one clicked down (or up) to this
+  // one, as in Photoshop. Ctrl + Shift adds the range to what's picked.
+  let rangeFrom = null;
+  function pickRange(id, add) {
+    const ids = comp.layers.map(x => x.id);
+    let a = rangeFrom === selected || multi.has(rangeFrom) ? ids.indexOf(rangeFrom) : -1;
+    if (a < 0) a = ids.indexOf(selected);
+    const b = ids.indexOf(id);
+    if (a < 0 || b < 0) return selectLayer(id);
+    if (!add) multi.clear(); else if (!multi.size && selected) multi.add(selected);
+    for (let i = Math.min(a, b); i <= Math.max(a, b); i++) multi.add(ids[i]);
+    selected = id;
+    if (multi.size < 2) multi.clear();
+    renderLayers();
+    renderProps();
+    drawSelection();
+  }
+  // Ctrl + click: one more layer (or one less).
   function pickToo(id) {
+    rangeFrom = id;
     if (!multi.size && selected) multi.add(selected);
     if (multi.has(id)) multi.delete(id); else multi.add(id);
     selected = multi.has(id) ? id : [...multi].pop() || null;
@@ -174,6 +193,7 @@
     drawSelection();
   }
   function selectLayer(id) {
+    rangeFrom = id;
     multi.clear();
     selected = id;
     renderLayers();
@@ -886,7 +906,7 @@
     props.replaceChildren(
       h("div", { class: "sect" }, h("h3", {}, `${layers.length} layers`),
         h("p", { class: "muted small" }, layers.map(l => l.name).join(", ")),
-        h("p", { class: "muted small" }, "Ctrl or Shift + click in the list picks more (or fewer)."),
+        h("p", { class: "muted small" }, "Ctrl + click in the list picks one more (or fewer). Shift + click picks every layer between the last one clicked and this one."),
         h("div", { class: "row-gap" },
           h("button", { class: "small", onclick: () => setLocked(layers, true) }, "🔒 Lock all"),
           h("button", { class: "small", onclick: () => setLocked(layers, false) }, "🔓 Unlock all"))),
@@ -944,7 +964,7 @@
       hudSection(),
       linksSection(),
       h("div", { class: "sect" }, h("h3", {}, "Shortcuts"),
-        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl / Shift + click picks more) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. 🔒 in Layers locks a layer: it can't be picked, moved or deleted on the canvas (pick it in the list to change it). Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed.")));
+        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl + click picks more, Shift + click picks a range) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. 🔒 in Layers locks a layer: it can't be picked, moved or deleted on the canvas (pick it in the list to change it). Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed.")));
   }
   // --- Add to a HUD: this graphic as a game HUD's own overlay -------------------
   let hudGame = "rl";
