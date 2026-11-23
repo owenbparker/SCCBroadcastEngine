@@ -216,6 +216,11 @@ class Assets:
             for f in self.fonts():
                 have.update(a for a in [f["postscript"], f.get("family")] + list(f.get("aliases") or []) if a)
             missing = [f for f in used_fonts if f not in have]
+            if missing and self.library_dir:
+                # (Adobe Fonts: on this PC through Creative Cloud, or in the web project)
+                from . import adobefonts
+                adobe = adobefonts.known_names(adobefonts.all_fonts(adobefonts.Kit(self.library_dir)))
+                missing = [f for f in missing if adobefonts.norm(f) not in adobe]
             if missing:
                 log(f"{os.path.basename(name)} uses fonts that aren't added yet: {', '.join(missing)}", "warn")
             result["missing_fonts"] = missing

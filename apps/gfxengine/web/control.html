@@ -362,6 +362,18 @@
   </div>
   <div id="jobs" class="jobs"></div>
   <div id="missing-fonts" class="notice" hidden></div>
+  <details id="adobe-fonts" class="adobe-fonts">
+    <summary><b>Adobe Fonts</b> <span id="adobe-status" class="muted small"></span></summary>
+    <p class="muted small">Fonts you add in the Creative Cloud app on this PC are listed in the Composer's font list by themselves (under "Adobe Fonts").
+      For OBS on other PCs, make a <b>web project</b> at fonts.adobe.com with the same fonts (My Adobe Fonts &gt; Web Projects) and paste its ID or embed code here:
+      every output then loads them from Adobe. Font files are never copied.</p>
+    <div class="row-gap">
+      <input type="text" id="adobe-kit" placeholder="Web project ID (like abc1234) or its embed code" style="flex:1;min-width:220px">
+      <button id="adobe-save" class="small primary">Save</button>
+      <button id="adobe-refresh" class="small" title="Read the web project's fonts again (after adding fonts to it at fonts.adobe.com)">Refresh</button>
+      <button id="adobe-remove" class="small danger">Remove</button>
+    </div>
+  </details>
   <div class="drop" id="asset-drop">Drop files here: Photoshop (.psd) or Figma (.fig) becomes a graphic; video (.mov with alpha from After Effects, .mp4, .webm, PNG sequences in a .zip) is made web-ready;
     After Effects projects (.aep) are rendered by After Effects on this PC; fonts (.ttf, .otf), pictures, Lottie (.json / .lottie from After Effects), and spreadsheets (.csv, .xlsx).</div>
   <div id="asset-grid" class="asset-grid"></div>

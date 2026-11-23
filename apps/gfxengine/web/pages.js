@@ -115,7 +115,8 @@ addEventListener("drop", e => {
     const missing = [...used].filter(f => !GFX.hasFont(f)).sort();
     const note = $("#missing-fonts");
     note.hidden = !missing.length;
-    note.textContent = missing.length ? `The graphics use fonts that aren't added yet (similar ones stand in): ${missing.join(", ")}. Drop their .ttf / .otf files here.` : "";
+    note.textContent = missing.length ? `The graphics use fonts that aren't added yet (similar ones stand in): ${missing.join(", ")}. Drop their .ttf / .otf files here, or add them from Adobe Fonts (below).` : "";
+    renderAdobe(s.adobe_fonts || {});
     const shown = App.assets.filter(a => kind === "all" || a.kind === kind);
     const folders = new Map();
     for (const a of shown) { if (!folders.has(a.folder)) folders.set(a.folder, []); folders.get(a.folder).push(a); }
@@ -139,6 +140,29 @@ addEventListener("drop", e => {
             if (confirm(`Delete ${a.path}?`)) { await api("/api/asset/delete", { path: a.path }); }
           } }, "✕"))))))));
   }
+  // Adobe Fonts: what this PC has through Creative Cloud, and the web project.
+  function renderAdobe(a) {
+    const bits = [];
+    if (a.pc_fonts) bits.push(`${a.pc_fonts} on this PC`);
+    else if (a.pc_possible) bits.push("none added on this PC in Creative Cloud");
+    bits.push(a.kit ? `web project ${a.kit} (${a.kit_fonts} font${a.kit_fonts === 1 ? "" : "s"})` : "no web project");
+    $("#adobe-status").textContent = "· " + bits.join(" · ");
+    const input = $("#adobe-kit");
+    if (document.activeElement !== input && !input.dataset.typed) input.value = a.kit || "";
+    $("#adobe-refresh").hidden = $("#adobe-remove").hidden = !a.kit;
+  }
+  async function saveKit(body, done) {
+    try {
+      const r = await api("/api/adobe-fonts", body);
+      $("#adobe-kit").dataset.typed = "";
+      toast(done(r.adobe_fonts || {}));
+    } catch (e) { /* (api() shows the error) */ }
+  }
+  $("#adobe-kit").addEventListener("input", e => { e.target.dataset.typed = "1"; });
+  $("#adobe-save").addEventListener("click", () => saveKit({ kit: $("#adobe-kit").value },
+    a => a.kit ? `Adobe Fonts web project ${a.kit} saved: ${a.kit_fonts} fonts` : "Adobe Fonts web project removed"));
+  $("#adobe-refresh").addEventListener("click", () => saveKit({ refresh: true }, a => `Adobe Fonts web project read again: ${a.kit_fonts} fonts`));
+  $("#adobe-remove").addEventListener("click", () => { if (confirm("Remove the Adobe Fonts web project? Graphics using its fonts go back to stand-ins on PCs without them.")) saveKit({ kit: "" }, () => "Adobe Fonts web project removed"); });
   function renderJobs() {
     const jobs = (App.state && App.state.jobs || []).filter(j => j.status !== "done" || Date.now() / 1000);
     $("#jobs").replaceChildren(...jobs.filter(j => j.status !== "done").map(j => h("div", { class: "job" + (j.status === "error" ? " error" : "") },

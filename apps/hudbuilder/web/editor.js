@@ -45,7 +45,7 @@ window.Editor = (function () {
     loadGameData();
   }
   function takeLive(payload) {
-    live = { tables: payload.tables || {}, assets: payload.assets || [], values: payload.values || {} };
+    live = { tables: payload.tables || {}, assets: payload.assets || [], values: payload.values || {}, adobe_fonts: payload.adobe_fonts || [] };
     if (payload.engine) engine = payload.engine;
     loadFonts();
     GFX.setData(dataTables());
@@ -91,7 +91,7 @@ window.Editor = (function () {
     const list = live.assets.filter(a => /\.(ttf|otf|woff2?)$/i.test(a)).map(p => {
       const name = p.replace(/^assets\//, "").replace(/\.[^.]+$/, "");
       return { path: p, postscript: name, aliases: [name] };
-    });
+    }).concat(live.adobe_fonts || []);
     GFX.loadFonts(list);
   }
   const design = () => JSON.stringify({ name: hud.name, game: hud.game, layers: hud.layers, vars: hud.vars });
@@ -894,7 +894,8 @@ window.Editor = (function () {
       lab("Colour", h("input", { type: "color", value: /^#[0-9a-f]{6}$/i.test(g.color || "") ? g.color : "#000000", onfocus: () => { fresh = true; }, oninput: e => set("color", e.target.value) }))));
   }
   function textProps(l) {
-    const fonts = [...GFX.builtinFonts, ...live.assets.filter(a => /\.(ttf|otf|woff2?)$/i.test(a)).map(a => a.replace(/^assets\//, "").replace(/\.[^.]+$/, ""))];
+    const fonts = [...GFX.builtinFonts, ...live.assets.filter(a => /\.(ttf|otf|woff2?)$/i.test(a)).map(a => a.replace(/^assets\//, "").replace(/\.[^.]+$/, "")),
+      ...(live.adobe_fonts || []).map(f => f.postscript)];   // (Adobe Fonts, from the GFX Engine)
     if (l.font && !fonts.includes(l.font)) fonts.push(l.font);
     const ta = bind(l, "text", "textarea", { label: "Text" });
     const insert = h("select", { class: "var-pick", onchange: e => {

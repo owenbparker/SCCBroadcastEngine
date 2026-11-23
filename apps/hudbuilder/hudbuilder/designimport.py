@@ -103,6 +103,14 @@ def _missing_fonts(layers, known):
         f = str(layer.get("font") or "")
         if layer.get("type") == "text" and f and f.lower() not in known and f.lower() not in BUILTIN_FONTS:
             missing.add(f)
+    if missing:
+        # (Adobe Fonts: on this PC through Creative Cloud, or in the GFX Engine's web project)
+        from .app import adobe_fonts
+        fonts = adobe_fonts()
+        if fonts:
+            from gfxengine.adobefonts import known_names, norm
+            have = known_names(fonts)
+            missing = {f for f in missing if norm(f) not in have}
     return sorted(missing)
 
 
