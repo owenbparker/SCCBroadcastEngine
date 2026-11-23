@@ -380,6 +380,22 @@
     }
     return null;
   }
+  // Locked (in Layers): it, or the part it's in. A locked part can't be picked,
+  // dragged, resized, nudged or deleted on the HUD (pick it in Layers to change it).
+  function lockRule(el) {
+    var rules = edits.rules || {}, locks = Object.keys(rules).filter(function (s) { return rules[s].lock; });
+    if (!locks.length) return null;
+    for (var e = el; e && e.nodeType === 1 && e !== document.body; e = e.parentElement) {
+      for (var i = 0; i < locks.length; i++) { try { if (e.matches(locks[i])) return locks[i]; } catch (x) { } }
+    }
+    return null;
+  }
+  function isLocked(s) {
+    if (!s) return false;
+    if (s.added) { var a = findAdded(s.added); return !!(a && a.lock); }
+    var el = first(s.sel);
+    return !!(((edits.rules || {})[s.sel] || {}).lock || (el && lockRule(el)));
+  }
   function kindOf(el) {
     var tag = el.localName;
     if (tag === "img" || tag === "image" || tag === "video") return "picture";
@@ -412,14 +428,15 @@
         if (out.length > 1500) return;
         var sel = selectorFor(c);
         var ru = (edits.rules || {})[sel] || {};
-        out.push({ sel: sel, name: nameOf(c), kind: kindOf(c), depth: depth, shown: shown(c), edited: !!(edits.rules || {})[sel],
-                   kids: !!c.firstElementChild, deleted: !!ru.del, hidden: !!ru.hide });
+        out.push({ sel: sel, name: nameOf(c), kind: kindOf(c), depth: depth, shown: shown(c),
+                   kids: !!c.firstElementChild, deleted: !!ru.del, hidden: !!ru.hide, locked: !!ru.lock,
+                   edited: Object.keys(ru).some(function (k) { return k !== "lock" && k !== "svg"; }) });
         if (depth < 14) walk(c, depth + 1);
       }
     }
     walk(document.body, 0);
     var added = (edits.added || []).map(function (a) {
-      return { added: a.id, name: nameOf({ dataset: { hudeditAdded: a.id } }), kind: a.type === "image" ? "picture" : a.type === "text" ? "text" : "shape", shape: a.type === "box" ? "rect" : a.shape, depth: 0, shown: !a.hide, hidden: !!a.hide, behind: !!a.behind };
+      return { added: a.id, name: nameOf({ dataset: { hudeditAdded: a.id } }), kind: a.type === "image" ? "picture" : a.type === "text" ? "text" : "shape", shape: a.type === "box" ? "rect" : a.shape, depth: 0, shown: !a.hide, hidden: !!a.hide, behind: !!a.behind, locked: !!a.lock };
     });
     return { nodes: out, added: added };
   }
@@ -444,7 +461,9 @@
     }
     var el = first(s.sel);
     var rule = (edits.rules || {})[s.sel] || {};
-    var out = { sel: s.sel, rule: rule, exists: !!el, similar: s.similar || null, all: !!s.all, deleted: !!rule.del, inDeleted: el ? delRule(el) : null };
+    var lr = el ? lockRule(el) : null;
+    var out = { sel: s.sel, rule: rule, exists: !!el, similar: s.similar || null, all: !!s.all, deleted: !!rule.del, inDeleted: el ? delRule(el) : null,
+                locked: !!rule.lock, inLocked: lr && lr !== s.sel ? lr : null };
     if (el) {
       var cs = getComputedStyle(el), r = el.getBoundingClientRect();
       var textEl = el;
@@ -547,6 +566,7 @@
     if (!selBox) return;
     var el = selected ? (selected.added ? document.getElementById("hudedit-a-" + selected.added) : first(selected.sel)) : null;
     drawBox(selBox, el);
+    selBox.classList.toggle("locked", isLocked(selected));
     selBox.querySelectorAll("i").forEach(function (h) { h.style.width = h.style.height = Math.round(10 / view) + "px"; h.style.margin = Math.round(-5 / view) + "px"; });
     selBox.style.borderWidth = Math.max(1, Math.round(2 / view)) + "px";
     // (everything the rule changes, when it's for all of them)
@@ -570,6 +590,7 @@
       "hudedit-ui .hud-hover{border:1px solid rgba(80,170,255,.9);background:rgba(80,170,255,.08)}" +
       "hudedit-ui .hud-sel{border:2px solid #3aa0ff;box-shadow:0 0 0 1px rgba(0,0,0,.5)}" +
       "hudedit-ui .hud-also{display:block;border:1px dashed #3aa0ff}" +
+      "hudedit-ui .hud-sel.locked{border-style:dotted;border-color:#9aa4b2}hudedit-ui .hud-sel.locked i{display:none}" +
       "hudedit-ui .hud-sel i{position:absolute;width:10px;height:10px;background:#fff;border:2px solid #3aa0ff;box-sizing:border-box;pointer-events:auto;border-radius:2px}" +
       "html.hudedit-on, html.hudedit-on *{cursor:default}" +
       "html.hudedit-on body *:not(hudedit-ui,hudedit-ui *,hudedit-front,hudedit-back){pointer-events:auto !important}" +   // (HUD parts are often click-through)
@@ -606,12 +627,13 @@
       var el = list[i];
       if (el.closest && el.closest("hudedit-ui")) continue;
       var item = el.closest && el.closest("hudedit-item");
-      if (item) return item;
+      if (item) { var ia = findAdded(item.dataset.hudeditAdded); if (ia && ia.lock) continue; return item; }
       if (ours(el) || el === document.body || el === document.documentElement || skipEl(el)) continue;
       var r = el.getBoundingClientRect();   // (a full-screen stage or SVG: what's in it, not it)
       if (r.width * r.height > innerWidth * innerHeight * 0.85) continue;
       if (!paints(el)) continue;   // (an empty box around other parts: what's in it)
       if (!shown(el) && !peeked.some(function (pk) { return pk.el === el || el.contains(pk.el) || pk.el.contains(el); })) continue;   // (not on screen now)
+      if (lockRule(el)) continue;   // (locked: what's under it)
       return el;
     }
     return null;
@@ -693,7 +715,7 @@
       var same = selected && (target.added ? selected.added === target.added : selected.sel === target.sel || (selected.all && first(selected.sel) && document.querySelectorAll(selected.sel).length && Array.prototype.indexOf.call(document.querySelectorAll(selected.sel), el) >= 0));
       if (!same) select(target);
     }
-    if (!selected) return;
+    if (!selected || isLocked(selected)) return;
     var node = selected.added ? document.getElementById("hudedit-a-" + selected.added) : first(selected.sel);
     if (!node) return;
     var r = node.getBoundingClientRect();
@@ -755,6 +777,7 @@
 
   function nudge(dx, dy) {
     if (!selected) return;
+    if (isLocked(selected)) { say("error", { text: "It's locked: unlock it (🔒 in Layers) to move it" }); return; }
     if (selected.added) { var a = findAdded(selected.added); if (!a) return; a.x += dx; a.y += dy; }
     else {
       var el = first(selected.sel), k = el ? localScale(el) : 1, r = rule(selected.sel);
@@ -810,6 +833,7 @@
     else if (t === "nudge") nudge(m.dx, m.dy);
     else if (t === "delete") {   // the picked layer: an added one goes, a HUD part is taken off (Restore puts it back)
       if (!selected) return;
+      if (isLocked(selected)) { say("error", { text: "It's locked: unlock it (🔒 in Layers) to delete it" }); return; }
       if (selected.added) { var gone = selected.added; edits.added = (edits.added || []).filter(function (x) { return x.id !== gone; }); }
       else { var dr = rule(selected.sel); if (first(selected.sel) instanceof SVGElement) dr.svg = true; dr.del = true; }
       selected = null; unpeek(); changed(); say("selected", info());
@@ -820,6 +844,10 @@
       if (m.added) { var ta = findAdded(m.added); if (!ta) return; if (ta.hide) delete ta.hide; else ta.hide = true; }
       else { var th = rule(m.sel); if (th.hide) delete th.hide; else th.hide = true; tidy(m.sel); }
       changed();
+    } else if (t === "toggle-lock") {   // the lock in Layers
+      if (m.added) { var la = findAdded(m.added); if (!la) return; if (la.lock) delete la.lock; else la.lock = true; }
+      else { var lk = rule(m.sel); if (lk.lock) delete lk.lock; else lk.lock = true; tidy(m.sel); }
+      changed(); drawSelection(); say("selected", info());
     } else if (t === "duplicate") {
       var da = selected && selected.added && findAdded(selected.added);
       if (da) command({ hudedit: "add", item: Object.assign({}, da, { id: undefined, x: (da.x || 0) + 20, y: (da.y || 0) + 20, label: da.label ? da.label + " copy" : undefined }) });
@@ -856,7 +884,8 @@
         if (m.props.img === null) delete r.imgKind;
         tidy(selected.sel);
       }
-      changed(!("label" in m.props || "text" in m.props || "hide" in m.props));
+      changed(!("label" in m.props || "text" in m.props || "hide" in m.props || "lock" in m.props));
+      drawSelection();
     } else if (t === "reset-part") {
       if (selected && selected.sel) { delete edits.rules[selected.sel]; changed(); }
     } else if (t === "reset-all") {

@@ -51,6 +51,12 @@ class HudEditStore(unittest.TestCase):
         self.assertEqual([a["id"] for a in doc["added"]], ["abc"])
         self.assertEqual(len(doc["fonts"]), 1)
 
+    def test_locks_kept(self):
+        doc = hudedit.clean({"rules": {"#logo": {"lock": True}, "#x": {"lock": "yes"}},
+                             "added": [{"id": "a1", "type": "text", "text": "Hi", "lock": True}]})
+        self.assertEqual(doc["rules"], {"#logo": {"lock": True}})
+        self.assertTrue(doc["added"][0]["lock"])
+
     def test_deleted_parts_and_shapes_kept(self):
         doc = hudedit.clean({"rules": {"#logo": {"del": True}, "#x": {"del": "yes"}},
             "added": [{"id": "s1", "type": "shape", "shape": "slant", "fill": "#ff0000", "fill2": "#0000ff", "angle": 45,

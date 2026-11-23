@@ -157,6 +157,8 @@ window.GameHuds = (function () {
     const sel = info && info.selected;
     const rows = [];
     const eye = (off, onclick) => h("span", { class: "eye" + (off ? " off" : ""), title: off ? "Hidden on air: click to show it" : "Hide it on air (it stays in its place)", onclick: e => { e.stopPropagation(); onclick(); } }, "👁");
+    // Lock: a locked layer can't be picked, moved, resized or deleted on the HUD (pick it here to change it).
+    const lock = (on, onclick) => h("span", { class: "lock" + (on ? " on" : ""), title: on ? "Unlock" : "Lock (can't be picked, moved or deleted on the HUD)", onclick: e => { e.stopPropagation(); onclick(); } }, on ? "🔒" : "🔓");
     const q = filter.trim().toLowerCase();
     // Added layers on top (top layer first, as in Composer).
     [...added].reverse().forEach(a => {
@@ -166,7 +168,8 @@ window.GameHuds = (function () {
         h("span", { class: "ic" }, a.kind === "shape" ? SHAPE_ICON[a.shape || "rect"] || "▭" : ICON[a.kind] || "□"),
         h("span", { class: "nm", title: a.name }, a.name),
         a.behind ? h("span", { class: "tag ch", title: "Behind the HUD" }, "behind") : null,
-        h("span", { class: "tag new", title: "You added it" }, "added")));
+        h("span", { class: "tag new", title: "You added it" }, "added"),
+        lock(a.locked, () => send("toggle-lock", { added: a.added }))));
     });
     let skipBelow = Infinity;
     for (const n of nodes) {
@@ -184,7 +187,8 @@ window.GameHuds = (function () {
         h("span", { class: "ic" }, ICON[n.kind] || "□"),
         h("span", { class: "nm" }, n.name),
         n.deleted ? h("button", { class: "small rst", title: "Put it back", onclick: e => { e.stopPropagation(); send("restore", { sel: n.sel }); } }, "Restore")
-          : n.edited ? h("span", { class: "tag ch", title: "Changed" }, "changed") : null));
+          : n.edited ? h("span", { class: "tag ch", title: "Changed" }, "changed") : null,
+        n.deleted ? null : lock(n.locked, () => send("toggle-lock", { sel: n.sel }))));
     }
     if (!rows.length) rows.push(h("p", { class: "hint muted" }, frameReady ? "Nothing on screen here. Tick “Show every part”." : "Opening the HUD…"));
     const keep = box.scrollTop;
@@ -294,6 +298,9 @@ window.GameHuds = (function () {
         s.parent ? btn("Part around it", () => send("select", { sel: s.parent }), { title: "Pick the part this one is in" }) : null,
         h("span", { class: "grow" }),
         btn("Delete", () => send("delete"), { class: "small danger", title: "Take it off the HUD (Delete key). Restore or Ctrl+Z puts it back" })),
+      h("label", { class: "check", title: "A locked part can't be picked, moved, resized or deleted on the HUD" },
+        h("input", { type: "checkbox", checked: !!s.locked, onchange: e => set({ lock: e.target.checked || null }) }), " Locked"),
+      s.inLocked ? h("p", { class: "small muted" }, "The part it's in is locked, so it can't be moved on the HUD.") : null,
       s.similar ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: s.all, onchange: e => send("all", { on: e.target.checked }) }), ` The same for all ${s.similar} like it`) : null,
       s.exists ? null : h("p", { class: "small warn" }, "It isn't on the page right now. Changes are kept for when it is.")));
     fillPos(s);
@@ -370,7 +377,9 @@ window.GameHuds = (function () {
         btn("Fill", () => set({ x: 0, y: 0, w: 1920, h: 1080 }), { title: "Full screen" }),
         btn("Centre", () => set({ x: Math.round((1920 - (a.w || 0)) / 2), y: Math.round((1080 - (a.h || 0)) / 2) }), { title: "Centre on the HUD" }),
         h("span", { class: "grow" }),
-        btn("Delete", () => send("delete"), { class: "small danger", title: "Delete key" }))));
+        btn("Delete", () => send("delete"), { class: "small danger", title: "Delete key" })),
+      h("label", { class: "check", title: "A locked layer can't be picked, moved, resized or deleted on the HUD" },
+        h("input", { type: "checkbox", checked: !!a.lock, onchange: e => set({ lock: e.target.checked || null }) }), " Locked")));
     if (isShape) {
       const fill = a.fill || a.bg || "#ffffff";
       out.push(sect("Shape",
