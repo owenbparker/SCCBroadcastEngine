@@ -77,6 +77,8 @@ App.on(s => {
     $("#dlg-ok").textContent = w ? "Save" : "Create";
     $("#dlg-template-row").hidden = !!w;
     $("#dlg-delete").hidden = !w;
+    $("#dlg-share").hidden = !w;
+    if (w) listEngines();
     $("#dlg-delete").disabled = !!w && w.id === current;
     $("#dlg-delete").title = w && w.id === current ? "Open another workspace first" : "";
     $("#dlg-file").value = "";
@@ -127,6 +129,64 @@ App.on(s => {
     close();
     load();
   });
+
+  // --- a whole workspace to and from another PC (.sccws) ---
+  async function listEngines() {
+    const sel = $("#dlg-send-to");
+    sel.replaceChildren(h("option", { value: "" }, "Looking for other PCs…"));
+    const r = await fetch("/api/engines").then(r => r.json()).catch(() => ({ engines: [] }));
+    const list = r.engines || [];
+    sel.replaceChildren(...(list.length ? list.map(e => h("option", { value: e.url }, `${e.name} (${e.ip})`))
+      : [h("option", { value: "" }, "No other PCs seen (they need Outputs > Network on)")]));
+    sel.dataset.names = JSON.stringify(Object.fromEntries(list.map(e => [e.url, e.name])));
+  }
+  $("#dlg-export").addEventListener("click", () => {
+    if (!editing) return;
+    location.href = `/api/workspaces/export?id=${encodeURIComponent(editing.id)}`;
+    toast(`Exporting ${editing.name}… (big workspaces take a moment)`);
+  });
+  const sentKeys = {};
+  $("#dlg-send").addEventListener("click", async () => {
+    const url = $("#dlg-send-to").value;
+    if (!editing || !url) return toast("Pick a PC to send it to", true);
+    const who = (JSON.parse($("#dlg-send-to").dataset.names || "{}"))[url] || url;
+    const w = editing, btn = $("#dlg-send");
+    btn.disabled = true;
+    toast(`Sending ${w.name} to ${who}…`);
+    const post = key => fetch("/api/workspaces/send", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: w.id, url, key }) }).then(r => r.json()).catch(() => ({ error: "Couldn't send" }));
+    try {
+      let r = await post(sentKeys[url] || "");
+      for (let tries = 0; r.code === "key_needed" && tries < 3; tries++) {
+        const code = await Pairing.ask(tries ? `That wasn't ${who}'s code.` : `${who} asks for its pairing code (on that PC: Outputs > Network).`);
+        if (!code) return;
+        sentKeys[url] = code;
+        r = await post(code);
+      }
+      if (r.error) return toast(r.error, true);
+      toast(`${who} has it now, as "${r.name}" (on its Home)`);
+    } finally { btn.disabled = false; }
+  });
+  async function importFile(file) {
+    if (!file) return;
+    if (!/\.sccws$/i.test(file.name)) return toast("That isn't a workspace file (.sccws)", true);
+    toast(`Importing ${file.name}…`);
+    try {
+      const r = await postFile("/api/workspaces/import", file);
+      const extra = [r.teams.length ? `${r.teams.length} new team${r.teams.length === 1 ? "" : "s"}` : "",
+        r.extras && r.extras.run_of_show && r.extras.run_of_show.added && r.extras.run_of_show.added.length
+          ? `${r.extras.run_of_show.added.length} run of show template(s)` : ""].filter(Boolean).join(", ");
+      toast(`Added "${r.name}" (${r.graphics} graphics${extra ? ", " + extra : ""}). Click it to open it.`);
+      await load();
+    } catch (e) { /* (postFile said why) */ }
+  }
+  $("#ws-import").addEventListener("change", e => { importFile(e.target.files[0]); e.target.value = ""; });
+  const grid = $("#ws-grid");
+  const hasFile = e => [...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files");
+  grid.addEventListener("dragover", e => { if (hasFile(e)) { e.preventDefault(); grid.classList.add("dropping"); } });
+  grid.addEventListener("dragleave", e => { if (!grid.contains(e.relatedTarget)) grid.classList.remove("dropping"); });
+  grid.addEventListener("drop", () => grid.classList.remove("dropping"));   // (pages.js's drop brings it in)
+  window.importWorkspace = f => { showTab("home"); return importFile(f); };
 
   let lastSig = "";
   App.on(s => {

@@ -58,6 +58,8 @@
     <div class="home-head">
       <h2>My Workspaces</h2>
       <span class="muted">One per event or show: its own graphics, files, data, transitions and global settings. Fonts are shared by all of them.</span>
+      <div class="spacer"></div>
+      <label class="btn small" title="Bring in a workspace exported on another PC (.sccws). It's added as a new workspace: nothing here is replaced">Import workspace…<input type="file" id="ws-import" accept=".sccws" hidden></label>
     </div>
     <div id="ws-grid" class="ws-grid"></div>
   </div>
@@ -460,6 +462,16 @@
             <label class="toggle"><input type="radio" name="dlg-template" value="empty"> Nothing (an empty workspace)</label>
           </div>
         </div>
+      </div>
+      <div id="dlg-share" class="ws-share" hidden>
+        <h4>Take it to another PC</h4>
+        <div class="row">
+          <button type="button" id="dlg-export" title="A .sccws file: Home > Import workspace on the other PC">Export file…</button>
+          <span class="muted small">or send it to</span>
+          <select id="dlg-send-to"></select>
+          <button type="button" id="dlg-send">Send</button>
+        </div>
+        <p class="muted small">Its graphics and files, Global, tournaments, schedule, data sources and transitions go along, with the teams, their logos, the fonts it uses and the run of show templates. The other PC adds it as a new workspace: nothing there is replaced or opened.</p>
       </div>
     </div>
     <div class="dialog-btns">

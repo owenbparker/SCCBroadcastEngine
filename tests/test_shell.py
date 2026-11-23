@@ -164,6 +164,35 @@ class EverythingTogetherTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             get(f"http://127.0.0.1:{self.port}/../sccbe/config.py")
 
+    def test_workspace_export_and_import_from_the_top_bar(self):
+        from sccbe.ros import starter_template
+        t = self.shell.ros.save_template({**starter_template("val"), "name": "Workspace test night"})
+        before = json.loads(get(f"http://127.0.0.1:{self.port}/api/engine/workspaces")[1])
+        status, blob = get(f"http://127.0.0.1:{self.port}/api/engine/workspace-export?id={before['current']}", timeout=60)
+        self.assertEqual(status, 200)
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/engine/workspace-import", data=blob,
+                                     headers={"X-Filename": "x.sccws", "Content-Type": "application/octet-stream"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            got = json.loads(r.read())
+        after = json.loads(get(f"http://127.0.0.1:{self.port}/api/engine/workspaces")[1])
+        self.assertEqual(after["current"], before["current"])     # (never opened)
+        self.assertEqual(len(after["workspaces"]), len(before["workspaces"]) + 1)
+        self.assertIn(got["id"], [w["id"] for w in after["workspaces"]])
+        # The run of show templates went along: the same one isn't added twice.
+        self.assertEqual(got["extras"]["run_of_show"]["added"], [])
+        self.assertEqual([x["name"] for x in self.shell.ros.state()["templates"]].count("Workspace test night"), 1)
+        self.shell.ros.delete_template(t["id"])
+        with urllib.request.urlopen(urllib.request.Request(
+                f"http://127.0.0.1:{self.port}/api/engine/workspace-import", data=blob,
+                headers={"X-Filename": "x.sccws", "Content-Type": "application/octet-stream"}), timeout=60) as r:
+            got = json.loads(r.read())
+        self.assertEqual(got["extras"]["run_of_show"]["added"], ["Workspace test night"])
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(urllib.request.Request(
+                f"http://127.0.0.1:{self.port}/api/engine/workspace-import", data=b"junk",
+                headers={"X-Filename": "x.sccws"}), timeout=20)
+        self.assertEqual(e.exception.code, 400)
+
     def test_engine_pages_follow_the_address_tab(self):
         status, body = get("http://127.0.0.1:8782/control.js")
         self.assertIn(b'addEventListener("hashchange"', body)
