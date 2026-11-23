@@ -839,18 +839,36 @@
 
   // --- properties ----------------------------------------------------------------
   const props = $("#props");
+  // Recent fonts: the last ones picked, newest first, kept in this browser
+  // (same key as HUD Builder's font lists, so they share one list).
+  const RECENT_FONTS = "sccbe-recent-fonts";
+  function recentFonts() {
+    try { const a = JSON.parse(localStorage.getItem(RECENT_FONTS) || "[]"); return Array.isArray(a) ? a.filter(f => typeof f === "string" && f) : []; }
+    catch (e) { return []; }
+  }
+  function useFont(name) {
+    if (!name) return;
+    try { localStorage.setItem(RECENT_FONTS, JSON.stringify([name, ...recentFonts().filter(f => f !== name)].slice(0, 12))); } catch (e) { }
+  }
+  function setFont(l, name) { snapshot(); l.font = name; useFont(name); changed({ props: true }); }
   function fontOptions(current) {
     const fonts = App.state.fonts || [];
     const assetFonts = fonts.filter(f => !f.adobe).map(f => f.postscript);
     const adobe = fonts.filter(f => f.adobe);
     const all = [...GFX.builtinFonts, ...assetFonts, ...adobe.map(f => f.postscript)];
+    const nameOf = f => { const a = adobe.find(x => x.postscript === f); return a ? `${a.family} ${a.style}`.trim() : f; };
+    let picked = false;   // only the first option for the current font is selected
+    const sel = f => !picked && f === current ? (picked = true) : false;
     const out = [];
-    if (current && !all.includes(current)) out.push(h("option", { value: current, selected: true },
+    if (current && !all.includes(current)) out.push(h("option", { value: current, selected: sel(current) },
       GFX.hasFont(current) ? `${current} (Adobe Fonts)` : `${current} (not added: stand-in)`));
-    out.push(h("optgroup", { label: "Built in" }, GFX.builtinFonts.map(f => h("option", { value: f, selected: f === current }, f))));
-    if (assetFonts.length) out.push(h("optgroup", { label: "Added fonts" }, [...new Set(assetFonts)].sort().map(f => h("option", { value: f, selected: f === current }, f))));
+    // Only fonts this workspace has (a recent one from elsewhere would be a stand-in here).
+    const recent = recentFonts().filter(f => all.includes(f)).slice(0, 8);
+    if (recent.length) out.push(h("optgroup", { label: "Recent" }, recent.map(f => h("option", { value: f, selected: sel(f) }, nameOf(f)))));
+    out.push(h("optgroup", { label: "Built in" }, GFX.builtinFonts.map(f => h("option", { value: f, selected: sel(f) }, f))));
+    if (assetFonts.length) out.push(h("optgroup", { label: "Added fonts" }, [...new Set(assetFonts)].sort().map(f => h("option", { value: f, selected: sel(f) }, f))));
     if (adobe.length) out.push(h("optgroup", { label: "Adobe Fonts" }, adobe.slice().sort((a, b) => a.postscript.localeCompare(b.postscript)).map(f =>
-      h("option", { value: f.postscript, selected: f.postscript === current,
+      h("option", { value: f.postscript, selected: sel(f.postscript),
         title: f.adobe === "pc" ? (f.kit ? "On this PC (Creative Cloud) and in the web project" : "On this PC through Creative Cloud: other PCs need it too, or add it to the web project")
           : "From the Adobe Fonts web project (any PC with internet)" },
         `${f.family} ${f.style}`.trim() + (f.adobe === "pc" && !f.kit ? " · this PC" : "")))));
@@ -961,7 +979,7 @@
       sections.push(h("div", { class: "sect" }, h("h3", {}, "Text"),
         lab("Text", bind(l, "text", "textarea")),
         h("div", { class: "muted small" }, "Use data: {{Source!B2}} · clock: {{time}} · {{countdown:19:30}}"),
-        lab("Font", h("select", { onchange: e => { snapshot(); l.font = e.target.value; changed({ props: true }); } }, fontOptions(l.font))),
+        lab("Font", h("select", { onchange: e => setFont(l, e.target.value) }, fontOptions(l.font))),
         missing ? h("div", { class: "warnline" }, `"${l.font}" isn't added: a similar font stands in. Add the font file in Assets.`) : null,
         h("div", { class: "grid3" }, lab("Size", bind(l, "size", "number", { min: 1 })), bind(l, "color", "color", { label: "Colour" }),
           lab("Weight", bind(l, "weight", "select", { num: true, options: [[300, "Light"], [400, "Regular"], [500, "Medium"], [600, "Semibold"], [700, "Bold"], [800, "Extra bold"], [900, "Black"]] }))),
@@ -985,7 +1003,7 @@
     } else if (l.type === "bracket") {
       sections.push(h("div", { class: "sect" }, h("h3", {}, "Bracket"),
         h("p", { class: "muted small" }, "The knockout bracket from Global > Tournament: 8 or 16 teams, single or double elimination (Control has the choice), drawn to fit this box."),
-        lab("Font", h("select", { onchange: e => { snapshot(); l.font = e.target.value; changed({ props: true }); } }, fontOptions(l.font))),
+        lab("Font", h("select", { onchange: e => setFont(l, e.target.value) }, fontOptions(l.font))),
         h("div", { class: "grid2" }, bind(l, "color", "color", { label: "Text" }), bind(l, "gold", "color", { label: "First round" })),
         h("div", { class: "grid2" }, bind(l, "dark", "color", { label: "Later rounds" }), bind(l, "line", "color", { label: "Lines" })),
         bind(l, "champ", "color", { label: "Champion's frame" })));
