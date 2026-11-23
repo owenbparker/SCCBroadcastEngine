@@ -140,6 +140,8 @@ label > input, label > select, label > textarea { margin-top: 3px; color: var(--
 .ly.drag-over { border-top: 2px solid var(--accent); }
 .ly .eye { width: 20px; text-align: center; opacity: .8; cursor: pointer; }
 .ly .eye.off { opacity: .25; }
+.ly .lock { width: 18px; text-align: center; font-size: 11px; cursor: pointer; opacity: 0; }
+.ly:hover .lock { opacity: .45; } .ly .lock.on { opacity: .9; }
 .ly .ic { width: 18px; text-align: center; color: var(--muted); font-size: 11px; }
 .ly .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ly .fld { font-size: 10px; color: var(--accent); border: 1px solid #2e5a8a; border-radius: 3px; padding: 0 4px; }
@@ -154,6 +156,7 @@ label > input, label > select, label > textarea { margin-top: 3px; color: var(--
 #canvas-zoom { min-width: 52px; font-variant-numeric: tabular-nums; }
 .sel-box { position: absolute; border: 1px solid var(--accent); pointer-events: none; }
 .sel-box.also { border-style: dashed; opacity: .8; }
+.sel-box.locked { border-style: dotted; border-color: var(--muted); }
 .sel-box.hover { border-color: #2e90fa88; border-style: dashed; }
 .handle { position: absolute; width: 10px; height: 10px; background: #fff; border: 1px solid var(--accent); border-radius: 2px; pointer-events: auto; transform: translate(-50%, -50%); }
 .guide { position: absolute; background: #ff3ea5; pointer-events: none; }

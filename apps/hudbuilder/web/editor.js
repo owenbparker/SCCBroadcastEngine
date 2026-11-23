@@ -574,7 +574,7 @@ window.Editor = (function () {
           onclick: ev => { if (!(ev.ctrlKey || ev.metaKey || ev.shiftKey)) selected.clear(); members.forEach(o => selected.add(o.id)); renderAll(); } },
           eye(members, hidden), h("span", { class: "lic" }, "▾"),
           h("span", { class: "lname", title: "Double-click to rename", ondblclick: ev => { ev.stopPropagation(); rename(name, val => { snapshot(); members.forEach(o => { o.groupName = val; }); changed(); }); } }, name),
-          h("span", { class: "lmeta" }, String(members.length))));
+          h("span", { class: "lmeta" }, String(members.length)), lock(members, members.every(o => o.locked))));
         members.forEach(o => rows.push(row(o, true)));
       } else rows.push(row(l, false));
       done.add(l.id);
@@ -583,6 +583,16 @@ window.Editor = (function () {
     box.replaceChildren(...rows);
   }
   const ICON = { rect: "▭", text: "T", image: "🖼", video: "▶", lottie: "✦", web: "◫" };
+  // Lock: a locked layer can't be clicked, dragged, resized, nudged or
+  // deleted on the canvas (pick it here to change it in the panel).
+  function lock(layers, locked) {
+    return h("button", { class: "lbtn lock" + (locked ? " on" : " dim"), title: locked ? "Unlock" : "Lock (can't be picked, moved or deleted on the canvas)", onclick: ev => {
+      ev.stopPropagation(); snapshot();
+      layers.forEach(o => { if (locked) delete o.locked; else o.locked = true; });
+      if (!locked) layers.forEach(o => selected.delete(o.id));
+      changed();
+    } }, locked ? "🔒" : "🔓");
+  }
   function eye(layers, hidden) {
     return h("button", { class: "lbtn" + (hidden ? " off" : ""), title: hidden ? "Show" : "Hide", onclick: ev => {
       ev.stopPropagation(); snapshot(); layers.forEach(o => { o.visible = hidden; }); changed();
@@ -598,9 +608,7 @@ window.Editor = (function () {
       h("span", { class: "lname", title: "Double-click to rename", ondblclick: ev => { ev.stopPropagation(); rename(l.name, val => { snapshot(); l.name = val; changed(); }); } }, l.name),
       live ? h("span", { class: "llive", title: "Follows a variable" }, "ƒ") : null,
       l.reference ? h("span", { class: "lmeta" }, "ref") : null,
-      h("button", { class: "lbtn" + (l.locked ? " on" : " dim"), title: l.locked ? "Unlock" : "Lock (can't be clicked on the canvas)", onclick: ev => {
-        ev.stopPropagation(); snapshot(); l.locked = !l.locked; if (!l.locked) delete l.locked; changed();
-      } }, l.locked ? "🔒" : "🔓"));
+      lock([l], !!l.locked));
     return r;
   }
   function rename(current, done) {
@@ -677,8 +685,12 @@ window.Editor = (function () {
   }
   function remove() {
     if (!selected.size) return;
+    const gone = sel().filter(l => !l.locked);
+    if (!gone.length) return toast("That layer is locked: unlock it (🔒 in Layers) to delete it", true);
+    if (gone.length < selected.size) toast("Locked layers were kept");
     snapshot();
-    hud.layers = hud.layers.filter(l => !selected.has(l.id));
+    const ids = new Set(gone.map(l => l.id));
+    hud.layers = hud.layers.filter(l => !ids.has(l.id));
     selected.clear();
     changed();
   }
@@ -840,7 +852,8 @@ window.Editor = (function () {
     if (["image", "video", "lottie"].includes(l.type)) kids.push(sourceField(l));
     if (l.type !== "text") kids.push(glowProps(l));
     kids.push(liveProps([l]), animProps(l),
-      sect(null, bind(l, "reference", "check", { label: "Only for lining up (never on air)" }),
+      sect(null, bind(l, "locked", "check", { label: "Locked (can't be picked, moved or deleted on the canvas)" }),
+        bind(l, "reference", "check", { label: "Only for lining up (never on air)" }),
         h("div", { class: "row-gap" },
           h("button", { class: "small", onclick: () => order("up"), title: "Ctrl+]" }, "Forward"), h("button", { class: "small", onclick: () => order("down"), title: "Ctrl+[" }, "Back"),
           h("button", { class: "small", onclick: () => { copy(); paste(20); } }, "Duplicate"), h("button", { class: "small danger", onclick: remove }, "Delete"))));

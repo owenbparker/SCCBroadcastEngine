@@ -145,7 +145,16 @@
       h("span", { class: "ic" }, TYPE_ICON[l.type] || "?"),
       h("span", { class: "nm", title: l.name }, l.name),
       l.field ? h("span", { class: "fld", title: `Changed from Control as "${l.field}"` }, "field") : null,
-      linked(l) ? h("span", { class: "fld live", title: "Follows live data" }, "live") : null)));
+      linked(l) ? h("span", { class: "fld live", title: "Follows live data" }, "live") : null,
+      h("span", { class: "lock" + (l.locked ? " on" : ""), title: l.locked ? "Unlock" : "Lock (can't be picked, moved or deleted on the canvas)",
+        onclick: e => { e.stopPropagation(); setLocked([l], !l.locked); } }, l.locked ? "🔒" : "🔓"))));
+  }
+  // Lock: a locked layer can't be clicked, dragged, resized, nudged or
+  // deleted on the canvas. Pick it in the list to change it in the panel.
+  function setLocked(layers, on) {
+    snapshot();
+    layers.forEach(l => { if (on) l.locked = true; else delete l.locked; });
+    changed({ props: true });
   }
   // Does the layer follow live data (a link, a fill or a "Show when")?
   const linked = l => !!(l.meter || l.when || [l.text, l.src, l.fill].some(v => /\{\{\s*(Rocket League HUD|Global)!/i.test(v || "")));
@@ -361,9 +370,9 @@
     if (!l) { $("#canvas-pos").textContent = ""; return; }
     const [x, y] = toScreen(l.x, l.y);
     const w = l.w * scale, hgt = l.h * scale;
-    const box = h("div", { class: "sel-box", style: { left: x + "px", top: y + "px", width: w + "px", height: hgt + "px",
+    const box = h("div", { class: "sel-box" + (l.locked ? " locked" : ""), style: { left: x + "px", top: y + "px", width: w + "px", height: hgt + "px",
       transform: l.rotation ? `rotate(${l.rotation}deg)` : "" } });
-    for (const hd of HANDLES) {
+    if (!l.locked) for (const hd of HANDLES) {
       const hx = hd.includes("w") ? 0 : hd.includes("e") ? 100 : 50;
       const hy = hd.includes("n") ? 0 : hd.includes("s") ? 100 : 50;
       box.appendChild(h("div", { class: "handle", "data-h": hd, style: { left: hx + "%", top: hy + "%", cursor: hd + "-resize" } }));
@@ -373,13 +382,13 @@
       if (g.x != null) { const [gx] = toScreen(g.x, 0); selLayer.appendChild(h("div", { class: "guide", style: { left: gx + "px", top: 0, bottom: 0, width: "1px" } })); }
       if (g.y != null) { const [, gy] = toScreen(0, g.y); selLayer.appendChild(h("div", { class: "guide", style: { top: gy + "px", left: 0, right: 0, height: "1px" } })); }
     }
-    $("#canvas-pos").textContent = `${Math.round(l.x)}, ${Math.round(l.y)} · ${Math.round(l.w)}×${Math.round(l.h)}`;
+    $("#canvas-pos").textContent = `${Math.round(l.x)}, ${Math.round(l.y)} · ${Math.round(l.w)}×${Math.round(l.h)}` + (l.locked ? " · locked" : "");
   }
 
   // Which layer is at a point (top first, visible ones only).
   function hit(px, py) {
     for (const l of [...comp.layers].reverse()) {
-      if (l.visible === false) continue;
+      if (l.visible === false || l.locked) continue;
       if (px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h) return l;
     }
     return null;
@@ -417,7 +426,7 @@
     if (!handle) {
       const under = hit(px, py);
       // Clicking inside the selected layer keeps it (it may be under another).
-      if (!(l && px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h) || e.altKey) l = under;
+      if (!(l && !l.locked && px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h) || e.altKey) l = under;
       if (!l || !multi.has(l.id)) multi.clear();
       selected = l ? l.id : null;
       renderLayers();
@@ -425,6 +434,7 @@
       drawSelection();
       if (!l) return;
     }
+    if (l.locked) return;
     e.preventDefault();
     const start = { x: l.x, y: l.y, w: l.w, h: l.h, px, py };
     const ratio = l.w / Math.max(1, l.h);
@@ -495,6 +505,7 @@
     const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     if (moves[e.key]) {
       e.preventDefault();
+      if (l.locked) return toast("That layer is locked: unlock it (🔒 in Layers) to move it", true);
       snapshot();
       l.x += moves[e.key][0]; l.y += moves[e.key][1];
       changed({ keepList: true });
@@ -530,7 +541,8 @@
     pastes = {};
     try { localStorage.setItem(CLIP_KEY, JSON.stringify(clip)); } catch (e) { /* too big or private: this window keeps it */ }
     const what = layers.length === 1 ? `"${layers[0].name}"` : `${layers.length} layers`;
-    if (cut) { removeLayers(layers); toast(`Cut ${what}: Ctrl+V pastes it into any graphic`); }
+    if (cut && layers.every(l => l.locked)) toast(`Copied ${what}: it's locked, so it stays here (unlock it to cut)`);
+    else if (cut) { removeLayers(layers); toast(`Cut ${what}: Ctrl+V pastes it into any graphic`); }
     else toast(`Copied ${what}: Ctrl+V pastes into any graphic`);
   }
   function readClip() {
@@ -580,6 +592,10 @@
   }
   function removeLayers(layers) {
     if (!layers.length) return;
+    const kept = layers.filter(l => l.locked).length;
+    layers = layers.filter(l => !l.locked);
+    if (!layers.length) return toast("That layer is locked: unlock it (🔒 in Layers) to delete it", true);
+    if (kept) toast(`${kept} locked layer(s) kept`);
     snapshot();
     const gone = new Set(layers.map(x => x.id));
     comp.layers = comp.layers.filter(x => !gone.has(x.id));
@@ -715,7 +731,9 @@
         h("button", { class: "small", title: "Full screen", onclick: () => { snapshot(); Object.assign(l, { x: 0, y: 0, w: GFX.W, h: GFX.H }); changed({ props: true }); } }, "Fill"),
         h("button", { class: "small", title: "Centre on the canvas", onclick: () => { snapshot(); l.x = Math.round((GFX.W - l.w) / 2); l.y = Math.round((GFX.H - l.h) / 2); changed({ props: true }); } }, "Centre"),
         h("div", { class: "spacer" }),
-        h("button", { class: "small danger", onclick: () => { snapshot(); comp.layers = comp.layers.filter(x => x !== l); selected = null; changed({ props: true }); } }, "Delete"))));
+        h("button", { class: "small danger", onclick: () => removeLayers([l]) }, "Delete")),
+      h("label", { class: "toggle", title: "A locked layer can't be picked, moved, resized or deleted on the canvas" },
+        h("input", { type: "checkbox", checked: !!l.locked, onchange: e => setLocked([l], e.target.checked) }), "Locked")));
 
     if (l.type === "text") {
       const missing = !GFX.hasFont(l.font);
@@ -863,7 +881,10 @@
     props.replaceChildren(
       h("div", { class: "sect" }, h("h3", {}, `${layers.length} layers`),
         h("p", { class: "muted small" }, layers.map(l => l.name).join(", ")),
-        h("p", { class: "muted small" }, "Ctrl or Shift + click in the list picks more (or fewer).")),
+        h("p", { class: "muted small" }, "Ctrl or Shift + click in the list picks more (or fewer)."),
+        h("div", { class: "row-gap" },
+          h("button", { class: "small", onclick: () => setLocked(layers, true) }, "🔒 Lock all"),
+          h("button", { class: "small", onclick: () => setLocked(layers, false) }, "🔓 Unlock all"))),
       liveSection(layers),
       h("div", { class: "sect" }, h("h3", {}, "Animation"),
         h("div", { class: "grid2" },
@@ -918,7 +939,7 @@
       hudSection(),
       linksSection(),
       h("div", { class: "sect" }, h("h3", {}, "Shortcuts"),
-        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl / Shift + click picks more) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed.")));
+        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl / Shift + click picks more) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. 🔒 in Layers locks a layer: it can't be picked, moved or deleted on the canvas (pick it in the list to change it). Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed.")));
   }
   // --- Add to a HUD: this graphic as a game HUD's own overlay -------------------
   let hudGame = "rl";
