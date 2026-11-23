@@ -140,6 +140,10 @@ class FigTests(unittest.TestCase):
             node(8, 3, "GROUP", "Masked", 100, 100, 800, 900),
             node(9, 8, "ELLIPSE", "Mask", 100, 100, 0, 0, fillPaints=[solid(0, 0, 0)], mask=True),
             node(10, 8, "RECTANGLE", "Rectangle 3", 200, 100, 0, 0, fillPaints=[solid(1, 0, 0)]),
+            node(13, 3, "GROUP", "Score box", 300, 100, 1000, 900),
+            node(14, 13, "RECTANGLE", "Rectangle 5", 150, 100, 0, 0, fillPaints=[solid(0, 0, 1)]),
+            node(15, 13, "TEXT", "SCORE", 150, 100, 150, 0, fillPaints=[solid(1, 1, 1)], fontSize=32.0,
+                 fontName={"family": "Inter", "style": "Bold", "postscript": "Inter-Bold"}, textData={"characters": "0"}),
             node(11, 2, "FRAME", "Lower third", 800, 200, 3000, 0, fillPaints=[]),
             node(12, 11, "RECTANGLE", "Rectangle 4", 800, 200, 0, 0, fillPaints=[solid(0, 0, 0, 0.5)]),
         ]
@@ -176,6 +180,12 @@ class FigTests(unittest.TestCase):
             with open(ws.asset_path(cut["mask"])) as f:
                 self.assertIn("<mask", f.read())
             self.assertNotIn("Mask", by)                 # the mask itself isn't drawn
+            # (a Figma group's layers are a Composer group; a group of one isn't)
+            self.assertTrue(by["Rectangle 5"].get("group"))
+            self.assertEqual(by["Rectangle 5"]["group"], by["SCORE"]["group"])
+            self.assertEqual(by["SCORE"]["groupName"], "Score box")
+            self.assertNotIn("group", by["Rectangle 3"])
+            self.assertNotIn("group", box)
             lower = r["comps"][1]["layers"][0]
             self.assertEqual((lower["x"], lower["y"], lower["w"], lower["h"]), (560, 440, 800, 200))   # its size, centred
             self.assertEqual(lower["fill"], "#00000080")
@@ -183,6 +193,22 @@ class FigTests(unittest.TestCase):
             self.assertTrue(any("background" in n for n in r["notes"]))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_tidy_groups(self):
+        from gfxengine.project import tidy_groups
+        L = lambda i, g=None: dict({"id": i}, **({"group": g, "groupName": g.upper()} if g else {}))
+        layers = [L("a", "g1"), L("b"), L("c", "g1"), L("d", "g2"), L("e")]
+        tidy_groups(layers)
+        # g1 comes together where its top layer was; g2 (one layer) is no group
+        self.assertEqual([l["id"] for l in layers], ["b", "a", "c", "d", "e"])
+        self.assertNotIn("group", layers[3])
+        self.assertEqual(layers[1]["groupName"], "G1")
+        split = [L("a", "g1"), L("b"), L("c", "g1"), L("d", "g2"), L("e", "g2")]
+        tidy_groups(split, keep_order=True)
+        self.assertEqual([l["id"] for l in split], ["a", "b", "c", "d", "e"])   # an import keeps its order
+        self.assertEqual([l.get("group") for l in split], [None, None, None, "g2", "g2"])
+        everything = [L("a", "g"), L("b", "g")]
+        self.assertNotIn("group", tidy_groups(everything)[0])
 
     def test_not_a_figma_file(self):
         from gfxengine.assets import Assets

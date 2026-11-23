@@ -30,7 +30,7 @@ import zipfile
 
 from . import figkiwi
 from .log import log
-from .project import ANIM_NONE, blank_comp, new_id
+from .project import ANIM_NONE, blank_comp, new_id, tidy_groups
 
 CONTAINERS = {"FRAME", "GROUP", "SECTION", "SYMBOL", "INSTANCE", "COMPONENT", "COMPONENT_SET"}
 VECTORS = {"VECTOR", "STAR", "LINE", "REGULAR_POLYGON", "BOOLEAN_OPERATION", "POLYGON"}
@@ -574,6 +574,13 @@ class _Import:
                         here = here + [clip]
                     continue
                 self.walk(child, mm, op, vis, here, out)
+            if node is not self.top:
+                # (a Figma group or frame: its layers are a Composer group,
+                # the innermost one they're in)
+                gid, gname = new_id("g"), (node.get("name") or "Group").strip()[:80] or "Group"
+                for layer in out[start:]:
+                    if not layer.get("group"):
+                        layer["group"], layer["groupName"] = gid, gname
         self._finish(out, start, vis, clips, own_only=t in CONTAINERS)
 
     def _finish(self, out, start, vis, clips, own_only=False):
@@ -870,7 +877,7 @@ class _Import:
             if not bg and (layer["type"] == "text" or (layer["type"] == "image" and not GENERIC.match(layer["name"].strip())
                                                       and not layer["name"].endswith((" outline", " background")))):
                 layer["field"] = _field_name(layer["name"], taken)
-        comp["layers"] = layers
+        comp["layers"] = tidy_groups(layers, keep_order=True)
         if not os.listdir(self.folder):
             os.rmdir(self.folder)
         return comp

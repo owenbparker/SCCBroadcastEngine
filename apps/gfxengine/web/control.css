@@ -151,6 +151,13 @@ label > input, label > select, label > textarea { margin-top: 3px; color: var(--
 .ly .ic { width: 18px; text-align: center; color: var(--muted); font-size: 11px; }
 .ly .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ly .fld { font-size: 10px; color: var(--accent); border: 1px solid #2e5a8a; border-radius: 3px; padding: 0 4px; }
+/* groups (Ctrl+G): a row for the group, its layers indented under it */
+.ly.grp { font-weight: 600; }
+.ly.grp .fold { width: 14px; text-align: center; color: var(--muted); font-size: 11px; cursor: pointer; }
+.ly.grp .fold:hover { color: var(--text, #fff); }
+.ly.grp .cnt { font-size: 10px; color: var(--muted); border: 1px solid var(--line, #333); border-radius: 8px; padding: 0 5px; font-weight: 400; }
+.ly.in { margin-left: 18px; border-left: 1px solid var(--line, #333); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.in-group { align-items: center; margin-top: 6px; }
 .canvas-wrap { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .canvas-bar { display: flex; align-items: center; gap: 8px; height: 36px; }
 .canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; border-radius: 8px; border: 1px solid var(--line); }
@@ -163,6 +170,9 @@ label > input, label > select, label > textarea { margin-top: 3px; color: var(--
 .sel-box { position: absolute; border: 1px solid var(--accent); pointer-events: none; }
 .sel-box.also { border-style: dashed; opacity: .8; }
 .sel-box.locked { border-style: dotted; border-color: var(--muted); }
+.sel-box.group { border: 1px dashed var(--accent); outline: 1px solid #0006; }
+.sel-box.group .sel-tag { position: absolute; left: -1px; bottom: 100%; margin-bottom: 2px; font: 600 10px/1.4 Inter, sans-serif; color: #fff;
+  background: var(--accent); padding: 0 5px; border-radius: 3px; white-space: nowrap; }
 .sel-box.hover { border-color: #2e90fa88; border-style: dashed; }
 .handle { position: absolute; width: 10px; height: 10px; background: #fff; border: 1px solid var(--accent); border-radius: 2px; pointer-events: auto; transform: translate(-50%, -50%); }
 .guide { position: absolute; background: #ff3ea5; pointer-events: none; }

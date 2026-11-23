@@ -43,6 +43,39 @@ def new_id(prefix=""):
     return prefix + secrets.token_hex(4)
 
 
+def tidy_groups(layers, keep_order=False):
+    """Layer groups (a layer's "group" id and "groupName", as in the Composer
+    and HUD Builder): a group of one, or one holding every layer, is no group;
+    and a group's layers sit together in the stack (where its top one is).
+    keep_order: a group with other layers between its own is no group
+    instead (an import: what's drawn over what mustn't change)."""
+    count, first, last = {}, {}, {}
+    for i, l in enumerate(layers):
+        g = l.get("group")
+        if g:
+            count[g] = count.get(g, 0) + 1
+            first.setdefault(g, i)
+            last[g] = i
+    for l in layers:
+        g = l.get("group")
+        if g and (count[g] < 2 or count[g] == len(layers) or (keep_order and last[g] - first[g] + 1 != count[g])):
+            l.pop("group", None)
+            l.pop("groupName", None)
+    top = {}
+    for i, l in enumerate(layers):
+        if l.get("group"):
+            top[l["group"]] = i
+    out = []
+    for i, l in enumerate(layers):
+        g = l.get("group")
+        if not g:
+            out.append(l)
+        elif top[g] == i:
+            out.extend(m for m in layers if m.get("group") == g)
+    layers[:] = out
+    return layers
+
+
 def blank_project():
     return {"name": "My graphics", "compositions": [], "transitions": copy.deepcopy(DEFAULT_TRANSITIONS),
             "default_transition": "fade", "sources": []}
