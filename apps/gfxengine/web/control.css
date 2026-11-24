@@ -614,3 +614,48 @@ table.sheet td.c:hover { background: #1d3b5e; }
 .align-sect .al-btn:hover { background: rgba(127, 127, 127, .16); }
 .align-sect .al-btn:active { background: rgba(127, 127, 127, .28); }
 .align-sect .al-ic { display: grid; place-items: center; line-height: 0; }
+
+/* Layers: Photoshop's bar (blend mode, opacity, clip, mask) and clipped rows */
+.layer-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); min-height: 38px; flex-wrap: wrap; }
+.layer-bar .blend-pick { flex: 1 1 110px; min-width: 0; padding: 3px 6px; font-size: 12px; }
+.layer-bar .op { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin: 0; }
+.layer-bar .op input { width: 52px; padding: 3px 4px; font-size: 12px; }
+button.icon { min-width: 26px; padding: 3px 6px; }
+button.icon.on { background: var(--accent); color: #000; border-color: var(--accent); }
+.ly.clipped { padding-left: 10px; }
+.ly .clip-arrow { color: var(--accent); font-size: 12px; width: 10px; }
+.ly .fld.mask { color: #c9a7ff; border-color: #5a3d8a; }
+.ly .fld.blend { color: var(--muted); border-color: var(--line); max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-gap .dropper { padding: 3px 5px; }
+
+/* The tool dock under the canvas (Figma's), the pen */
+.canvas-hold { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tool-dock { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px;
+  background: var(--panel, #1b1d22); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px #0008; z-index: 60; }
+.tool-dock .tool { min-width: 32px; height: 30px; padding: 0 8px; border-radius: 7px; border: 0; background: transparent; color: inherit; font-size: 15px; cursor: pointer; }
+.tool-dock .tool:hover { background: var(--panel2); }
+.tool-dock .tool.on { background: #2e90fa; color: #fff; }
+.tool-dock .sep { width: 1px; background: var(--line); margin: 4px 3px; }
+.canvas.pen-on, .canvas.pen-on * { cursor: crosshair !important; }
+.canvas.pen-edit { cursor: default; }
+
+/* The Design panel (Figma's) */
+.props .sect.design .sub { margin: 8px 0 3px; }
+.props .sect-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.props .sect-head h3 { margin: 8px 0 4px; }
+.props .sect-head .add-fx { width: 44px; padding: 2px 4px; }
+.fnum { display: flex; align-items: center; gap: 0; margin: 0; background: var(--panel2); border-radius: 6px; overflow: hidden; }
+.fnum .k { padding: 0 6px 0 8px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fnum input { flex: 1; min-width: 0; border: 0; background: transparent; }
+.props .sect.design .grid2, .props .sect.design .grid3, .props .sect.design .grid4 { gap: 6px; margin: 4px 0; }
+.rot-row { display: flex; gap: 6px; align-items: center; }
+.rot-row .fnum { flex: 1; }
+.fx-row { border-left: 2px solid var(--line); padding-left: 8px; margin: 8px 0; }
+.fx-row.off { opacity: .5; }
+.fx-row select { flex: 1; }
+.sel-colours { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.sel-colours .swatch { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sel-colours .swatch input { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+.sel-box.draw { border: 1px solid #2e90fa; background: #2e90fa1a; }
+.sel-box.draw.round { border-radius: 50%; }
+.canvas.box-tool { cursor: crosshair; }
