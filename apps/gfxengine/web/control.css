@@ -638,3 +638,24 @@ button.icon.on { background: var(--accent); color: #000; border-color: var(--acc
 .tool-dock .sep { width: 1px; background: var(--line); margin: 4px 3px; }
 .canvas.pen-on, .canvas.pen-on * { cursor: crosshair !important; }
 .canvas.pen-edit { cursor: default; }
+
+/* The Design panel (Figma's) */
+.props .sect.design .sub { margin: 8px 0 3px; }
+.props .sect-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.props .sect-head h3 { margin: 8px 0 4px; }
+.props .sect-head .add-fx { width: 44px; padding: 2px 4px; }
+.fnum { display: flex; align-items: center; gap: 0; margin: 0; background: var(--panel2); border-radius: 6px; overflow: hidden; }
+.fnum .k { padding: 0 6px 0 8px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fnum input { flex: 1; min-width: 0; border: 0; background: transparent; }
+.props .sect.design .grid2, .props .sect.design .grid3, .props .sect.design .grid4 { gap: 6px; margin: 4px 0; }
+.rot-row { display: flex; gap: 6px; align-items: center; }
+.rot-row .fnum { flex: 1; }
+.fx-row { border-left: 2px solid var(--line); padding-left: 8px; margin: 8px 0; }
+.fx-row.off { opacity: .5; }
+.fx-row select { flex: 1; }
+.sel-colours { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.sel-colours .swatch { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sel-colours .swatch input { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+.sel-box.draw { border: 1px solid #2e90fa; background: #2e90fa1a; }
+.sel-box.draw.round { border-radius: 50%; }
+.canvas.box-tool { cursor: crosshair; }

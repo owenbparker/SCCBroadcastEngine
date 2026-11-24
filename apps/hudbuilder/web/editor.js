@@ -736,6 +736,7 @@ window.Editor = (function () {
     if (mod && k === "x") { copy(); return remove(); }
     if (mod && k === "v") { e.preventDefault(); return paste(20); }
     if (mod && k === "d") { e.preventDefault(); copy(); return paste(20); }
+    if (e.shiftKey && !mod && !e.altKey && (e.code === "KeyH" || e.code === "KeyV")) { e.preventDefault(); return flip(sel(), e.code === "KeyH" ? "flipX" : "flipY"); }
     if (!mod && !e.altKey && k === "p") { e.preventDefault(); return startPen(); }
     if (k === "enter" && sel().length === 1 && sel()[0].type === "path") { e.preventDefault(); return editPoints(sel()[0]); }
     if (mod && e.altKey && e.code === "KeyG") { e.preventDefault(); return toggleClip(sel()); }
@@ -770,6 +771,40 @@ window.Editor = (function () {
     root.querySelectorAll(".gfx-A").forEach(a => a.getAnimations().forEach(x => x.cancel()));
     b.disabled = false;
   });
+
+  // Flips and effects (layer.fx: drop shadow, inner shadow, glow, blur, background blur), as the Composer's.
+  function flip(list, k) {
+    list = list.filter(l => !l.locked);
+    if (!list.length) return;
+    snapshot();
+    const on = !list.every(l => l[k]);
+    list.forEach(l => { if (on) l[k] = true; else delete l[k]; });
+    changed();
+  }
+  const FX = { shadow: "Drop shadow", inner: "Inner shadow", glow: "Outer glow", blur: "Layer blur", bgblur: "Background blur" };
+  const FX_NEW = { shadow: { x: 0, y: 6, blur: 16, color: "#00000099" }, inner: { x: 0, y: 2, blur: 8, spread: 0, color: "#00000080" },
+    glow: { blur: 20, color: "#1f6feb" }, blur: { blur: 6 }, bgblur: { blur: 20 } };
+  function fxProps(l) {
+    const list = Array.isArray(l.fx) ? l.fx : [];
+    const edit = fn => { snapshot(); fn(); l.fx = (l.fx || []).filter(Boolean); if (!l.fx.length) delete l.fx; changed(); };
+    const n = (f, k, t) => lab(t, h("input", { type: "number", value: f[k] ?? 0, onchange: e => edit(() => { f[k] = +e.target.value || 0; }) }));
+    const colour = f => lab("Colour", h("div", { class: "colour-row" },
+      h("input", { type: "color", value: /^#[0-9a-f]{6}/i.test(f.color || "") ? f.color.slice(0, 7) : "#000000", onchange: e => edit(() => { f.color = e.target.value + (/^#[0-9a-f]{8}$/i.test(f.color || "") ? f.color.slice(7) : ""); }) }),
+      h("input", { type: "text", value: f.color || "", onchange: e => edit(() => { f.color = e.target.value.trim(); }) }),
+      h("button", { type: "button", class: "small dropper", title: "Eyedropper", onclick: async ev => { ev.preventDefault(); const c = await eyedrop(); if (c) edit(() => { f.color = c; }); } }, "💧")));
+    return sect("Effects",
+      list.map((f, i) => h("div", { class: "fx-row" + (f.off ? " off" : "") },
+        h("div", { class: "row-gap" },
+          h("button", { class: "small", title: f.off ? "Show the effect" : "Hide the effect", onclick: () => edit(() => { if (f.off) delete f.off; else f.off = true; }) }, f.off ? "◌" : "●"),
+          h("select", { onchange: e => edit(() => { l.fx[i] = Object.assign({ type: e.target.value }, FX_NEW[e.target.value], { color: f.color }); }) },
+            Object.entries(FX).map(([v, t]) => h("option", { value: v, selected: v === f.type }, t))),
+          h("button", { class: "small", title: "Remove", onclick: () => edit(() => { l.fx.splice(i, 1); }) }, "−")),
+        f.type === "shadow" || f.type === "inner" ? grid(n(f, "x", "Across"), n(f, "y", "Down"), n(f, "blur", "Blur"), f.type === "inner" ? n(f, "spread", "Spread") : null)
+          : grid(n(f, "blur", f.type === "glow" ? "Size" : "Blur")),
+        ["shadow", "inner", "glow"].includes(f.type) ? colour(f) : null)),
+      h("select", { onchange: e => { const t = e.target.value; e.target.value = ""; if (t) edit(() => { l.fx = [...list, Object.assign({ type: t }, FX_NEW[t])]; }); } },
+        h("option", { value: "" }, "+ Add an effect…"), Object.entries(FX).map(([v, t]) => h("option", { value: v }, t))));
+  }
 
   // --- the pen (vector paths), as the GFX Engine's Composer (pentool.js) -----------------
   let pen = null, penEdit = null;
@@ -989,7 +1024,10 @@ window.Editor = (function () {
         grid(bind(l, "x", "number", { label: "X" }), bind(l, "y", "number", { label: "Y" }), bind(l, "w", "number", { label: "Width", min: 1 }), bind(l, "h", "number", { label: "Height", min: 1 })),
         grid(bind(l, "rotation", "number", { label: "Rotate °" }), opacityField(l),
           bind(l, "blend", "select", { label: "Blend", groups: BLEND_GROUPS.map(([g, os]) => [g, os.map(b => [b, BLEND_LABEL[b]])]), def: "normal", after: () => renderLayers() })),
-        alignRow(list)),
+        alignRow(list),
+        h("div", { class: "row-gap" },
+          h("button", { class: "small" + (l.flipX ? " on" : ""), title: "Flip across (Shift+H)", onclick: () => flip([l], "flipX") }, "⇋ Flip across"),
+          h("button", { class: "small" + (l.flipY ? " on" : ""), title: "Flip up and down (Shift+V)", onclick: () => flip([l], "flipY") }, "⇵ Flip up and down"))),
       maskProps(l),
     ];
     if (l.type === "rect") kids.push(shapeProps(l));
@@ -997,6 +1035,7 @@ window.Editor = (function () {
     if (l.type === "text") kids.push(textProps(l));
     if (["image", "video", "lottie"].includes(l.type)) kids.push(sourceField(l));
     if (l.type !== "text") kids.push(glowProps(l));
+    kids.push(fxProps(l));
     kids.push(liveProps([l]), animProps(l),
       sect(null, bind(l, "locked", "check", { label: "Locked (can't be picked, moved or deleted on the canvas)" }),
         bind(l, "reference", "check", { label: "Only for lining up (never on air)" }),

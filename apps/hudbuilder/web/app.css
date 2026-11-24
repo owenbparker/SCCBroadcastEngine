@@ -329,3 +329,7 @@ body.embedded .engine-card, body.embedded #ed-game { display: none !important; }
 .colour-row .dropper { padding: 3px 6px; flex: 0 0 auto; }
 .tool.on { background: var(--x-accent); color: #000; }
 .ed-canvas.pen-on, .ed-canvas.pen-on * { cursor: crosshair !important; }
+.fx-row { border-left: 2px solid var(--x-line, #333); padding-left: 8px; margin: 6px 0 10px; }
+.fx-row.off { opacity: .5; }
+.fx-row select { flex: 1; }
+button.small.on { background: var(--x-accent); color: #000; }
