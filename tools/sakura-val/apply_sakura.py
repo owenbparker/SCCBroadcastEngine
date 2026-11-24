@@ -22,6 +22,10 @@ PARTS = {
     "#tracker > div:nth-of-type(1)": {"bg": MAROON, "pic": "sakura-maroon.svg"},     # tracker team box
     "#tracker > div:nth-of-type(2)": {"bg": MAROON, "pic": "sakura-maroon.svg"},     # tracker team box
     "#tracker > div:nth-of-type(3)": {"bg": MAROON, "pic": "sakura-maroon.svg"},     # tracker round grid
+    "#rwin > div:nth-of-type(1)": {"pic": "roundwin-sakura.png"},             # round win background
+    "#rwin > div:nth-of-type(5)": {"pic": "sakura-bar.svg"},                  # round win bar (was yellow)
+    "#rwin > div:nth-of-type(6)": {"color": "#FFF7FA"},                       # round win bar text
+    "#rwin > div:nth-of-type(6) span + span::before": {"bg": "#FFF7FA"},      # the dots between its words
 }
 
 
@@ -59,13 +63,16 @@ def main():
         name = spec.get("pic")
         if name and name not in pics:
             with open(os.path.join(HERE, name), "rb") as f:
-                pics[name] = call(base + "/hudedit/upload?name=" + name, raw=f.read(), ctype="image/svg+xml")["name"]
+                pics[name] = call(base + "/hudedit/upload?name=" + name, raw=f.read(),
+                              ctype="image/png" if name.endswith(".png") else "image/svg+xml")["name"]
     doc = call(base + "/hudedit/edits?design=" + key)
     edits = {k: doc.get(k) for k in ("rules", "added", "fonts", "settings")}
     rules = edits["rules"] = dict(edits.get("rules") or {})
     for sel, spec in PARTS.items():
         r = dict(rules.get(sel) or {})
-        r["bg"] = spec["bg"]
+        for k in ("bg", "color"):
+            if spec.get(k):
+                r[k] = spec[k]
         if spec.get("pic"):
             r["img"], r["imgKind"] = pics[spec["pic"]], "bg"
         rules[sel] = r
