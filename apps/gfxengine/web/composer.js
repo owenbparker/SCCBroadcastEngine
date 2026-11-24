@@ -15,7 +15,7 @@
   const undo = [], redo = [];
   try { compId = localStorage.getItem("gfx-edit"); } catch (e) { /* */ }
 
-  const TYPE_ICON = { text: "T", rect: "▭", image: "🖼", video: "▶", lottie: "✦", bracket: "⊏", web: "◫" };
+  const TYPE_ICON = { text: "T", rect: "▭", image: "🖼", video: "▶", lottie: "✦", bracket: "⊏", web: "◫", path: "✒" };
 
   // --- saving ------------------------------------------------------------
   const saveSoon = debounce(save, 120);
@@ -41,6 +41,7 @@
     redo.length = 0;
   }
   function restore(json) {
+    if (penEdit) penEdit.stop();
     comp = JSON.parse(json);
     if (!comp.layers.some(l => l.id === selected)) selected = null;
     for (const id of [...multi]) if (!comp.layers.some(l => l.id === id)) multi.delete(id);
@@ -144,6 +145,7 @@
   const withGroup = l => l && l.group ? membersOf(l.group) : l ? [l] : [];
   function renderLayers() {
     const list = $("#layer-list");
+    renderLayerBar();
     if (!comp) { list.replaceChildren(); return; }
     // Top layer first, as in Photoshop.
     const rows = [], done = new Set();
@@ -211,14 +213,17 @@
   }
   function layerRow(l, inGroup) {
     return h("div", Object.assign({
-      class: "ly" + (inGroup ? " in" : "") + (l.id === selected || multi.has(l.id) ? " sel" : ""),
+      class: "ly" + (inGroup ? " in" : "") + (l.id === selected || multi.has(l.id) ? " sel" : "") + (l.clipBelow ? " clipped" : ""),
       onmousedown: e => { if (e.shiftKey) e.preventDefault(); },  // no text highlight on Shift+click
-      onclick: e => e.shiftKey ? pickRange(l.id, e.ctrlKey || e.metaKey) : (e.ctrlKey || e.metaKey) ? pickToo(l.id) : selectLayer(l.id),
+      onclick: e => e.altKey ? toggleClip([l]) : e.shiftKey ? pickRange(l.id, e.ctrlKey || e.metaKey) : (e.ctrlKey || e.metaKey) ? pickToo(l.id) : selectLayer(l.id),
     }, dragProps(() => [l.id], { id: l.id, group: l.group, row: "layer" })),
       h("span", { class: "eye" + (l.visible === false ? " off" : ""), title: "Show / hide",
         onclick: e => { e.stopPropagation(); snapshot(); l.visible = l.visible === false; changed(); } }, "👁"),
-      h("span", { class: "ic" }, TYPE_ICON[l.type] || "?"),
+      l.clipBelow ? h("span", { class: "clip-arrow", title: "Clipped: shows only inside the layer under it (Ctrl+Alt+G to undo)" }, "↳") : null,
+      h("span", { class: "ic" }, l.type === "rect" && l.shape === "ellipse" ? "◯" : TYPE_ICON[l.type] || "?"),
       h("span", { class: "nm", title: l.name }, l.name),
+      l.maskOnly ? h("span", { class: "fld mask", title: "A mask: not drawn itself, the clipped layers above show inside it" }, "mask") : null,
+      l.blend && l.blend !== "normal" ? h("span", { class: "fld blend", title: "Blend mode: " + blendName(l.blend) }, blendName(l.blend)) : null,
       l.field ? h("span", { class: "fld", title: `Changed from Control as "${l.field}"` }, "field") : null,
       linked(l) ? h("span", { class: "fld live", title: "Follows live data" }, "live") : null,
       h("span", { class: "lock" + (l.locked ? " on" : ""), title: l.locked ? "Unlock" : "Lock (can't be picked, moved or deleted on the canvas)",
@@ -470,7 +475,7 @@
   }, { passive: false });
   // Middle mouse, or Space held, drags the view.
   canvas.addEventListener("mousedown", e => {
-    if (!(e.button === 1 || (e.button === 0 && spaceDown))) return;
+    if (!(e.button === 1 || (e.button === 0 && (spaceDown || tool === "hand")))) return;
     e.preventDefault(); e.stopImmediatePropagation();
     const sx = e.clientX - offX, sy = e.clientY - offY;
     canvas.classList.add("panning");
@@ -523,6 +528,8 @@
   const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   function drawSelection(guides) {
     selLayer.replaceChildren();
+    if (pen) pen.redraw();
+    if (penEdit) { penEdit.redraw(); return; }
     for (const id of multi) {
       const o = layerById(id);
       if (!o || id === selected) continue;
@@ -683,6 +690,7 @@
   }
   canvas.addEventListener("dblclick", () => {
     const l = layerById(selected);
+    if (l && l.type === "path") return editPoints(l);
     if (l && l.type === "text") { const t = document.querySelector("#props textarea[data-k=text]"); if (t) { t.focus(); t.select(); } }
   });
 
@@ -698,6 +706,14 @@
     }
     if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); if (redo.length) { undo.push(JSON.stringify(comp)); restore(redo.pop()); } return; }
     if (mod && e.key.toLowerCase() === "v" && !e.altKey) { e.preventDefault(); pasteLayers(); return; }
+    if (mod && e.altKey && e.code === "KeyG") { e.preventDefault(); return toggleClip(picked()); }
+    if (e.shiftKey && !mod && !e.altKey && (e.code === "KeyH" || e.code === "KeyV")) { e.preventDefault(); return flipPicked(e.code === "KeyH" ? "flipX" : "flipY"); }
+    if (!mod && !e.altKey && !e.shiftKey && ["r", "o", "t", "h"].includes(e.key.toLowerCase())) { e.preventDefault(); return setTool({ r: "rect", o: "ellipse", t: "text", h: "hand" }[e.key.toLowerCase()]); }
+    if (!mod && !e.altKey && e.key.toLowerCase() === "p") { e.preventDefault(); return setTool("pen"); }
+    if (!mod && !e.altKey && e.key.toLowerCase() === "v") { e.preventDefault(); return setTool("move"); }
+    if (e.key === "Enter" && l && l.type === "path") { e.preventDefault(); return editPoints(l); }
+    if (e.shiftKey && !mod && (e.key === "+" || e.key === "_")) { e.preventDefault(); return stepBlend(e.key === "+" ? 1 : -1); }
+    if (!mod && !e.altKey && e.key.toLowerCase() === "i") { e.preventDefault(); return eyedropLayer(); }
     if (mod && e.key.toLowerCase() === "g" && !e.altKey) { e.preventDefault(); if (e.shiftKey) ungroupLayers(); else groupLayers(); return; }
     if (!l) return;
     if (mod && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "x") && !e.altKey) {
@@ -912,7 +928,8 @@
     } else if (kind === "color") {
       input = h("div", { class: "row-gap" },
         h("input", { type: "color", value: /^#[0-9a-f]{6}$/i.test(l[key]) ? l[key] : "#ffffff", oninput: e => { l[key] = e.target.value; e.target.nextSibling.value = e.target.value; changed({ keepList: true }); }, onchange: () => {} }),
-        h("input", { value: l[key] || "", "data-k": key, onchange: e => set(e.target.value) }));
+        h("input", { value: l[key] || "", "data-k": key, onchange: e => set(e.target.value) }),
+        dropperButton(v => set(v)));
     } else if (kind === "check") {
       input = h("label", { class: "toggle" }, h("input", { type: "checkbox", checked: !!l[key], onchange: e => set(e.target.checked) }), extra.label);
     } else if (kind === "select") {
@@ -944,35 +961,22 @@
     if (!l) return renderCompProps();
     const sections = [];
     sections.push(h("div", { class: "sect" },
-      h("h3", {}, ({ text: "Text", rect: "Shape", image: "Picture", video: "Video", lottie: "Lottie animation", bracket: "Bracket", web: "Web page" }[l.type] || "Layer") + " layer"),
+      h("h3", {}, ({ text: "Text", rect: "Shape", path: "Path", image: "Picture", video: "Video", lottie: "Lottie animation", bracket: "Bracket", web: "Web page" }[l.type] || "Layer") + " layer"),
       lab("Name", bind(l, "name", "text")),
       h("label", { title: "Give it a name to change it from Control (and from data)" }, "Field (changed from Control)",
         h("div", { class: "row-gap" },
           h("input", { value: l.field || "", placeholder: "(fixed: not a field)", "data-k": "field",
             onchange: e => { snapshot(); l.field = e.target.value.trim() ? uniqueFieldExcept(e.target.value.trim(), l) : ""; changed({ props: true }); } }),
           !l.field ? h("button", { class: "small", onclick: () => { snapshot(); l.field = uniqueField(l.name); changed({ props: true }); } }, "Make field") : null)),
-      h("div", { class: "grid4" }, lab("X", bind(l, "x", "number")), lab("Y", bind(l, "y", "number")),
-        lab("W", bind(l, "w", "number", { min: 1 })), lab("H", bind(l, "h", "number", { min: 1 }))),
-      h("div", { class: "grid4" },
-        lab("Opacity", bind(l, "opacity", "number", { step: 0.05, min: 0, max: 1 })),
-        lab("Rotate °", bind(l, "rotation", "number")),
-        h("label", { title: "Keeps turning while it's on: turns a second (0.1 = once every 10 s), minus for anticlockwise. 0 = still" }, "Spin",
-          bind(l, "spin", "number", { step: 0.05 })),
-        lab("Blend", bind(l, "blend", "select", { options: ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "plus-lighter"] }))),
-      h("div", { class: "row-gap" },
-        h("button", { class: "small", onclick: () => duplicateLayer(l) }, "Duplicate"),
-        h("button", { class: "small", title: "Full screen", onclick: () => { snapshot(); Object.assign(l, { x: 0, y: 0, w: GFX.W, h: GFX.H }); changed({ props: true }); } }, "Fill"),
-        h("button", { class: "small", title: "Centre on the canvas", onclick: () => { snapshot(); l.x = Math.round((GFX.W - l.w) / 2); l.y = Math.round((GFX.H - l.h) / 2); changed({ props: true }); } }, "Centre"),
-        h("div", { class: "spacer" }),
-        h("button", { class: "small danger", onclick: () => removeLayers([l]) }, "Delete")),
-      h("label", { class: "toggle", title: "A locked layer can't be picked, moved, resized or deleted on the canvas" },
-        h("input", { type: "checkbox", checked: !!l.locked, onchange: e => setLocked([l], e.target.checked) }), "Locked"),
       l.group ? h("div", { class: "row-gap in-group" },
         h("span", { class: "muted small" }, `In the group "${groupNameOf(l.group)}"`),
         h("div", { class: "spacer" }),
         h("button", { class: "small", onclick: () => pickLayers(membersOf(l.group), l.id) }, "Pick the group"),
         h("button", { class: "small", title: "Ctrl+Shift+G", onclick: ungroupLayers }, "Take out")) : null));
-    sections.push(alignSection([l]));
+    // Figma's Design panel: Position, Layout, Appearance, Fill, Stroke, Effects, Selection colours.
+    sections.push(positionSection(l), layoutSection(l), appearanceSection(l));
+    if (l.type === "rect" || l.type === "path") sections.push(fillSection(l), strokeSection(l));
+    sections.push(effectsSection(l), maskSection(l), selectionColours([l]));
 
     if (l.type === "text") {
       const missing = !GFX.hasFont(l.font);
@@ -1013,10 +1017,10 @@
         h("p", { class: "muted small" }, "A live web page in this box: a game HUD's page, or the spectated player's cam."),
         l.design != null ? h("button", { class: "small", onclick: () => { snapshot(); l.type = /^#|^rgb|^\{\{Global!.*colou?r/i.test(l.design) ? "rect" : "image";
           if (l.type === "rect") { l.fill = l.design; delete l.src; } else l.src = l.design; delete l.design; delete l.when; changed({ props: true }); } }, "Back to the design's picture") : null));
+    } else if (l.type === "path") {
+      sections.push(pathSection(l));
     } else if (l.type === "rect") {
-      sections.push(h("div", { class: "sect" }, h("h3", {}, "Shape"),
-        h("div", { class: "grid2" }, bind(l, "fill", "color", { label: "Fill" }), lab("Corner radius", bind(l, "radius", "number", { min: 0 }))),
-        h("div", { class: "grid2" }, bind(l, "stroke", "color", { label: "Border" }), lab("Border width", bind(l, "strokeWidth", "number", { min: 0 })))));
+      // (its fill, stroke and corners are in Fill, Stroke and Appearance)
     } else {
       sections.push(h("div", { class: "sect" }, h("h3", {}, "Source"),
         lab("File", assetSelect(l.type, l.src, v => { snapshot(); l.src = v; changed({ props: true }); })),
@@ -1037,12 +1041,18 @@
     }
     sections.push(liveSection([l]));
     sections.push(animSection(l));
+    sections.push(h("div", { class: "sect" }, h("div", { class: "row-gap" },
+      h("button", { class: "small", title: "Ctrl+D", onclick: () => duplicateLayer(l) }, "Duplicate"),
+      h("label", { class: "toggle", title: "A locked layer can't be picked, moved, resized or deleted on the canvas" },
+        h("input", { type: "checkbox", checked: !!l.locked, onchange: e => setLocked([l], e.target.checked) }), "Locked"),
+      h("div", { class: "spacer" }),
+      h("button", { class: "small danger", onclick: () => removeLayers([l]) }, "Delete"))));
     props.replaceChildren(...sections);
   }
 
   // --- live data: what a layer shows, fills by, and when it shows ------------------
   // (the property a layer's content is in)
-  const contentKey = l => l.type === "text" ? "text" : l.type === "rect" ? "fill" : ["image", "web", "video"].includes(l.type) ? "src" : null;
+  const contentKey = l => l.type === "text" ? "text" : l.type === "rect" || l.type === "path" ? "fill" : ["image", "web", "video"].includes(l.type) ? "src" : null;
   function setShows(l, v) {
     const key = contentKey(l);
     if (!key) return;
@@ -1141,12 +1151,425 @@
           h("button", { class: "small", onclick: () => setLocked(layers, true) }, "🔒 Lock all"),
           h("button", { class: "small", onclick: () => setLocked(layers, false) }, "🔓 Unlock all"))),
       alignSection(layers),
+      selectionColours(layers),
       liveSection(layers),
       h("div", { class: "sect" }, h("h3", {}, "Animation"),
         h("div", { class: "grid2" },
           lab("All in", h("select", { onchange: e => setAnim("in", e.target.value) }, h("option", { value: "" }, "(as they are)"), GFX.animTypes.map(t => h("option", { value: t }, t)))),
           lab("All out", h("select", { onchange: e => setAnim("out", e.target.value) }, h("option", { value: "" }, "(as they are)"), GFX.animTypes.map(t => h("option", { value: t }, t)))))));
   }
+  // --- the Design panel (Figma's): Position, Layout, Appearance, Fill, Stroke, Effects --------
+  let keepRatio = false;
+  try { keepRatio = localStorage.getItem("gfx-keep-ratio") === "1"; } catch (e) { /* */ }
+  const num = (l, key, extra) => {
+    extra = extra || {};
+    const input = h("input", { type: "number", step: extra.step || 1, min: extra.min, max: extra.max, "data-k": key,
+      value: extra.get ? extra.get() : Math.round((+l[key] || 0) * 100) / 100,
+      onchange: e => { snapshot(); const v = e.target.value === "" ? 0 : +e.target.value; if (extra.set) extra.set(v); else l[key] = v; changed({ props: !!extra.props, keepList: true }); } });
+    return h("label", { class: "fnum", title: extra.tip || "" }, h("span", { class: "k" }, extra.k), input);
+  };
+  function positionSection(l) {
+    const al = kind => h("button", { class: "al-btn", title: ALIGN_TIP[kind] + ": to the canvas", "aria-label": ALIGN_TIP[kind], onclick: () => arrange(kind) }, alignIcon(kind));
+    const flip = (k, icon, tip) => h("button", { class: "small icon" + (l[k] ? " on" : ""), title: tip,
+      onclick: () => { snapshot(); if (l[k]) delete l[k]; else l[k] = true; changed({ props: true }); } }, icon);
+    return h("div", { class: "sect align-sect design" }, h("h3", {}, "Position"),
+      h("div", { class: "muted small sub" }, "Alignment"),
+      h("div", { class: "al-row" }, h("div", { class: "al-group" }, al("left"), al("hcenter"), al("right")),
+        h("div", { class: "al-group" }, al("top"), al("vcenter"), al("bottom"))),
+      h("div", { class: "muted small sub" }, "Position"),
+      h("div", { class: "grid2" }, num(l, "x", { k: "X" }), num(l, "y", { k: "Y" })),
+      h("div", { class: "muted small sub" }, "Rotation"),
+      h("div", { class: "rot-row" }, num(l, "rotation", { k: "∠", tip: "Rotation, degrees" }),
+        h("button", { class: "small icon", title: "Turn 90°", onclick: () => { snapshot(); l.rotation = ((+l.rotation || 0) + 90) % 360; changed({ props: true }); } }, "⟳"),
+        flip("flipX", "⇋", "Flip across (Shift+H)"), flip("flipY", "⇵", "Flip up and down (Shift+V)")));
+  }
+  function layoutSection(l) {
+    const ratio = l.w / Math.max(1, l.h);
+    const setW = v => { v = Math.max(1, v); if (keepRatio) l.h = Math.max(1, Math.round(v / ratio)); l.w = v; };
+    const setH = v => { v = Math.max(1, v); if (keepRatio) l.w = Math.max(1, Math.round(v * ratio)); l.h = v; };
+    return h("div", { class: "sect design" }, h("h3", {}, "Layout"),
+      h("div", { class: "muted small sub" }, "Dimensions"),
+      h("div", { class: "rot-row" }, num(l, "w", { k: "W", min: 1, set: setW }), num(l, "h", { k: "H", min: 1, set: setH }),
+        h("button", { class: "small icon" + (keepRatio ? " on" : ""), title: "Keep the shape when the width or height changes",
+          onclick: () => { keepRatio = !keepRatio; try { localStorage.setItem("gfx-keep-ratio", keepRatio ? "1" : "0"); } catch (e) { /* */ } renderProps(); } }, "🔗")),
+      h("div", { class: "row-gap" },
+        h("button", { class: "small", title: "Full screen", onclick: () => { snapshot(); Object.assign(l, { x: 0, y: 0, w: GFX.W, h: GFX.H }); changed({ props: true }); } }, "Fill the canvas"),
+        h("button", { class: "small", title: "Centre on the canvas", onclick: () => { snapshot(); l.x = Math.round((GFX.W - l.w) / 2); l.y = Math.round((GFX.H - l.h) / 2); changed({ props: true }); } }, "Centre"),
+        l.type === "image" && l.src ? h("button", { class: "small", onclick: () => naturalSize(l) }, "Actual size") : null));
+  }
+  function appearanceSection(l) {
+    const hidden = l.visible === false;
+    return h("div", { class: "sect design" },
+      h("div", { class: "sect-head" }, h("h3", {}, "Appearance"),
+        h("button", { class: "small icon" + (hidden ? "" : " on"), title: hidden ? "Hidden: show it" : "Shown: hide it",
+          onclick: () => { snapshot(); l.visible = hidden; changed({ props: true }); } }, hidden ? "◌" : "👁")),
+      h("div", { class: "grid2" },
+        num(l, "opacity", { k: "Opacity %", min: 0, max: 100, step: 5, get: () => Math.round((l.opacity == null ? 1 : l.opacity) * 100), set: v => { l.opacity = Math.max(0, Math.min(100, v)) / 100; } }),
+        l.type === "rect" && (l.shape || "rect") === "rect" ? num(l, "radius", { k: "Corner radius", min: 0 }) : h("span")),
+      h("div", { class: "grid2" }, lab("Blend", blendSelect([l])),
+        h("label", { title: "Keeps turning while it's on: turns a second (0.1 = once every 10 s), minus for anticlockwise. 0 = still" }, "Spin", bind(l, "spin", "number", { step: 0.05 }))));
+  }
+  // Fill and Stroke: a shape's or path's.
+  function fillSection(l) {
+    const none = !l.fill;
+    return h("div", { class: "sect design" },
+      h("div", { class: "sect-head" }, h("h3", {}, "Fill"),
+        none ? h("button", { class: "small icon", title: "Add a fill", onclick: () => { snapshot(); l.fill = "#f5c518"; changed({ props: true }); } }, "+")
+          : h("button", { class: "small icon", title: "No fill", onclick: () => { snapshot(); l.fill = ""; delete l.fill2; changed({ props: true }); } }, "−")),
+      l.type === "rect" ? lab("Shape", h("select", { onchange: e => { snapshot(); if (e.target.value === "rect") delete l.shape; else l.shape = e.target.value; if (l.shape === "angled" && l.skew == null) l.skew = 24; changed({ props: true }); } },
+        [["rect", "Rectangle"], ["ellipse", "Ellipse"], ["angled", "Angled bar"]].map(([v, t]) => h("option", { value: v, selected: (l.shape || "rect") === v }, t)))) : null,
+      l.shape === "angled" ? lab("Slant (px, minus leans left)", bind(l, "skew", "number")) : null,
+      none ? null : bind(l, "fill", "color", { label: "Colour" }),
+      none ? null : lab("Colour set in Control", bind(l, "fill", "select", { options: [
+        ...(/^\{\{Global!/.test(l.fill) && !["{{Global!Primary}}", "{{Global!Secondary}}"].includes(l.fill) ? [[l.fill, l.fill]] : []),
+        ...(/^\{\{/.test(l.fill) ? [] : [[l.fill, "(its own colour)"]]),
+        ["{{Global!Primary}}", "Primary colour"], ["{{Global!Secondary}}", "Secondary colour"],
+        ["{{Global!Left color}}", "Left team's colour"], ["{{Global!Right color}}", "Right team's colour"]] })),
+      none ? null : h("div", { class: "grid2" },
+        h("div", {}, l.fill2 ? bind(l, "fill2", "color", { label: "Gradient to" })
+          : h("button", { class: "small", style: { marginTop: "18px" }, onclick: () => { snapshot(); l.fill2 = "#000000"; l.gradAngle = 90; changed({ props: true }); } }, "+ Gradient")),
+        l.fill2 ? h("div", {}, lab("Direction °", bind(l, "gradAngle", "number", { step: 15 })),
+          h("button", { class: "small", onclick: () => { snapshot(); delete l.fill2; changed({ props: true }); } }, "Solid")) : h("span")));
+  }
+  function strokeSection(l) {
+    const on = +l.strokeWidth > 0;
+    return h("div", { class: "sect design" },
+      h("div", { class: "sect-head" }, h("h3", {}, "Stroke"),
+        on ? h("button", { class: "small icon", title: "No stroke", onclick: () => { snapshot(); l.strokeWidth = 0; changed({ props: true }); } }, "−")
+          : h("button", { class: "small icon", title: "Add a stroke", onclick: () => { snapshot(); l.strokeWidth = l.type === "path" ? 6 : 4; l.stroke = l.stroke || "#ffffff"; changed({ props: true }); } }, "+")),
+      on ? h("div", { class: "grid2" }, bind(l, "stroke", "color", { label: "Colour" }), lab("Width", bind(l, "strokeWidth", "number", { min: 0 }))) : null,
+      on && l.type === "path" ? h("div", { class: "grid2" },
+        lab("Corners", bind(l, "join", "select", { options: [["round", "Round"], ["miter", "Sharp"], ["bevel", "Bevel"]] })),
+        lab("Ends", bind(l, "cap", "select", { options: [["round", "Round"], ["butt", "Flat"], ["square", "Square"]] }))) : null);
+  }
+  // Effects: drop shadow, inner shadow, glow, layer blur, background blur (layer.fx).
+  const FX = { shadow: "Drop shadow", inner: "Inner shadow", glow: "Outer glow", blur: "Layer blur", bgblur: "Background blur" };
+  const FX_NEW = { shadow: { x: 0, y: 6, blur: 16, color: "#00000099" }, inner: { x: 0, y: 2, blur: 8, spread: 0, color: "#00000080" },
+    glow: { blur: 20, color: "#f5c518" }, blur: { blur: 6 }, bgblur: { blur: 20 } };
+  function effectsSection(l) {
+    const list = Array.isArray(l.fx) ? l.fx : [];
+    const edit = fn => { snapshot(); fn(); l.fx = (l.fx || []).filter(Boolean); if (!l.fx.length) delete l.fx; changed({ props: true }); };
+    const add = h("select", { class: "small add-fx", title: "Add an effect", onchange: e => { const t = e.target.value; e.target.value = ""; if (t) edit(() => { l.fx = [...list, Object.assign({ type: t }, FX_NEW[t])]; }); } },
+      h("option", { value: "" }, "+"), Object.entries(FX).map(([v, t]) => h("option", { value: v }, t)));
+    const field = (f, k, label, extra) => h("label", { class: "fnum" }, h("span", { class: "k" }, label),
+      h("input", Object.assign({ type: "number", value: f[k] ?? 0, onchange: e => edit(() => { f[k] = +e.target.value || 0; }) }, extra || {})));
+    const colour = f => h("div", { class: "row-gap" },
+      h("input", { type: "color", value: /^#[0-9a-f]{6}/i.test(f.color || "") ? f.color.slice(0, 7) : "#000000", onchange: e => edit(() => { f.color = e.target.value + (/^#[0-9a-f]{8}$/i.test(f.color || "") ? f.color.slice(7) : ""); }) }),
+      h("input", { value: f.color || "", placeholder: "#00000080", onchange: e => edit(() => { f.color = e.target.value.trim(); }) }),
+      dropperButton(c => edit(() => { f.color = c; })));
+    return h("div", { class: "sect design" },
+      h("div", { class: "sect-head" }, h("h3", {}, "Effects"), add),
+      list.map((f, i) => h("div", { class: "fx-row" + (f.off ? " off" : "") },
+        h("div", { class: "row-gap" },
+          h("button", { class: "small icon", title: f.off ? "Show the effect" : "Hide the effect", onclick: () => edit(() => { if (f.off) delete f.off; else f.off = true; }) }, f.off ? "◌" : "👁"),
+          h("select", { onchange: e => edit(() => { l.fx[i] = Object.assign({ type: e.target.value }, FX_NEW[e.target.value], { color: f.color }); }) },
+            Object.entries(FX).map(([v, t]) => h("option", { value: v, selected: v === f.type }, t))),
+          h("div", { class: "spacer" }),
+          h("button", { class: "small icon", title: "Remove the effect", onclick: () => edit(() => { l.fx.splice(i, 1); }) }, "−")),
+        f.type === "shadow" || f.type === "inner" ? h("div", { class: f.type === "inner" ? "grid4" : "grid3" },
+          field(f, "x", "X"), field(f, "y", "Y"), field(f, "blur", "Blur", { min: 0 }), f.type === "inner" ? field(f, "spread", "Spread") : null) : null,
+        ["glow", "blur", "bgblur"].includes(f.type) ? h("div", { class: "grid2" }, field(f, "blur", f.type === "glow" ? "Size" : "Blur", { min: 0 }), h("span")) : null,
+        ["shadow", "inner", "glow"].includes(f.type) ? colour(f) : null)),
+      !list.length ? h("p", { class: "muted small" }, "Drop shadow, inner shadow, glow, blur: + adds one.") : null);
+  }
+  // Selection colours: every colour the picked layers use (or the whole
+  // graphic's); change one and it changes in all of them, as in Figma.
+  const COLOUR_KEYS = ["fill", "fill2", "stroke", "color", "divider", "gold", "dark", "line", "champ"];
+  const isHex = v => /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(String(v || "").trim());
+  const hex6 = v => { v = String(v).trim().toLowerCase(); return v.length === 4 ? "#" + [...v.slice(1)].map(c => c + c).join("") : v.slice(0, 7); };
+  function selectionColours(layers) {
+    const found = new Map();
+    for (const l of layers) {
+      for (const k of COLOUR_KEYS) if (isHex(l[k])) found.set(hex6(l[k]), (found.get(hex6(l[k])) || 0) + 1);
+      for (const f of l.fx || []) if (isHex(f.color)) found.set(hex6(f.color), (found.get(hex6(f.color)) || 0) + 1);
+    }
+    if (!found.size) return "";
+    const swap = (from, to) => {
+      snapshot();
+      const put = (o, k) => { if (isHex(o[k]) && hex6(o[k]) === from) o[k] = to + (String(o[k]).length === 9 ? String(o[k]).slice(7) : ""); };
+      for (const l of layers) { COLOUR_KEYS.forEach(k => put(l, k)); (l.fx || []).forEach(f => put(f, "color")); }
+      changed({ props: true });
+    };
+    const list = [...found.entries()].sort((a, b) => b[1] - a[1]);
+    return h("div", { class: "sect design" }, h("h3", {}, "Selection colours"),
+      h("div", { class: "sel-colours" }, list.slice(0, 24).map(([c, n]) => h("label", { class: "swatch", title: `${c}: used ${n}×. Pick a new colour to change it everywhere here` },
+        h("input", { type: "color", value: c, onchange: e => swap(c, e.target.value) }),
+        h("span", {}, c.slice(1))))),
+      list.length > 24 ? h("p", { class: "muted small" }, `+${list.length - 24} more`) : null);
+  }
+  // Shift+H / Shift+V: flip the picked layers.
+  function flipPicked(k) {
+    const list = picked().filter(o => !o.locked);
+    if (!list.length) return;
+    snapshot();
+    const on = !list.every(o => o[k]);
+    list.forEach(o => { if (on) o[k] = true; else delete o[k]; });
+    changed({ props: true });
+  }
+
+  // --- tools: the pen (vector paths) ------------------------------------------------------
+  // P: the pen (click for corners, drag for curves, click the first point to
+  // close it, Enter to finish a line). V: back to moving layers. Double-click
+  // a path (or Enter) to move its points. Drawn by pentool.js.
+  let tool = "move", pen = null, penEdit = null;
+  const penOpts = () => ({
+    canvas, scale: () => scale, toScreen: (x, y) => toScreen(x, y),
+    toGfx: (cx, cy) => { const r = canvas.getBoundingClientRect(); return [(cx - r.left - offX) / scale, (cy - r.top - offY) / scale]; },
+  });
+  function setTool(t) {
+    if (t === tool && t !== "pen") return renderDock();
+    if (pen) { const p = pen; pen = null; p.stop(); }
+    if (penEdit) penEdit.stop();
+    tool = t;
+    canvas.classList.toggle("can-pan", t === "hand");
+    canvas.classList.toggle("box-tool", ["rect", "ellipse", "text"].includes(t));
+    if (t === "pen") {
+      if (!comp) { tool = "move"; renderDock(); return toast("Make or pick a graphic first", true); }
+      pen = PenTool.draw(Object.assign(penOpts(), {
+        done: (pts, closed) => { pen = null; addPath(pts, closed); tool = "move"; renderDock(); },
+        stopped: () => { pen = null; tool = "move"; renderDock(); },
+      }));
+      toast("Pen: click for corners, drag for curves, click the first point to close. Enter or Esc to finish a line");
+    }
+    renderDock();
+  }
+  async function addPath(pts, closed) {
+    const { layer } = await api("/api/layer/blank", { type: "path" });
+    snapshot();
+    Object.assign(layer, { name: closed ? "Vector" : "Line", fill: closed ? "#f5c518" : "", stroke: "#ffffff", strokeWidth: closed ? 0 : 6 },
+      PenTool.newLayer(pts, closed));
+    comp.layers.push(layer);
+    multi.clear();
+    selected = layer.id;
+    changed({ props: true });
+  }
+  function editPoints(l) {
+    if (!l || l.type !== "path") return;
+    if (l.locked) return toast("That path is locked: unlock it to move its points", true);
+    if (pen) { const p = pen; pen = null; p.stop(); }
+    if (penEdit) penEdit.stop();
+    multi.clear();
+    selected = l.id;
+    let fresh = true;
+    penEdit = PenTool.edit(Object.assign(penOpts(), {
+      points: PenTool.layerPoints(l), closed: !!l.closed,
+      change: (pts, final) => {
+        if (fresh) { snapshot(); fresh = false; }
+        PenTool.setLayerPoints(l, pts);
+        pending = true; saveSoon(); redraw(); syncPropsGeometry();
+        if (final) { fresh = true; changed({ keepList: true }); }
+      },
+      stopped: () => { penEdit = null; drawSelection(); renderDock(); },
+    }));
+    renderLayers(); renderProps(); drawSelection(); renderDock();
+    toast("Editing points: drag points and handles, click a line to add a point, Alt + click a point for corner / curve, Delete removes one. Enter when done");
+  }
+  // The tool dock under the canvas, as Figma's (Photoshop's tools bar).
+  function renderDock() {
+    const dock = $("#tool-dock");
+    if (!dock) return;
+    const b = (t, icon, tip, on, fn) => h("button", { class: "tool" + (on ? " on" : ""), title: tip, onclick: fn || (() => setTool(t)) }, icon);
+    const sep = () => h("span", { class: "sep" });
+    dock.replaceChildren(
+      b("move", "⬉", "Move (V)", tool === "move" && !penEdit),
+      b("hand", "✋", "Hand: drag to move around (H, or hold Space)", tool === "hand"),
+      sep(),
+      b("rect", "▭", "Rectangle (R): drag on the canvas", tool === "rect"),
+      b("ellipse", "◯", "Ellipse (O): drag on the canvas", tool === "ellipse"),
+      b("pen", "✒", "Pen (P): click for corners, drag for curves", tool === "pen"),
+      b("text", "T", "Text (T): drag a box on the canvas", tool === "text"),
+      b("", "🖼", "Picture, video or animation", false, () => { const i = document.querySelector('[data-add="image"]'); if (i) i.click(); }),
+      sep(),
+      b("", "💧", "Eyedropper (I): the picked layer's colour from the screen", false, eyedropLayer),
+      penEdit ? b("", "Done", "Finish editing points (Enter)", true, () => penEdit && penEdit.stop()) : "");
+  }
+  renderDock();
+  // Rectangle, ellipse and text: drag a box on the canvas (a click: the usual size there).
+  canvas.addEventListener("mousedown", e => {
+    if (!["rect", "ellipse", "text"].includes(tool) || e.button !== 0 || !comp) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const r = canvas.getBoundingClientRect();
+    const at = ev => [(ev.clientX - r.left - offX) / scale, (ev.clientY - r.top - offY) / scale];
+    const [x0, y0] = at(e);
+    let box = null;
+    const move = ev => {
+      let [x1, y1] = at(ev);
+      if (ev.shiftKey) { const d = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)); x1 = x0 + Math.sign(x1 - x0 || 1) * d; y1 = y0 + Math.sign(y1 - y0 || 1) * d; }
+      box = { x: Math.round(Math.min(x0, x1)), y: Math.round(Math.min(y0, y1)), w: Math.round(Math.abs(x1 - x0)), h: Math.round(Math.abs(y1 - y0)) };
+      const [sx, sy] = toScreen(box.x, box.y);
+      selLayer.replaceChildren(h("div", { class: "sel-box draw" + (tool === "ellipse" ? " round" : ""), style: { left: sx + "px", top: sy + "px", width: box.w * scale + "px", height: box.h * scale + "px" } }));
+    };
+    const up = async () => {
+      removeEventListener("mousemove", move, true);
+      removeEventListener("mouseup", up, true);
+      const kind = tool;
+      if (!box || box.w < 4 || box.h < 4) {
+        const w = kind === "text" ? 600 : kind === "ellipse" ? 200 : 400, hh = kind === "text" ? 90 : 200;
+        box = { x: Math.round(x0 - w / 2), y: Math.round(y0 - hh / 2), w, h: hh };
+      }
+      const { layer } = await api("/api/layer/blank", { type: kind === "text" ? "text" : "rect" });
+      snapshot();
+      Object.assign(layer, box, { name: { rect: "Rectangle", ellipse: "Ellipse", text: "Text" }[kind] });
+      if (kind === "ellipse") layer.shape = "ellipse";
+      if (kind === "text") layer.size = Math.max(16, Math.min(200, Math.round(box.h * 0.75)));
+      comp.layers.push(layer);
+      multi.clear();
+      selected = layer.id;
+      setTool("move");
+      changed({ props: true });
+      if (kind === "text") { const t = document.querySelector("#props textarea[data-k=text]"); if (t) { t.focus(); t.select(); } }
+    };
+    addEventListener("mousemove", move, true);
+    addEventListener("mouseup", up, true);
+  }, true);
+  function pathSection(l) {
+    return h("div", { class: "sect" }, h("h3", {}, "Path"),
+      h("div", { class: "row-gap" },
+        h("button", { class: "small", title: "Move its points and curves (double-click the path, or Enter)", onclick: () => penEdit ? penEdit.stop() : editPoints(l) }, penEdit ? "Done editing points" : "Edit points"),
+        h("label", { class: "toggle", title: "Closed: the last point joins the first (a shape you can fill)" },
+          h("input", { type: "checkbox", checked: !!l.closed, onchange: e => { snapshot(); l.closed = e.target.checked; changed({ props: true }); } }), "Closed")));
+  }
+
+  // --- Photoshop / Figma tools: blend modes, masks, the eyedropper ------------------
+  // Blend modes (Photoshop's list, grouped the same way) for the picked
+  // layers: in the bar over Layers and in the layer's panel. They blend with
+  // the layers under them in the same graphic (OBS draws the browser source
+  // itself over the game).
+  const BLEND_GROUPS = [["", ["normal"]], ["Darken", ["darken", "multiply", "color-burn"]],
+    ["Lighten", ["lighten", "screen", "color-dodge", "plus-lighter"]], ["Contrast", ["overlay", "soft-light", "hard-light"]],
+    ["Inversion", ["difference", "exclusion"]], ["Colour", ["hue", "saturation", "color", "luminosity"]]];
+  const BLEND_LABEL = { normal: "Normal", darken: "Darken", multiply: "Multiply", "color-burn": "Colour burn", lighten: "Lighten",
+    screen: "Screen", "color-dodge": "Colour dodge", "plus-lighter": "Add (linear dodge)", overlay: "Overlay", "soft-light": "Soft light",
+    "hard-light": "Hard light", difference: "Difference", exclusion: "Exclusion", hue: "Hue", saturation: "Saturation", color: "Colour", luminosity: "Luminosity" };
+  const blendName = b => BLEND_LABEL[b] || b;
+  function blendSelect(layers) {
+    const cur = new Set(layers.map(l => l.blend || "normal"));
+    const one = cur.size === 1 ? [...cur][0] : "";
+    return h("select", { class: "blend-pick", title: "Blend mode (Shift + + / − steps through them on the canvas)",
+      onchange: e => setBlend(layers, e.target.value) },
+      !one ? h("option", { value: "", selected: true, disabled: true }, "(mixed)") : null,
+      ...BLEND_GROUPS.flatMap(([g, list]) => {
+        const opts = list.map(b => h("option", { value: b, selected: b === one }, blendName(b)));
+        return g ? [h("optgroup", { label: g }, opts)] : opts;
+      }));
+  }
+  function setBlend(layers, b) {
+    if (!b || !layers.length) return;
+    snapshot();
+    layers.forEach(l => { l.blend = b; });
+    changed({ props: true });
+  }
+  // Shift + "+" / "−": the next or last blend mode, as Photoshop's Shift + + / −.
+  function stepBlend(dir) {
+    const list = picked();
+    if (!list.length) return;
+    const all = BLEND_GROUPS.flatMap(g => g[1]);
+    const i = all.indexOf(list[0].blend || "normal");
+    const b = all[(i + dir + all.length) % all.length];
+    setBlend(list, b);
+    toast("Blend mode: " + blendName(b));
+  }
+  // The bar over Layers (as in Photoshop): blend mode, opacity, clip and mask
+  // for what's picked.
+  function renderLayerBar() {
+    const bar = $("#layer-bar");
+    if (!bar) return;
+    const list = picked();
+    if (!comp || !list.length) { bar.replaceChildren(h("span", { class: "muted small" }, comp ? "Pick a layer: blend mode, opacity and masks show here" : "")); return; }
+    const op = list[0].opacity == null ? 1 : list[0].opacity;
+    let fresh = true;
+    const opacity = h("input", { type: "number", min: 0, max: 100, step: 5, value: Math.round(op * 100), title: "Opacity %",
+      onfocus: () => { fresh = true; },
+      oninput: e => { if (fresh) { snapshot(); fresh = false; } const v = Math.max(0, Math.min(100, +e.target.value || 0)) / 100; list.forEach(l => { l.opacity = v; }); pending = true; saveSoon(); redraw(); },
+      onchange: () => changed({ props: true }) });
+    const clipped = list.every(l => l.clipBelow), mask = list.length === 1 && list[0].maskOnly;
+    bar.replaceChildren(
+      blendSelect(list),
+      h("label", { class: "op", title: "Opacity" }, "Opacity", opacity, "%"),
+      h("button", { class: "small icon" + (clipped ? " on" : ""), title: "Clipping mask: show only inside the layer under it (Ctrl+Alt+G, or Alt + click between two layers)",
+        onclick: () => toggleClip(list) }, "↳ Clip"),
+      list.length === 1 ? h("button", { class: "small icon" + (mask ? " on" : ""), title: "Use as mask: this layer isn't drawn, the layers above it clipped to it show only inside its shape (Figma's mask)",
+        onclick: () => useAsMask(list[0]) }, "Mask") : null);
+  }
+  // Clipping mask: the layers show only inside the layer under them (the
+  // nearest one that isn't clipped too), as Photoshop's Ctrl+Alt+G.
+  function toggleClip(list) {
+    list = (list || []).filter(Boolean);
+    if (!list.length) return toast("Pick a layer to clip to the one under it", true);
+    const on = !list.every(l => l.clipBelow);
+    if (on && comp.layers.indexOf(list[0]) === 0 && list.length === 1) return toast("Nothing under it to clip to: put a layer under it first", true);
+    snapshot();
+    list.forEach(l => { if (on) l.clipBelow = true; else delete l.clipBelow; });
+    changed({ props: true });
+    if (on) { const b = baseOf(list[0]); toast(b ? `Clipped to "${b.name}": it shows only inside it` : "Clipped"); }
+  }
+  // Use as mask (Figma): the layer isn't drawn itself; the layer above it is
+  // clipped to it (and any already clipped above that).
+  function useAsMask(l) {
+    snapshot();
+    if (l.maskOnly) { delete l.maskOnly; changed({ props: true }); return; }
+    l.maskOnly = true;
+    delete l.clipBelow;
+    const i = comp.layers.indexOf(l), above = comp.layers[i + 1];
+    if (above && !above.clipBelow) above.clipBelow = true;
+    changed({ props: true });
+    toast(above ? `"${l.name}" is a mask now: "${above.name}" shows only inside it. Clip more layers to it with ↳` : `"${l.name}" is a mask now: clip the layers above to it with ↳`);
+  }
+  // The layer a clipped layer shows inside.
+  function baseOf(l) {
+    for (let i = comp.layers.indexOf(l) - 1; i >= 0; i--) if (!comp.layers[i].clipBelow) return comp.layers[i];
+    return null;
+  }
+  function maskSection(l) {
+    const base = l.clipBelow ? baseOf(l) : null;
+    const fade = l.fade || null;
+    const setFade = (k, v) => { snapshot(); l.fade = Object.assign({ angle: 90, start: 50, end: 100 }, l.fade, { [k]: v }); changed({ props: true }); };
+    const FADES = [["", "None"], ["90", "Fade out to the right"], ["270", "Fade out to the left"], ["180", "Fade out down"], ["0", "Fade out up"]];
+    const fadeKey = fade ? String((+fade.angle % 360 + 360) % 360) : "";
+    return h("div", { class: "sect" }, h("h3", {}, "Masks"),
+      h("label", { class: "toggle", title: "Photoshop's clipping mask (Ctrl+Alt+G): shown only inside the layer under it. Its In and Out animations play inside that shape" },
+        h("input", { type: "checkbox", checked: !!l.clipBelow, onchange: () => toggleClip([l]) }), "Clip to the layer below"),
+      l.clipBelow ? h("div", { class: "muted small" }, base ? `Shows only inside "${base.name}"` + (base.type === "text" ? " (its box: a text's letters don't cut)" : "") : "Nothing under it: put a layer under it") : null,
+      h("label", { class: "toggle", title: "Figma's mask: this layer isn't drawn, the layers above clipped to it show only inside its shape" },
+        h("input", { type: "checkbox", checked: !!l.maskOnly, onchange: () => useAsMask(l) }), "Use as mask (not drawn itself)"),
+      h("label", { title: "A layer mask: the layer shows where this picture is (its see-through parts hide it), stretched over the layer's box" }, "Layer mask picture",
+        assetSelect("image", l.mask || "", v => { snapshot(); if (v) l.mask = v; else { delete l.mask; delete l.maskInvert; } changed({ props: true }); })),
+      l.mask ? bind(l, "maskInvert", "check", { label: "Invert the mask (hide where the picture is)" }) : null,
+      h("div", { class: "grid3" },
+        lab("Fade", h("select", { onchange: e => { snapshot(); if (!e.target.value) delete l.fade; else l.fade = Object.assign({ start: 50, end: 100 }, l.fade, { angle: +e.target.value }); changed({ props: true }); } },
+          FADES.map(([v, t]) => h("option", { value: v, selected: v === fadeKey }, t)),
+          fade && !FADES.some(([v]) => v === fadeKey) ? h("option", { value: fadeKey, selected: true }, `At ${fade.angle}°`) : null)),
+        fade ? lab("Starts at %", h("input", { type: "number", min: 0, max: 100, step: 5, value: fade.start ?? 0, onchange: e => setFade("start", +e.target.value || 0) })) : null,
+        fade ? lab("Gone at %", h("input", { type: "number", min: 0, max: 100, step: 5, value: fade.end ?? 100, onchange: e => setFade("end", +e.target.value || 0) })) : null));
+  }
+  // The eyedropper: any colour on the screen (this window, the canvas, a
+  // picture on the other monitor), as Photoshop's and Figma's I key.
+  async function eyedrop() {
+    if (!window.EyeDropper) { toast("This browser has no eyedropper: use the app, Chrome or Edge", true); return null; }
+    try { const r = await new window.EyeDropper().open(); return r && r.sRGBHex ? r.sRGBHex.toLowerCase() : null; }
+    catch (e) { return null; }   // (Esc)
+  }
+  // (sRGBHex can be "rgb(...)" or "rgba(...)" in some browsers)
+  const hexOf = c => {
+    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/i.exec(c || "");
+    return m ? "#" + m.slice(1, 4).map(n => (+n).toString(16).padStart(2, "0")).join("") : c;
+  };
+  function dropperButton(onPick) {
+    return h("button", { class: "small icon dropper", type: "button", title: "Eyedropper: pick a colour from anywhere on the screen (I)",
+      onclick: async e => { e.preventDefault(); const c = await eyedrop(); if (c) onPick(hexOf(c)); } }, "💧");
+  }
+  // I: the picked layers' colour (text's colour, a shape's or path's fill) from the screen.
+  async function eyedropLayer() {
+    const list = picked().filter(l => ["text", "rect", "path"].includes(l.type));
+    if (!list.length) return toast("Pick a text, shape or path, then press I to take its colour from the screen", true);
+    const c = await eyedrop();
+    if (!c) return;
+    snapshot();
+    list.forEach(l => { l[l.type === "text" ? "color" : "fill"] = hexOf(c); });
+    changed({ props: true });
+    toast("Colour " + hexOf(c));
+  }
+
   // --- align and distribute -----------------------------------------------
   // Lines up the picked layers with each other (their left edges, middles,
   // right edges, tops, middles, bottoms), or one layer with the canvas.
@@ -1336,10 +1759,11 @@
           h("button", { class: "small", onclick: () => autoAnimate() }, "Auto (one after another)"),
           h("button", { class: "small", onclick: () => allAnim("fade") }, "All fade"),
           h("button", { class: "small", onclick: () => allAnim("none") }, "None"))),
+      selectionColours(comp.layers),
       hudSection(),
       linksSection(),
       h("div", { class: "sect" }, h("h3", {}, "Shortcuts"),
-        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl + click picks more, Shift + click picks a range) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. Ctrl or Shift + click on the canvas picks more layers; Alignment lines them up (Alt+A / H / D left, centre, right, Alt+W / V / S top, middle, bottom, Alt+Shift+H / V evens out the gaps, Ctrl+Alt+Shift+T tidies up), one layer lines up with the canvas. 🔒 in Layers locks a layer: it can't be picked, moved or deleted on the canvas (pick it in the list to change it). Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed.")));
+        h("p", { class: "muted small" }, "Drag to move (Shift: straight, Ctrl: no snapping), handles to resize (Shift: keep shape). Arrows nudge (Shift: 10). Ctrl+C / Ctrl+X copy or cut (Ctrl + click picks more, Shift + click picks a range) and Ctrl+V pastes, into this graphic or any other. Ctrl+D duplicates, Delete removes, Ctrl+Z / Ctrl+Shift+Z undo / redo. Alt+click picks the layer underneath. Ctrl or Shift + click on the canvas picks more layers; Alignment lines them up (Alt+A / H / D left, centre, right, Alt+W / V / S top, middle, bottom, Alt+Shift+H / V evens out the gaps, Ctrl+Alt+Shift+T tidies up), one layer lines up with the canvas. 🔒 in Layers locks a layer: it can't be picked, moved or deleted on the canvas (pick it in the list to change it). Ctrl+scroll zooms (Ctrl+0 fits, Ctrl+1 is 100%), scroll or middle-drag or Space+drag moves around while zoomed. Tools (the dock under the canvas): V move, H hand, R rectangle, O ellipse, P pen (click corners, drag curves, click the first point to close; double-click a path or Enter to edit its points), T text, I eyedropper. Ctrl+Alt+G (or Alt + click in Layers) clips a layer to the one under it; Shift + + / − steps through blend modes; Shift+H / Shift+V flip.")));
   }
   // --- Add to a HUD: this graphic as a game HUD's own overlay -------------------
   let hudGame = "rl";

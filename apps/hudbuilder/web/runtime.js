@@ -175,7 +175,7 @@
     const v = layer.field && values && values[layer.field] != null && values[layer.field] !== "" ? values[layer.field] : null;
     if (layer.type === "text") return v != null ? String(v) : layer.text || "";
     // (a picture or colour can come from the data too: {{Global!Left logo}})
-    const own = v != null ? String(v) : (layer.type === "rect" ? layer.fill : layer.src) || "";
+    const own = v != null ? String(v) : (layer.type === "rect" || layer.type === "path" ? layer.fill : layer.src) || "";
     if (SPONSORS.test(own)) return "{{Sponsors}}";
     // (every sponsor in a row: the list is part of the value, so a new list redraws it)
     if (STRIP.test(own)) return "{{Sponsors all}}" + GFX.sponsors().map(x => "|" + (x.white ? "w:" : "c:") + x.logo).join("");
@@ -522,6 +522,7 @@
       }
       return box;
     }
+    if (t === "path") return pathBox(layer, value);
     if (t === "rect") return shapeBox(layer, value);
     if (t === "text") {
       const box = el("div", "gfx-text");
@@ -848,6 +849,196 @@
     // (a shape's second colour, stroke or glow can follow the data too)
     [layer.fill2, layer.stroke, layer.glow && layer.glow.color].filter(hasTokens).map(v => "|" + GFX.resolve(v)).join("");
 
+  // --- design tools: vector paths, flips, effects and masks -------------------------
+  // (the same block is in the GFX Engine's and HUD Builder's runtime.js)
+  // As in Figma and Photoshop: a pen-tool path (layer.type "path"), flipped
+  // layers (flipX / flipY), effects (layer.fx: drop shadow, inner glow, layer
+  // blur, background blur), a layer mask (the picture layer.mask, inverted
+  // with maskInvert; a fade, layer.fade) and clipping masks (layer.clipBelow:
+  // shown only inside the shape of the layer under it, Photoshop's Alt-click;
+  // that layer's maskOnly: it isn't drawn itself, Figma's "Use as mask").
+  // All of it plain CSS and SVG, so OBS's browser source draws it.
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const paintIn = v => (hasTokens(v) ? GFX.resolve(v).trim() : String(v || "")) || "";
+  // A path's points: {x, y, ix, iy, ox, oy} (the handles in and out, where
+  // there are any), in a box of layer.vw x layer.vh (stretched to the layer's).
+  GFX.pathD = function (pts, closed) {
+    if (!Array.isArray(pts) || !pts.length) return "";
+    const n = v => Math.round(v * 100) / 100;
+    const seg = (a, b) => (a.ox == null && b.ix == null) ? ` L${n(b.x)} ${n(b.y)}`
+      : ` C${n(a.ox ?? a.x)} ${n(a.oy ?? a.y)} ${n(b.ix ?? b.x)} ${n(b.iy ?? b.y)} ${n(b.x)} ${n(b.y)}`;
+    let d = `M${n(pts[0].x)} ${n(pts[0].y)}`;
+    for (let i = 1; i < pts.length; i++) d += seg(pts[i - 1], pts[i]);
+    if (closed && pts.length > 2) d += seg(pts[pts.length - 1], pts[0]) + " Z";
+    return d;
+  };
+  let svgN = 0;
+  function gradientDef(svg, layer, first) {
+    const id = "gfxp" + (++svgN), g = document.createElementNS(SVGNS, "linearGradient"), rad = ((+layer.gradAngle || 90) - 90) * Math.PI / 180;
+    g.setAttribute("id", id);
+    g.setAttribute("x1", 0.5 - Math.cos(rad) / 2); g.setAttribute("y1", 0.5 - Math.sin(rad) / 2);
+    g.setAttribute("x2", 0.5 + Math.cos(rad) / 2); g.setAttribute("y2", 0.5 + Math.sin(rad) / 2);
+    for (const [off, c] of [[0, first], [1, paintIn(layer.fill2) || "transparent"]]) {
+      const st = document.createElementNS(SVGNS, "stop");
+      st.setAttribute("offset", off); st.setAttribute("stop-color", c);
+      g.appendChild(st);
+    }
+    const defs = document.createElementNS(SVGNS, "defs");
+    defs.appendChild(g); svg.appendChild(defs);
+    return `url(#${id})`;
+  }
+  function pathBox(layer, value) {
+    const box = el("div", "gfx-rect");
+    const vw = +layer.vw || layer.w || 1, vh = +layer.vh || layer.h || 1;
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${vw} ${vh}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+    Object.assign(svg.style, { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", overflow: "visible" });
+    const p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("d", GFX.pathD(layer.points, layer.closed));
+    let fill = value || "none";
+    if (fill !== "none" && layer.fill2) fill = gradientDef(svg, layer, fill);
+    p.setAttribute("fill", fill);
+    p.setAttribute("fill-rule", layer.evenodd ? "evenodd" : "nonzero");
+    const sw = +layer.strokeWidth || 0;
+    if (sw) {
+      p.setAttribute("stroke", paintIn(layer.stroke) || "#ffffff");
+      p.setAttribute("stroke-width", sw);
+      p.setAttribute("vector-effect", "non-scaling-stroke");
+      p.setAttribute("stroke-linejoin", layer.join || "round");
+      p.setAttribute("stroke-linecap", layer.cap || "round");
+    }
+    svg.appendChild(p);
+    box.appendChild(svg);
+    return box;
+  }
+  GFX.blendModes = ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn",
+    "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity", "plus-lighter"];
+  // Flips, effects and the layer's own mask, on its content and inner box.
+  function design(layer, inner, content) {
+    if (layer.flipX || layer.flipY) content.style.scale = `${layer.flipX ? -1 : 1} ${layer.flipY ? -1 : 1}`;
+    const filters = [], shadows = [];
+    for (const f of Array.isArray(layer.fx) ? layer.fx : []) {
+      if (!f || f.off) continue;
+      const c = paintIn(f.color) || "rgba(0,0,0,.5)";
+      if (f.type === "shadow") filters.push(`drop-shadow(${+f.x || 0}px ${+f.y || 0}px ${Math.max(0, +f.blur || 0)}px ${c})`);
+      else if (f.type === "glow") filters.push(`drop-shadow(0 0 ${Math.max(0, +f.blur || 0)}px ${c})`);
+      else if (f.type === "blur" && +f.blur > 0) filters.push(`blur(${+f.blur}px)`);
+      else if (f.type === "bgblur" && +f.blur > 0) content.style.backdropFilter = content.style.webkitBackdropFilter = `blur(${+f.blur}px)`;
+      else if (f.type === "inner") shadows.push(`inset ${+f.x || 0}px ${+f.y || 0}px ${Math.max(0, +f.blur || 0)}px ${+f.spread || 0}px ${c}`);
+    }
+    if (filters.length) content.style.filter = [content.style.filter, ...filters].filter(Boolean).join(" ");
+    if (shadows.length) content.style.boxShadow = shadows.join(", ");
+    // The layer mask: the picture (white / opaque shows), turned inside out, and a fade.
+    const fade = layer.fade && typeof layer.fade === "object"
+      ? `linear-gradient(${+layer.fade.angle || 0}deg, #000 ${+layer.fade.start || 0}%, transparent ${layer.fade.end == null ? 100 : +layer.fade.end}%)` : "";
+    if (!fade && !layer.maskInvert) {
+      if (layer.mask && !inner.style.webkitMaskImage && !inner.style.maskImage) {
+        const m = `url("${url(encodeURI(layer.mask))}")`;
+        Object.assign(inner.style, { webkitMaskImage: m, maskImage: m, webkitMaskSize: "100% 100%", maskSize: "100% 100%",
+          webkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat" });
+      }
+      return;
+    }
+    const imgs = [], sizes = [], webkitOps = [], ops = [];
+    if (fade) { imgs.push(fade); sizes.push("100% 100%"); webkitOps.push("source-in"); ops.push("intersect"); }
+    if (layer.mask) {
+      const m = `url("${url(encodeURI(layer.mask))}")`;
+      if (layer.maskInvert) { imgs.push("linear-gradient(#000,#000)"); sizes.push("100% 100%"); webkitOps.push("xor"); ops.push("exclude"); }
+      imgs.push(m); sizes.push("100% 100%"); webkitOps.push("source-over"); ops.push("add");
+    } else webkitOps[webkitOps.length - 1] = "source-over";
+    Object.assign(inner.style, { webkitMaskImage: imgs.join(", "), maskImage: imgs.join(", "), webkitMaskSize: sizes.join(", "), maskSize: sizes.join(", "),
+      webkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", webkitMaskComposite: webkitOps.join(", "), maskComposite: ops.join(", ") });
+  }
+  // Clipping masks: each layer with clipBelow shows only inside the layer
+  // under it that isn't clipped itself (its "base"): a path's, shape's or
+  // picture's own shape, else its box. The mask sits on the layer's outer box,
+  // so its own In and Out play inside the base (text sliding out from behind a bar).
+  const natural = new Map();   // picture address -> [w, h] (or a promise)
+  function sizeOf(src, done) {
+    const got = natural.get(src);
+    if (Array.isArray(got)) return got;
+    if (!got) {
+      const img = new Image();
+      natural.set(src, img);
+      img.onload = () => { natural.set(src, [img.naturalWidth, img.naturalHeight]); done(); };
+      img.onerror = () => natural.set(src, [0, 0]);
+      img.src = src;
+    }
+    return null;
+  }
+  function baseShape(B) {
+    // The base's shape in the graphic's pixels, as SVG.
+    const cx = B.x + B.w / 2, cy = B.y + B.h / 2;
+    const t = B.rotation || B.flipX || B.flipY ? ` transform="${B.rotation ? `rotate(${+B.rotation} ${cx} ${cy}) ` : ""}` +
+      (B.flipX || B.flipY ? `translate(${cx} ${cy}) scale(${B.flipX ? -1 : 1} ${B.flipY ? -1 : 1}) translate(${-cx} ${-cy})` : "") + `"` : "";
+    if (B.type === "path" && Array.isArray(B.points) && B.points.length > 1) {
+      const sx = B.w / (+B.vw || B.w || 1), sy = B.h / (+B.vh || B.h || 1), sw = +B.strokeWidth || 0;
+      const stroke = sw ? ` stroke="#000" stroke-width="${sw}" vector-effect="non-scaling-stroke" stroke-linejoin="round"` : "";
+      const fill = B.closed || paintIn(B.fill) ? "#000" : "none";
+      return `<g${t}><path transform="translate(${B.x} ${B.y}) scale(${sx} ${sy})" d="${GFX.pathD(B.points, B.closed)}" fill="${fill}"${stroke}/></g>`;
+    }
+    if (B.type === "rect" && B.shape === "ellipse") return `<ellipse${t} cx="${B.x + B.w / 2}" cy="${B.y + B.h / 2}" rx="${B.w / 2}" ry="${B.h / 2}"/>`;
+    if (B.type === "rect" && B.shape === "angled") {
+      const k = +B.skew || 0, pts = k >= 0 ? [[k, 0], [B.w, 0], [B.w - k, B.h], [0, B.h]] : [[0, 0], [B.w + k, 0], [B.w, B.h], [-k, B.h]];
+      return `<polygon${t} points="${pts.map(p => (B.x + p[0]) + "," + (B.y + p[1])).join(" ")}"/>`;
+    }
+    const r = B.type === "rect" ? (Array.isArray(B.radii) ? Math.max(...B.radii.map(n => +n || 0)) : +B.radius || 0) : 0;
+    return `<rect${t} x="${B.x}" y="${B.y}" width="${B.w}" height="${B.h}" rx="${Math.min(r, B.w / 2, B.h / 2)}"/>`;
+  }
+  const MASK_KEYS = ["webkitMaskImage", "maskImage", "webkitMaskSize", "maskSize", "webkitMaskPosition", "maskPosition", "webkitMaskRepeat", "maskRepeat", "webkitMaskComposite", "maskComposite"];
+  function setMask(L, m) {
+    const sig = JSON.stringify(m || null);
+    if (L._clipSig === sig) return;
+    L._clipSig = sig;
+    for (const k of MASK_KEYS) L.style[k] = "";
+    if (!m) return;
+    Object.assign(L.style, { webkitMaskImage: m.image, maskImage: m.image, webkitMaskSize: m.size, maskSize: m.size,
+      webkitMaskPosition: m.pos, maskPosition: m.pos, webkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat" });
+    if (m.comp) { L.style.webkitMaskComposite = m.comp[0]; L.style.maskComposite = m.comp[1]; }
+  }
+  function clipMasks(root) {
+    let base = null, baseEl = null;
+    for (const L of root.children) {
+      const C = L._layer;
+      if (!C) continue;
+      if (C.maskOnly) L.style.opacity = 0;
+      if (!C.clipBelow) { base = C; baseEl = L; setMask(L, null); continue; }
+      if (!base) { setMask(L, null); continue; }
+      // (a hidden base hides what's clipped to it, as in Photoshop)
+      if (baseEl.style.display === "none" || (base.visible === false && !(root._opts || {}).showHidden)) { setMask(L, { image: "linear-gradient(transparent,transparent)", size: "100% 100%", pos: "0 0" }); continue; }
+      const B = base, src = B.type === "image" && baseEl._value && !/^\{\{/.test(baseEl._value) ? url(encodeURI(baseEl._value)) : "";
+      if (src && !B.rotation && !C.rotation && !B.flipX && !B.flipY) {
+        // A picture: its own alpha, where it's drawn in its box.
+        let r = [B.x, B.y, B.w, B.h];
+        if (B.fit !== "fill") {
+          const n = sizeOf(src, () => clipMasks(root));
+          if (!n) { setMask(L, { image: "linear-gradient(transparent,transparent)", size: "100% 100%", pos: "0 0" }); continue; }
+          if (n[0] && n[1]) {
+            const k = (B.fit === "cover" ? Math.max : Math.min)(B.w / n[0], B.h / n[1]), w = n[0] * k, h = n[1] * k;
+            const ax = B.position === "left" ? 0 : B.position === "right" ? 1 : 0.5, ay = B.position === "top" ? 0 : B.position === "bottom" ? 1 : 0.5;
+            r = [B.x + (B.w - w) * ax, B.y + (B.h - h) * ay, w, h];
+            if (B.fit === "cover") {
+              // (cropped to its box: the box's part of the picture)
+              const svg = `<svg xmlns="${SVGNS}" viewBox="${C.x} ${C.y} ${C.w} ${C.h}" preserveAspectRatio="none"><rect x="${B.x}" y="${B.y}" width="${B.w}" height="${B.h}"/></svg>`;
+              setMask(L, { image: `url("${src}"), url("data:image/svg+xml,${encodeURIComponent(svg)}")`, size: `${w}px ${h}px, 100% 100%`,
+                pos: `${r[0] - C.x}px ${r[1] - C.y}px, 0 0`, comp: ["source-in", "intersect"] });
+              continue;
+            }
+          }
+        }
+        setMask(L, { image: `url("${src}")`, size: `${r[2]}px ${r[3]}px`, pos: `${r[0] - C.x}px ${r[1] - C.y}px` });
+        continue;
+      }
+      // Anything else: its shape (a path, an ellipse...) or its box, drawn in
+      // the clipped layer's own box (turned back if that box is turned).
+      const t = C.rotation ? ` transform="rotate(${-C.rotation} ${C.x + C.w / 2} ${C.y + C.h / 2})"` : "";
+      const svg = `<svg xmlns="${SVGNS}" viewBox="${C.x} ${C.y} ${Math.max(1, C.w)} ${Math.max(1, C.h)}" preserveAspectRatio="none"><g${t}>${baseShape(B)}</g></svg>`;
+      setMask(L, { image: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`, size: "100% 100%", pos: "0 0" });
+    }
+  }
+  GFX.clipMasks = clipMasks;
+
   function buildLayer(layer, values, opts) {
     const value = GFX.content(layer, values);
     const outer = el("div", "gfx-L", {
@@ -859,7 +1050,9 @@
     outer.dataset.id = layer.id;
     if (layer.show && !opts.showHidden && !showing(layer)) outer.style.display = "none";
     const inner = el("div", "gfx-A");
-    inner.appendChild(finish(layer, buildContent(layer, value, opts)));
+    const content = finish(layer, buildContent(layer, value, opts));
+    design(layer, inner, content);
+    inner.appendChild(content);
     outer.appendChild(inner);
     outer._value = value;
     outer._extra = extraOf(layer);
@@ -887,6 +1080,7 @@
     root._comp = comp;
     root._values = values;
     root._opts = opts;
+    clipMasks(root);
     return root;
   };
 
@@ -914,6 +1108,7 @@
       prev = L;
     }
     for (const L of existing.values()) { destroy(L); L.remove(); }
+    clipMasks(root);
     root._comp = comp;
     root._values = values;
     root.style.zIndex = 10 + (comp.layer || 0);

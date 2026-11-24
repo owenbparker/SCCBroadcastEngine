@@ -102,6 +102,7 @@ window.Editor = (function () {
     redo = [];
   }
   function restore(json) {
+    if (penEdit) penEdit.stop();
     const d = JSON.parse(json);
     Object.assign(hud, d);
     for (const id of [...selected]) if (!layerById(id)) selected.delete(id);
@@ -191,6 +192,8 @@ window.Editor = (function () {
   const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   function drawSelection(guides, marquee) {
     selLayer.replaceChildren();
+    if (pen) pen.redraw();
+    if (penEdit) { penEdit.redraw(); return; }
     $("#ed-empty").hidden = !hud || hud.layers.length > 0;
     const list = sel();
     const pos = $("#ed-pos");
@@ -301,6 +304,7 @@ window.Editor = (function () {
     if (!l) return;
     selected.clear(); selected.add(l.id);
     renderAll();
+    if (l.type === "path") return editPoints(l);
     if (l.type === "text") { const t = $("#ed-props textarea[data-k=text]"); if (t) { t.focus(); t.select(); } }
   });
 
@@ -610,12 +614,15 @@ window.Editor = (function () {
   }
   function row(l, inGroup) {
     const live = isLive(l);
-    const r = h("div", { class: "lrow" + (selected.has(l.id) ? " sel" : "") + (inGroup ? " in" : "") + (l.reference ? " ref" : ""), draggable: true,
+    const r = h("div", { class: "lrow" + (selected.has(l.id) ? " sel" : "") + (inGroup ? " in" : "") + (l.reference ? " ref" : "") + (l.clipBelow ? " clipped" : ""), draggable: true,
       dataset: { id: l.id },
-      onclick: ev => { if (picker) { selected.clear(); selected.add(l.id); renderAll(); return picker(l); } pick(l, ev.ctrlKey || ev.metaKey || ev.shiftKey, true); renderAll(); } },
+      onclick: ev => { if (ev.altKey) return toggleClip([l]); if (picker) { selected.clear(); selected.add(l.id); renderAll(); return picker(l); } pick(l, ev.ctrlKey || ev.metaKey || ev.shiftKey, true); renderAll(); } },
       eye([l], l.visible === false),
-      h("span", { class: "lic" }, l.type === "rect" ? ({ ellipse: "◯", angled: "▱" }[l.shape] || "▭") : ICON[l.type] || "•"),
+      l.clipBelow ? h("span", { class: "lclip", title: "Clipped: shows only inside the layer under it (Ctrl+Alt+G)" }, "↳") : null,
+      h("span", { class: "lic" }, l.type === "path" ? "✒" : l.type === "rect" ? ({ ellipse: "◯", angled: "▱" }[l.shape] || "▭") : ICON[l.type] || "•"),
       h("span", { class: "lname", title: "Double-click to rename", ondblclick: ev => { ev.stopPropagation(); rename(l.name, val => { snapshot(); l.name = val; changed(); }); } }, l.name),
+      l.maskOnly ? h("span", { class: "lmeta mask", title: "A mask: not drawn itself, the clipped layers above show inside it" }, "mask") : null,
+      l.blend && l.blend !== "normal" ? h("span", { class: "lmeta", title: "Blend mode" }, BLEND_LABEL[l.blend] || l.blend) : null,
       live ? h("span", { class: "llive", title: "Follows a variable" }, "ƒ") : null,
       l.reference ? h("span", { class: "lmeta" }, "ref") : null,
       lock([l], !!l.locked));
@@ -729,6 +736,11 @@ window.Editor = (function () {
     if (mod && k === "x") { copy(); return remove(); }
     if (mod && k === "v") { e.preventDefault(); return paste(20); }
     if (mod && k === "d") { e.preventDefault(); copy(); return paste(20); }
+    if (e.shiftKey && !mod && !e.altKey && (e.code === "KeyH" || e.code === "KeyV")) { e.preventDefault(); return flip(sel(), e.code === "KeyH" ? "flipX" : "flipY"); }
+    if (!mod && !e.altKey && k === "p") { e.preventDefault(); return startPen(); }
+    if (k === "enter" && sel().length === 1 && sel()[0].type === "path") { e.preventDefault(); return editPoints(sel()[0]); }
+    if (mod && e.altKey && e.code === "KeyG") { e.preventDefault(); return toggleClip(sel()); }
+    if (!mod && !e.altKey && k === "i") { e.preventDefault(); return eyedropLayer(); }
     if (mod && k === "g") { e.preventDefault(); return e.shiftKey ? ungroup() : group(); }
     if (mod && k === "]") { e.preventDefault(); return order(e.shiftKey ? "top" : "up"); }
     if (mod && k === "[") { e.preventDefault(); return order(e.shiftKey ? "bottom" : "down"); }
@@ -759,6 +771,157 @@ window.Editor = (function () {
     root.querySelectorAll(".gfx-A").forEach(a => a.getAnimations().forEach(x => x.cancel()));
     b.disabled = false;
   });
+
+  // Flips and effects (layer.fx: drop shadow, inner shadow, glow, blur, background blur), as the Composer's.
+  function flip(list, k) {
+    list = list.filter(l => !l.locked);
+    if (!list.length) return;
+    snapshot();
+    const on = !list.every(l => l[k]);
+    list.forEach(l => { if (on) l[k] = true; else delete l[k]; });
+    changed();
+  }
+  const FX = { shadow: "Drop shadow", inner: "Inner shadow", glow: "Outer glow", blur: "Layer blur", bgblur: "Background blur" };
+  const FX_NEW = { shadow: { x: 0, y: 6, blur: 16, color: "#00000099" }, inner: { x: 0, y: 2, blur: 8, spread: 0, color: "#00000080" },
+    glow: { blur: 20, color: "#1f6feb" }, blur: { blur: 6 }, bgblur: { blur: 20 } };
+  function fxProps(l) {
+    const list = Array.isArray(l.fx) ? l.fx : [];
+    const edit = fn => { snapshot(); fn(); l.fx = (l.fx || []).filter(Boolean); if (!l.fx.length) delete l.fx; changed(); };
+    const n = (f, k, t) => lab(t, h("input", { type: "number", value: f[k] ?? 0, onchange: e => edit(() => { f[k] = +e.target.value || 0; }) }));
+    const colour = f => lab("Colour", h("div", { class: "colour-row" },
+      h("input", { type: "color", value: /^#[0-9a-f]{6}/i.test(f.color || "") ? f.color.slice(0, 7) : "#000000", onchange: e => edit(() => { f.color = e.target.value + (/^#[0-9a-f]{8}$/i.test(f.color || "") ? f.color.slice(7) : ""); }) }),
+      h("input", { type: "text", value: f.color || "", onchange: e => edit(() => { f.color = e.target.value.trim(); }) }),
+      h("button", { type: "button", class: "small dropper", title: "Eyedropper", onclick: async ev => { ev.preventDefault(); const c = await eyedrop(); if (c) edit(() => { f.color = c; }); } }, "💧")));
+    return sect("Effects",
+      list.map((f, i) => h("div", { class: "fx-row" + (f.off ? " off" : "") },
+        h("div", { class: "row-gap" },
+          h("button", { class: "small", title: f.off ? "Show the effect" : "Hide the effect", onclick: () => edit(() => { if (f.off) delete f.off; else f.off = true; }) }, f.off ? "◌" : "●"),
+          h("select", { onchange: e => edit(() => { l.fx[i] = Object.assign({ type: e.target.value }, FX_NEW[e.target.value], { color: f.color }); }) },
+            Object.entries(FX).map(([v, t]) => h("option", { value: v, selected: v === f.type }, t))),
+          h("button", { class: "small", title: "Remove", onclick: () => edit(() => { l.fx.splice(i, 1); }) }, "−")),
+        f.type === "shadow" || f.type === "inner" ? grid(n(f, "x", "Across"), n(f, "y", "Down"), n(f, "blur", "Blur"), f.type === "inner" ? n(f, "spread", "Spread") : null)
+          : grid(n(f, "blur", f.type === "glow" ? "Size" : "Blur")),
+        ["shadow", "inner", "glow"].includes(f.type) ? colour(f) : null)),
+      h("select", { onchange: e => { const t = e.target.value; e.target.value = ""; if (t) edit(() => { l.fx = [...list, Object.assign({ type: t }, FX_NEW[t])]; }); } },
+        h("option", { value: "" }, "+ Add an effect…"), Object.entries(FX).map(([v, t]) => h("option", { value: v }, t))));
+  }
+
+  // --- the pen (vector paths), as the GFX Engine's Composer (pentool.js) -----------------
+  let pen = null, penEdit = null;
+  const penOpts = () => ({ canvas, scale: () => scale, toScreen, toGfx: (cx, cy) => toCanvas(cx, cy) });
+  function startPen() {
+    if (!hud) return;
+    if (penEdit) penEdit.stop();
+    if (pen) { const p = pen; pen = null; return p.stop(); }
+    $("#ed-pen").classList.add("on");
+    pen = PenTool.draw(Object.assign(penOpts(), {
+      done: (pts, closed) => { pen = null; $("#ed-pen").classList.remove("on"); addLayers([newLayer("path", Object.assign({ name: closed ? "Vector" : "Line",
+        fill: closed ? "#1f6feb" : "", stroke: "#ffffff", strokeWidth: closed ? 0 : 6 }, PenTool.newLayer(pts, closed)))]); },
+      stopped: () => { pen = null; $("#ed-pen").classList.remove("on"); },
+    }));
+    toast("Pen: click for corners, drag for curves, click the first point to close. Enter or Esc to finish a line");
+  }
+  $("#ed-pen").addEventListener("click", startPen);
+  function editPoints(l) {
+    if (!l || l.type !== "path") return;
+    if (l.locked) return toast("That path is locked: unlock it to move its points", true);
+    if (pen) { const p = pen; pen = null; p.stop(); }
+    if (penEdit) penEdit.stop();
+    selected.clear(); selected.add(l.id);
+    let fresh = true;
+    penEdit = PenTool.edit(Object.assign(penOpts(), {
+      points: PenTool.layerPoints(l), closed: !!l.closed,
+      change: (pts, final) => {
+        if (fresh) { snapshot(); fresh = false; }
+        PenTool.setLayerPoints(l, pts);
+        changed({ keepProps: true });
+        if (final) fresh = true;
+      },
+      stopped: () => { penEdit = null; drawSelection(); renderProps(); },
+    }));
+    renderAll();
+    toast("Editing points: drag points and handles, click a line to add a point, Alt + click a point for corner / curve, Delete removes one. Enter when done");
+  }
+  function pathProps(l) {
+    return sect(l.closed ? "Vector" : "Line",
+      h("div", { class: "row-gap" },
+        h("button", { class: "small", onclick: () => penEdit ? penEdit.stop() : editPoints(l) }, penEdit ? "Done editing points" : "Edit points"),
+        bind(l, "closed", "check", { label: "Closed" })),
+      colourField(l, "fill", "Fill", { removeEmpty: true, placeholder: "none" }),
+      l.fill ? colourField(l, "fill2", "Fade to (a gradient)", { removeEmpty: true, placeholder: "none" }) : null,
+      l.fill && l.fill2 ? bind(l, "gradAngle", "number", { label: "Gradient direction °", def: 90, step: 15 }) : null,
+      grid(bind(l, "strokeWidth", "number", { label: "Line width", min: 0 }), +l.strokeWidth ? colourField(l, "stroke", "Line colour") : null),
+      +l.strokeWidth ? grid(bind(l, "join", "select", { label: "Corners", options: [["round", "Round"], ["miter", "Sharp"], ["bevel", "Bevel"]], def: "round" }),
+        bind(l, "cap", "select", { label: "Ends", options: [["round", "Round"], ["butt", "Flat"], ["square", "Square"]], def: "round" })) : null);
+  }
+
+  // --- Photoshop / Figma: blend modes, masks, the eyedropper ------------------------------
+  // (the same as the GFX Engine's Composer)
+  const BLEND_GROUPS = [["", ["normal"]], ["Darken", ["darken", "multiply", "color-burn"]],
+    ["Lighten", ["lighten", "screen", "color-dodge", "plus-lighter"]], ["Contrast", ["overlay", "soft-light", "hard-light"]],
+    ["Inversion", ["difference", "exclusion"]], ["Colour", ["hue", "saturation", "color", "luminosity"]]];
+  const BLEND_LABEL = { normal: "Normal", darken: "Darken", multiply: "Multiply", "color-burn": "Colour burn", lighten: "Lighten",
+    screen: "Screen", "color-dodge": "Colour dodge", "plus-lighter": "Add (linear dodge)", overlay: "Overlay", "soft-light": "Soft light",
+    "hard-light": "Hard light", difference: "Difference", exclusion: "Exclusion", hue: "Hue", saturation: "Saturation", color: "Colour", luminosity: "Luminosity" };
+  // Clipping mask: shown only inside the layer under it (Ctrl+Alt+G, Alt + click in Layers).
+  function toggleClip(list) {
+    list = (list || []).filter(Boolean);
+    if (!list.length) return toast("Pick a layer to clip to the one under it", true);
+    const on = !list.every(l => l.clipBelow);
+    snapshot();
+    list.forEach(l => { if (on) l.clipBelow = true; else delete l.clipBelow; });
+    changed();
+  }
+  function baseOf(l) {
+    for (let i = hud.layers.indexOf(l) - 1; i >= 0; i--) if (!hud.layers[i].clipBelow) return hud.layers[i];
+    return null;
+  }
+  // Use as mask (Figma): not drawn itself; the layer above it is clipped to it.
+  function useAsMask(l) {
+    snapshot();
+    if (l.maskOnly) delete l.maskOnly;
+    else {
+      l.maskOnly = true;
+      delete l.clipBelow;
+      const above = hud.layers[hud.layers.indexOf(l) + 1];
+      if (above && !above.clipBelow) above.clipBelow = true;
+    }
+    changed();
+  }
+  function maskProps(l) {
+    const base = l.clipBelow ? baseOf(l) : null, fade = l.fade || null;
+    const FADES = [["", "None"], ["90", "Fade out to the right"], ["270", "Fade out to the left"], ["180", "Fade out down"], ["0", "Fade out up"]];
+    const fadeKey = fade ? String((+fade.angle % 360 + 360) % 360) : "";
+    const setFade = (k, v) => { snapshot(); l.fade = Object.assign({ angle: 90, start: 50, end: 100 }, l.fade, { [k]: v }); changed(); };
+    return sect("Masks",
+      h("label", { class: "check", title: "Photoshop's clipping mask: shown only inside the layer under it" },
+        h("input", { type: "checkbox", checked: !!l.clipBelow, onchange: () => toggleClip([l]) }), "Clip to the layer below (Ctrl+Alt+G)"),
+      l.clipBelow ? h("p", { class: "muted hint" }, base ? `Shows only inside "${base.name}"` : "Nothing under it to clip to") : null,
+      h("label", { class: "check", title: "Figma's mask: not drawn, the layers above clipped to it show only inside its shape" },
+        h("input", { type: "checkbox", checked: !!l.maskOnly, onchange: () => useAsMask(l) }), "Use as mask (not drawn itself)"),
+      grid(lab("Fade", h("select", { onchange: e => { snapshot(); if (!e.target.value) delete l.fade; else l.fade = Object.assign({ start: 50, end: 100 }, l.fade, { angle: +e.target.value }); changed(); } },
+          FADES.map(([v, t]) => h("option", { value: v, selected: v === fadeKey }, t)))),
+        fade ? lab("Starts at %", h("input", { type: "number", min: 0, max: 100, step: 5, value: fade.start ?? 0, onchange: e => setFade("start", +e.target.value || 0) })) : null,
+        fade ? lab("Gone at %", h("input", { type: "number", min: 0, max: 100, step: 5, value: fade.end ?? 100, onchange: e => setFade("end", +e.target.value || 0) })) : null));
+  }
+  async function eyedrop() {
+    if (!window.EyeDropper) { toast("This browser has no eyedropper: use the app, Chrome or Edge", true); return null; }
+    try {
+      const r = await new window.EyeDropper().open(), c = r && r.sRGBHex || "";
+      const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/i.exec(c);
+      return m ? "#" + m.slice(1, 4).map(n => (+n).toString(16).padStart(2, "0")).join("") : c.toLowerCase() || null;
+    } catch (e) { return null; }
+  }
+  // I: the picked layers' colour (a text's colour, a shape's fill) from the screen.
+  async function eyedropLayer() {
+    const list = sel().filter(l => ["text", "rect", "path"].includes(l.type));
+    if (!list.length) return toast("Pick a text or shape, then press I to take its colour from the screen", true);
+    const c = await eyedrop();
+    if (!c) return;
+    snapshot();
+    list.forEach(l => { l[l.type === "text" ? "color" : "fill"] = c; });
+    changed();
+  }
 
   // --- properties ----------------------------------------------------------------------
   // Each edit: an undo step when a field is first changed, drawn as you type.
@@ -818,7 +981,9 @@ window.Editor = (function () {
       set(e.target.value ? token(e.target.value) : (opts.removeEmpty ? "" : "#ffffff"));
       renderProps();
     } }, h("option", { value: "" }, linked ? "Fixed colour" : "ƒ"), varsOf(["color"]).map(v => h("option", { value: v.name, selected: v.name === linked }, v.name)));
-    return h("label", {}, label, h("div", { class: "colour-row" + (linked ? " linked" : "") }, picker, linked ? h("span", { class: "chip" }, "ƒ " + linked) : text, pickVar));
+    const dropper = linked ? null : h("button", { type: "button", class: "small dropper", title: "Eyedropper: pick a colour from anywhere on the screen (I)",
+      onclick: async ev => { ev.preventDefault(); const c = await eyedrop(); if (c) { fresh = true; set(c); renderProps(); } } }, "💧");
+    return h("label", {}, label, h("div", { class: "colour-row" + (linked ? " linked" : "") }, picker, linked ? h("span", { class: "chip" }, "ƒ " + linked) : text, dropper, pickVar));
   }
   // A picture (video, animation): one of the HUD's files, a new one, or a picture variable.
   function sourceField(l) {
@@ -858,13 +1023,19 @@ window.Editor = (function () {
       sect(null, bind(l, "name", "text", { label: "Name", after: () => renderLayers() }),
         grid(bind(l, "x", "number", { label: "X" }), bind(l, "y", "number", { label: "Y" }), bind(l, "w", "number", { label: "Width", min: 1 }), bind(l, "h", "number", { label: "Height", min: 1 })),
         grid(bind(l, "rotation", "number", { label: "Rotate °" }), opacityField(l),
-          bind(l, "blend", "select", { label: "Blend", options: [["normal", "Normal"], ["screen", "Screen"], ["multiply", "Multiply"], ["overlay", "Overlay"], ["lighten", "Lighten"], ["darken", "Darken"], ["color-dodge", "Colour dodge"]], def: "normal" })),
-        alignRow(list)),
+          bind(l, "blend", "select", { label: "Blend", groups: BLEND_GROUPS.map(([g, os]) => [g, os.map(b => [b, BLEND_LABEL[b]])]), def: "normal", after: () => renderLayers() })),
+        alignRow(list),
+        h("div", { class: "row-gap" },
+          h("button", { class: "small" + (l.flipX ? " on" : ""), title: "Flip across (Shift+H)", onclick: () => flip([l], "flipX") }, "⇋ Flip across"),
+          h("button", { class: "small" + (l.flipY ? " on" : ""), title: "Flip up and down (Shift+V)", onclick: () => flip([l], "flipY") }, "⇵ Flip up and down"))),
+      maskProps(l),
     ];
     if (l.type === "rect") kids.push(shapeProps(l));
+    if (l.type === "path") kids.push(pathProps(l));
     if (l.type === "text") kids.push(textProps(l));
     if (["image", "video", "lottie"].includes(l.type)) kids.push(sourceField(l));
     if (l.type !== "text") kids.push(glowProps(l));
+    kids.push(fxProps(l));
     kids.push(liveProps([l]), animProps(l),
       sect(null, bind(l, "locked", "check", { label: "Locked (can't be picked, moved or deleted on the canvas)" }),
         bind(l, "reference", "check", { label: "Only for lining up (never on air)" }),
@@ -873,7 +1044,7 @@ window.Editor = (function () {
           h("button", { class: "small", onclick: () => { copy(); paste(20); } }, "Duplicate"), h("button", { class: "small danger", onclick: remove }, "Delete"))));
     box.replaceChildren(...kids);
   }
-  const typeName = l => l.type === "rect" ? ({ ellipse: "Ellipse", angled: "Angled bar" }[l.shape] || "Rectangle") : { text: "Text", image: "Picture", video: "Video", lottie: "Lottie animation", web: "Web page" }[l.type] || l.type;
+  const typeName = l => l.type === "path" ? (l.closed ? "Vector" : "Line") : l.type === "rect" ? ({ ellipse: "Ellipse", angled: "Angled bar" }[l.shape] || "Rectangle") : { text: "Text", image: "Picture", video: "Video", lottie: "Lottie animation", web: "Web page" }[l.type] || l.type;
   function opacityField(l) {
     let fresh = true;
     const input = h("input", { type: "number", min: 0, max: 100, step: 5, value: Math.round((l.opacity == null ? 1 : l.opacity) * 100),
