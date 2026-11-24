@@ -33,20 +33,39 @@ window.GameHuds = (function () {
     box.replaceChildren(...catalog.games.map(g => h("div", { class: "gh-game" },
       h("div", { class: "gh-head" }, h("h3", {}, g.title),
         h("span", { class: "gh-status " + (g.running ? "on" : "off") }, g.running ? "Running" : "Not running"),
-        g.running ? null : h("span", { class: "muted small" }, `Turn ${g.title} on (Settings > Parts, or open it from Games) to edit its HUDs.`)),
+        g.running ? null : h("span", { class: "muted small" }, `Turn ${g.title} on (Settings > Parts, or open it from Games) to edit its HUDs.`),
+        g.running && g.has_live ? overlayPick(g) : null),
       h("div", { class: "gh-cards" }, ...g.designs.map(d => card(g, d))),
       deletedCopies(g))));
   }
+  // What the game's overlay (its /overlay browser source) shows: its own HUD, or one of My HUDs.
+  function overlayPick(g) {
+    const cur = g.live ? `${g.live.src}:${g.live.id}` : "";
+    const sel = h("select", { class: "small gh-overlay", title: `What ${g.title}'s overlay browser source (/overlay) shows` },
+      h("option", { value: "" }, `${g.title}'s own HUD`),
+      ...(g.customs || []).map(c => h("option", { value: `${c.src}:${c.id}` }, `My HUD: ${c.name}${c.src === "embed" ? " (Custom design)" : ""}`)));
+    sel.value = cur;
+    sel.onchange = () => {
+      const c = (g.customs || []).find(x => `${x.src}:${x.id}` === sel.value);
+      copies(g, { action: "live", custom: c || null }, c ? `${g.title}'s overlay now shows ${c.name}` : `${g.title}'s overlay shows its own HUD again`);
+    };
+    return h("label", { class: "gh-overlay-row small" }, h("span", { class: "grow" }), "Overlay shows", sel);
+  }
   function card(g, d) {
     const c = d.copy;
+    const base = c ? c.base : d.key;
+    const liveCopy = !c && !d.live && !g.live ? g.designs.find(x => x.copy && x.copy.base === base && x.live) : null;
     const url = `http://localhost:${g.port}${d.path}`;
     return h("div", { class: "gh-card" + (g.running ? "" : " off") + (c ? " copy" : ""), onclick: () => g.running && edit(g, d) },
-      h("b", {}, d.name), h("span", { class: "muted small" }, d.what),
+      h("div", { class: "gh-title" }, h("b", {}, d.name), c && d.live ? h("span", { class: "gh-live" }, "● Live") : null),
+      h("span", { class: "muted small" }, d.what),
+      liveCopy ? h("span", { class: "small gh-instead" }, `On air as the copy "${liveCopy.name}"`) : null,
       c ? h("span", { class: "gh-url", title: "Its own browser source (click to copy)", onclick: async e => { e.stopPropagation(); toast(await copyText(url) ? "Browser source copied" : url); } }, url) : null,
       h("div", { class: "gh-card-btns", onclick: e => e.stopPropagation() },
         h("button", { class: "small primary", disabled: !g.running, onclick: () => edit(g, d) }, "Edit"),
-        c ? h("button", { class: "small ghost", disabled: !g.running, title: "Put this copy's changes on the original HUD (what's on air at its usual address). The original's changes before are kept in its Versions.",
-          onclick: () => applyCopy(g, d) }, "Use on original") : null,
+        c ? (d.live
+          ? h("button", { class: "small ghost", disabled: !g.running, title: `Back to the original "${d.what.replace(/^Copy of /, "")}"`, onclick: () => goLive(g, d, false) }, "Stop using")
+          : h("button", { class: "small", disabled: !g.running, title: `Show this copy wherever "${d.what.replace(/^Copy of /, "")}" is on air (its usual browser source and the HUD design list)`, onclick: () => goLive(g, d, true) }, "Go live")) : null,
         h("span", { class: "grow" }),
         g.running && c ? iconBtn("rename", `Rename "${d.name}"`, () => renameCopy(g, d)) : null,
         g.running ? iconBtn("dup", `Duplicate "${d.name}"`, () => duplicate(g, d)) : null,
@@ -84,6 +103,10 @@ window.GameHuds = (function () {
     if (typed == null) return;
     if (open && open.design && open.design.key === d.key) open = null;
     await copies(g, { action: "delete", id: d.copy.id, confirm: typed }, `Deleted ${d.name}. Recently deleted copies brings it back.`);
+  }
+  async function goLive(g, d, on) {
+    const of = d.what.replace(/^Copy of /, "");
+    await copies(g, { action: "live", base: d.copy.base, id: on ? d.copy.id : "" }, on ? `${d.name} is live: it shows wherever ${of} is on air` : `${of} is back to the original`);
   }
   async function applyCopy(g, d) {
     const of = d.what.replace(/^Copy of /, "");

@@ -365,3 +365,9 @@ body .dlg button.primary.danger-fill:not(:disabled) { background: #e5484d !impor
 .gh-card-btns { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 8px; }
 .gh-card-btns button { margin-top: 0 !important; white-space: nowrap; }
 .gh-url { font-size: 11px; color: var(--x-muted); word-break: break-all; cursor: copy; }
+.gh-title { display: flex; align-items: center; gap: 8px; width: 100%; }
+.gh-live { font-size: 11px; font-weight: 700; color: #30d158; white-space: nowrap; }
+.gh-instead { color: var(--x-accent); }
+.gh-card-btns { flex-wrap: wrap; row-gap: 6px; }
+.gh-overlay-row { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--x-muted); }
+.gh-overlay { width: auto; max-width: 280px; }

@@ -425,6 +425,7 @@
 <script src="enginelink.js"></script>
 <script src="shell.js"></script>
 <script src="update.js"></script>
+<script src="/hudedit/picker.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let state = null;
@@ -637,8 +638,12 @@ $("show-timeouts").onchange = e => post("/api/config", { show: { timeouts: e.tar
 ["left", "right"].forEach(side => {
   $("listen-" + side).onclick = () => post("/api/config", { show: { listen_in: state.config.show.listen_in === side ? "" : side } });
 });
+// (the copies made in HUD Builder > Game HUDs and its My HUDs are in the list too)
+var hudPicker = window.HudPicker ? HudPicker.attach($("hud-design"), { game: "valorant",
+  base: v => ({ scc2027: "val-scc2027", default2026: "val-default2026-hud" })[v] }) : null;
 $("hud-design").onchange = async e => {
-  await post("/api/config", { hud_design: e.target.value });
+  const v = hudPicker ? await hudPicker.pick(e.target.value) : e.target.value;
+  if (v) await post("/api/config", { hud_design: v });
   const preview = document.querySelector("#preview iframe");
   if (preview) preview.src = "/overlay";   // (the preview shows the new look)
 };
@@ -724,7 +729,7 @@ function apply(s) {
   $("listen-left").classList.toggle("on", cfg.show.listen_in === "left");
   $("listen-right").classList.toggle("on", cfg.show.listen_in === "right");
   const design = cfg.hud_design === "default2026" ? "default2026" : "scc2027";
-  setIfIdle($("hud-design"), design);
+  setIfIdle($("hud-design"), hudPicker ? hudPicker.shown(design) : design);
   setIfIdle($("event-text"), cfg.event_text || "");
   $("show-ace").checked = cfg.show.ace !== false;
   for (const side of ["left", "right"]) setIfIdle($(`ace-pic-${side}`), (cfg.ace_pictures || {})[side] === "agent" ? "agent" : "photo");

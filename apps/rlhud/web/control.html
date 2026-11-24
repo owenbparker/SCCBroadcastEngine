@@ -302,6 +302,7 @@
 <script src="enginelink.js"></script>
 <script src="shell.js"></script>
 <script src="update.js"></script>
+<script src="/hudedit/picker.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const showUpdate = updateButton($("update"), $("version"));
@@ -461,7 +462,7 @@ function renderLook(info, cfg) {
   // HUD design: a built-in design, or the engine's graphic (when there is one).
   const sel = $("design"), pick = design || (lk && use ? "engine" : "classic");
   sel.querySelector('option[value="engine"]').hidden = !lk;
-  if (document.activeElement !== sel) sel.value = pick;
+  if (document.activeElement !== sel) sel.value = hudPicker ? hudPicker.shown(pick) : pick;
   const when = lk && lk.at ? new Date(lk.at * 1000).toLocaleString() : "";
   $("look-status").innerHTML = lk
     ? `<b>${lk.name || "Graphic"}</b>${lk.rev ? ` (version ${lk.rev})` : ""} from ${lk.from || "the GFX Engine"}${when ? `, made ${when}` : ""}. `
@@ -471,8 +472,12 @@ function renderLook(info, cfg) {
   else if (info.engine_has) $("look-status").innerHTML += `<br>Taking "${info.engine_has.name}" from the engine…`;
   $("look-remove").hidden = !lk;
 }
-$("design").onchange = e => {
-  const v = e.target.value;
+// (the copies made in HUD Builder > Game HUDs and its My HUDs are in the list too)
+var hudPicker = window.HudPicker ? HudPicker.attach($("design"), { game: "rl",
+  base: v => ({ classic: "rl-classic", gerrit2026: "rl-gerrit2026", newgerrit: "rl-newgerrit" })[v] }) : null;
+$("design").onchange = async e => {
+  const v = hudPicker ? await hudPicker.pick(e.target.value) : e.target.value;
+  if (!v) return;
   config(v === "engine" ? { design: "classic", look: { use: true } }
     : v === "classic" ? { design: "classic", look: { use: false } } : { design: v });
 };

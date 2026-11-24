@@ -497,6 +497,7 @@
 <script src="enginelink.js"></script>
 <script src="shell.js"></script>
 <script src="update.js"></script>
+<script src="/hudedit/picker.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let state = null;
@@ -603,12 +604,17 @@ $("counters").querySelectorAll("input").forEach(box => box.addEventListener("cha
   post("/api/config", { strip_counters: { [box.dataset.counter]: box.checked } })));
 
 // HUD profiles.
-let profileList = [], profilesVersion = -1;
+let profileList = [], profilesVersion = -1, curProfile = "";
+// (the copies made in HUD Builder > Game HUDs and its My HUDs are in the list too)
+var hudPicker = window.HudPicker ? HudPicker.attach($("profile"), { game: "lol", base: id => "lol-overlay:" + String(id).toLowerCase().replace(/[^a-z0-9._-]+/g, "-") }) : null;
+const showPick = id => { $("profile").value = hudPicker ? hudPicker.shown(id) : id; };
 async function loadProfiles(current) {
   profileList = await (await fetch("/api/profiles")).json();
   $("profile").innerHTML = profileList.map(p =>
     `<option value="${p.id}">${p.name}${p.builtin ? "" : " (imported)"}</option>`).join("");
-  $("profile").value = current;
+  if (hudPicker) hudPicker.decorate();
+  curProfile = current;
+  showPick(current);
   showProfile(current);
 }
 function showProfile(id) {
@@ -663,10 +669,16 @@ $("bg-speed").addEventListener("input", e => {
   speedTimer = setTimeout(() => post("/api/config", { bg_speed: Number(e.target.value) }), 100);
 });
 
-$("profile").onchange = e => { post("/api/config", { profile: e.target.value }); showProfile(e.target.value); };
+$("profile").onchange = async e => {
+  const v = hudPicker ? await hudPicker.pick(e.target.value) : e.target.value;
+  if (!v) return;
+  curProfile = v;
+  post("/api/config", { profile: v });
+  showProfile(v);
+};
 $("profile-import").onclick = () => $("psd-file").click();
 $("profile-delete").onclick = () => {
-  const p = profileList.find(x => x.id === $("profile").value);
+  const p = profileList.find(x => x.id === curProfile);
   if (p && confirm(`Delete the "${p.name}" profile?`)) post("/api/profiles/delete", { id: p.id });
 };
 function readFile(file) {
@@ -691,7 +703,7 @@ $("psd-file").addEventListener("change", async e => {
 $("font-file").addEventListener("change", async e => {
   const file = e.target.files[0];
   e.target.value = "";
-  if (file) await post("/api/profiles/font", { id: $("profile").value, filename: file.name, data: await readFile(file) });
+  if (file) await post("/api/profiles/font", { id: curProfile, filename: file.name, data: await readFile(file) });
 });
 
 $("swap-teams").onclick = () => post("/api/teams/swap", {});
@@ -1060,7 +1072,10 @@ function apply(s) {
     $("bg-speed-val").textContent = Number(cfg.bg_speed ?? 1).toFixed(2) + "×";
   }
   if (s.profiles_version !== profilesVersion) { profilesVersion = s.profiles_version; loadProfiles(cfg.profile); }
-  else if (document.activeElement !== $("profile") && $("profile").value !== cfg.profile && profileList.length) { $("profile").value = cfg.profile; showProfile(cfg.profile); }
+  else if (document.activeElement !== $("profile") && profileList.length && (curProfile !== cfg.profile || (hudPicker && $("profile").value !== hudPicker.shown(cfg.profile)))) {
+    if (curProfile !== cfg.profile) showProfile(cfg.profile);
+    curProfile = cfg.profile; showPick(cfg.profile);
+  }
   $("best-of").value = cfg.best_of;
   setIfIdle($("gold-mode"), cfg.gold_mode);
   setIfIdle($("gold-scale"), cfg.gold_estimate_scale);
