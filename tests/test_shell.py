@@ -193,6 +193,31 @@ class EverythingTogetherTests(unittest.TestCase):
                 headers={"X-Filename": "x.sccws"}), timeout=20)
         self.assertEqual(e.exception.code, 400)
 
+    def test_workspace_delete_and_put_back_from_the_top_bar(self):
+        base = f"http://127.0.0.1:{self.port}/api/engine/workspace"
+        def post(body):
+            req = urllib.request.Request(base, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read())
+        before = json.loads(get(f"http://127.0.0.1:{self.port}/api/engine/workspaces")[1])
+        status, blob = get(f"http://127.0.0.1:{self.port}/api/engine/workspace-export?id={before['current']}", timeout=60)
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/engine/workspace-import", data=blob,
+                                     headers={"X-Filename": "x.sccws", "Content-Type": "application/octet-stream"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            wid = json.loads(r.read())["id"]
+        with self.assertRaises(urllib.error.HTTPError):
+            post({"delete": before["current"]})                     # never the open one
+        after = post({"delete": wid})
+        self.assertEqual(after["current"], before["current"])       # the open one doesn't change
+        self.assertNotIn(wid, [w["id"] for w in after["workspaces"]])
+        gone = next(d for d in after["deleted"] if d["id"] == wid)  # kept, and listed to put back
+        back = post({"restore": gone["key"]})
+        self.assertIn(wid, [w["id"] for w in back["workspaces"]])
+        self.assertNotIn(gone["key"], [d["key"] for d in back["deleted"]])
+        with self.assertRaises(urllib.error.HTTPError):
+            post({"restore": "../nope-1"})
+        post({"delete": wid})
+
     def test_engine_pages_follow_the_address_tab(self):
         status, body = get("http://127.0.0.1:8782/control.js")
         self.assertIn(b'addEventListener("hashchange"', body)
