@@ -220,11 +220,18 @@
     apply();
   }
 
+  // On air (not editing, not a ?hudcopy page) the HUD shows the copy picked as live
+  // for it in HUD Builder / the HUD design list, if there is one ("served" says which).
+  var served = "";
   function fetchEdits(onlyIfNew) {
-    var url = "/hudedit/edits?design=" + encodeURIComponent(key()) + (onlyIfNew && rev >= 0 ? "&rev=" + rev : "");
+    var live = !editing && !copyId;
+    var url = "/hudedit/edits?design=" + encodeURIComponent(key()) + (onlyIfNew && rev >= 0 ? "&rev=" + rev : "")
+      + (live ? "&live=1" + (onlyIfNew && served ? "&served=" + encodeURIComponent(served) : "") : "");
     return fetch(url, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (doc) {
       if (doc.error) return null;
       if (doc.same) return doc;
+      if ((doc.served || "") !== served) doc.switched = true;
+      served = doc.served || "";
       return doc;
     });
   }
@@ -250,7 +257,7 @@
       var k = key();
       fetchEdits(true).then(function (doc) {
         if (!doc || k !== key()) return;
-        if (!doc.same && doc.rev !== rev) {
+        if (!doc.same && (doc.rev !== rev || doc.switched)) {
           if (editing && dirty()) return;
           setEdits(doc, true);
           if (editing) { history = [JSON.stringify(edits)]; future = []; say("loaded", info()); }

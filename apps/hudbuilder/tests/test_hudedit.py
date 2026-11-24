@@ -149,6 +149,26 @@ class HudEditHttp(unittest.TestCase):
         self.assertEqual(st, 400)
         st, body = self.req("/hudedit/copies", {"action": "rename", "id": "00000000", "name": "x"})
         self.assertEqual(st, 404)
+        # live: the edits a page gets on air follow the live copy; /overlay follows a My HUD
+        self.req("/hudedit/copies", {"action": "live", "base": "rl-classic", "id": cid})
+        st, body = self.req("/hudedit/edits?design=rl-classic&live=1")
+        doc = json.loads(body)
+        self.assertEqual(doc["served"], "rl-classic.c" + cid)
+        st, body = self.req(f"/hudedit/edits?design=rl-classic&live=1&rev={doc['rev']}&served=rl-classic")
+        self.assertNotIn("same", json.loads(body))   # (another version than the page has)
+        st, js = self.req("/hudedit/picker.js")
+        self.assertIn(b"HudPicker", js)
+        self.req("/hudedit/copies", {"action": "live", "custom": {"src": "builder", "id": "habcdef1234", "port": 8800}})
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        opener = urllib.request.build_opener(NoRedirect)
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            opener.open(self.base + "/overlay")
+        self.assertEqual(e.exception.code, 302)
+        self.assertTrue(e.exception.headers["Location"].endswith(":8800/hud/habcdef1234"))
+        self.req("/hudedit/copies", {"action": "live", "custom": None})
 
 
 class Copies(unittest.TestCase):
@@ -197,6 +217,31 @@ class Copies(unittest.TestCase):
         self.assertEqual(hudedit.load(self.dir, key)["rules"], {"#b": {"op": 0.5}})
         self.assertEqual(len(hudedit.history(self.dir, key)), 1)
         self.assertEqual(hudedit.deleted_copies(self.dir), [])
+
+    def test_live_copy_and_custom(self):
+        hudedit.save(self.dir, "val-scc2027", {"rules": {"#a": {"x": 1}}})
+        c = hudedit.make_copy(self.dir, "val-scc2027", "/overlay?design=scc2027", "Sakura")
+        hudedit.save(self.dir, hudedit.copy_key("val-scc2027", c["id"]), {"rules": {"#a": {"x": 2}}})
+        doc, served = hudedit.live_edits(self.dir, "val-scc2027")
+        self.assertEqual((doc["rules"]["#a"]["x"], served), (1, "val-scc2027"))
+        hudedit.set_live(self.dir, {"base": "val-scc2027", "id": c["id"]})
+        doc, served = hudedit.live_edits(self.dir, "val-scc2027")
+        self.assertEqual((doc["rules"]["#a"]["x"], served), (2, hudedit.copy_key("val-scc2027", c["id"])))
+        # a My HUD on /overlay, then back to a design (which clears it)
+        live = hudedit.set_live(self.dir, {"custom": {"src": "builder", "id": "h0123456789", "name": "Mine", "port": 8800}})
+        self.assertEqual(live["custom"]["id"], "h0123456789")
+        self.assertEqual(live["active"], {"val-scc2027": c["id"]})
+        live = hudedit.set_live(self.dir, {"base": "val-scc2027", "id": ""})
+        self.assertEqual((live["custom"], live["active"]), (None, {}))
+        with self.assertRaises(ValueError):
+            hudedit.set_live(self.dir, {"custom": {"src": "web", "id": "x", "port": 1}})
+        # deleting a live copy puts the original back on air
+        hudedit.set_live(self.dir, {"base": "val-scc2027", "id": c["id"]})
+        hudedit.delete_copy(self.dir, c["id"], "Sakura")
+        self.assertEqual(hudedit.live_edits(self.dir, "val-scc2027")[1], "val-scc2027")
+        gone = hudedit.deleted_copies(self.dir)[0]
+        hudedit.undelete_copy(self.dir, gone["tid"])
+        self.assertEqual(hudedit.get_live(self.dir)["active"], {})
 
     def test_bad_input(self):
         with self.assertRaises(ValueError):

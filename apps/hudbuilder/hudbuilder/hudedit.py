@@ -11,6 +11,7 @@ of CSS (and a few added elements) over the page.
 Each HUD app answers these on its own port, from handle() below:
 
     GET  /hudedit.js                         the script
+    GET  /hudedit/picker.js                  the HUD design list helper (hudpicker.js) for control pages
     GET  /hudedit/ping                       {"ok": true}
     GET  /hudedit/edits?design=KEY[&rev=N]   the saved changes ({"rev": N} alone when unchanged)
     GET  /hudedit/asset/<name>               an uploaded picture or font
@@ -19,7 +20,10 @@ Each HUD app answers these on its own port, from handle() below:
     POST /hudedit/restore  {design, version}           an earlier version back (saved as a new one)
     POST /hudedit/upload?name=FILE           (raw bytes) -> {"name": stored name}
     GET  /hudedit/copies                     {"copies": [...], "deleted": [...]}
-    POST /hudedit/copies   {action: make|rename|delete|undelete|apply, ...}
+    POST /hudedit/copies   {action: make|rename|delete|undelete|apply|live, ...}
+    GET  /hudedit/live?game=G                which copy of each design is on air, the HUD
+                                             Builder HUDs that /overlay can go to, and which one does
+    GET  /overlay                            -> 302 to the HUD Builder HUD picked as live, if any
 
 Copies: a built-in HUD can be duplicated into a copy with its own name and its
 own changes (starting from the original's saved ones). A copy is the same page
@@ -357,6 +361,14 @@ def delete_copy(data_dir, cid, confirm):
             os.replace(_history_dir(data_dir, key), os.path.join(dest, "history"))
         _write(os.path.join(dest, "copy.json"), dict(c, deleted=time.time()))
         _save_copies(data_dir, [x for x in copies if x["id"] != cid])
+        # (not live any more: its design goes back to the original)
+        try:
+            with open(_live_file(data_dir), encoding="utf-8") as f:
+                live = json.load(f)
+            live["active"] = {k: v for k, v in (live.get("active") or {}).items() if v != cid}
+            _write(_live_file(data_dir), live)
+        except (OSError, ValueError, AttributeError):
+            pass
         return c
 
 
@@ -428,10 +440,123 @@ def copies_post(data_dir, body):
         return {"copy": delete_copy(data_dir, str(body.get("id") or ""), body.get("confirm"))}
     if act == "undelete":
         return {"copy": undelete_copy(data_dir, body.get("tid"))}
+    if act == "live":
+        return set_live(data_dir, body)
     if act == "apply":
         doc = apply_copy(data_dir, str(body.get("id") or ""))
         return {"ok": True, "rev": doc["rev"]}
     raise ValueError("Unknown action")
+
+
+# --- the live HUD: a copy picked for a design, or a whole HUD Builder HUD ----------
+# live.json: {"active": {design key: copy id}, "custom": {"src", "id", "name", "port"} | null}
+#   active   the copy whose changes a design's pages show on air (instead of the original's)
+#   custom   a HUD Builder HUD that /overlay goes to instead of the game's own HUD
+#            (src "builder": SCC Broadcast Engine's HUD Builder; "embed": this app's Custom design)
+def _live_file(data_dir):
+    return os.path.join(folder(data_dir), "live.json")
+
+
+def get_live(data_dir):
+    try:
+        with open(_live_file(data_dir), encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        doc = {}
+    if not isinstance(doc, dict):
+        doc = {}
+    ids = {c["id"] for c in list_copies(data_dir)}
+    active = {k: v for k, v in (doc.get("active") or {}).items()
+              if isinstance(k, str) and KEY.fullmatch(k) and v in ids}
+    custom = doc.get("custom") if isinstance(doc.get("custom"), dict) else None
+    if custom and not (custom.get("src") in ("builder", "embed") and re.fullmatch(r"[a-z0-9]{6,40}", str(custom.get("id") or ""))
+                       and isinstance(custom.get("port"), int)):
+        custom = None
+    return {"active": active, "custom": custom}
+
+
+def set_live(data_dir, body):
+    """{"base": key, "id": copy id or "" (the original)}: which version of a design is on air
+    (and no HUD Builder HUD over /overlay). {"custom": {...} | null}: a HUD Builder HUD on /overlay."""
+    with _lock:
+        cur = get_live(data_dir)
+        if "custom" in body:
+            c = body.get("custom")
+            if c:
+                c = {"src": c.get("src"), "id": str(c.get("id") or ""), "name": str(c.get("name") or "")[:80],
+                     "port": int(c.get("port") or 0)}
+                if c["src"] not in ("builder", "embed") or not re.fullmatch(r"[a-z0-9]{6,40}", c["id"]) or not 0 < c["port"] < 65536:
+                    raise ValueError("Unknown HUD")
+            cur["custom"] = c or None
+        if "base" in body:
+            base = _key(body.get("base"))
+            cid = str(body.get("id") or "")
+            if cid:
+                _find(list_copies(data_dir), cid)
+                cur["active"][base] = cid
+            else:
+                cur["active"].pop(base, None)
+            cur["custom"] = None
+        _write(_live_file(data_dir), cur)
+        return cur
+
+
+def live_edits(data_dir, design):
+    """The changes a design shows on air: the live copy's, or its own. (doc, served key)"""
+    design = _key(design)
+    cid = get_live(data_dir)["active"].get(design)
+    key = copy_key(design, cid) if cid else design
+    return load(data_dir, key), key
+
+
+def custom_huds(data_dir, game):
+    """The HUD Builder HUDs for this game that can go on /overlay: SCC Broadcast
+    Engine's HUD Builder's and this app's own Custom design's."""
+    out = []
+    port = _builder_port()
+    try:
+        st = _get(f"http://127.0.0.1:{port}/api/state", timeout=0.8)
+        for h in st.get("huds") or []:
+            if not game or h.get("game") == game:
+                out.append({"src": "builder", "id": h["id"], "name": h.get("name") or h["id"], "port": port})
+    except Exception:
+        pass
+    folder_ = os.path.join(data_dir, "hud-builder")
+    try:
+        with open(os.path.join(folder_, "config.json"), encoding="utf-8") as f:
+            eport = int(json.load(f).get("http_port") or 0)
+    except (OSError, ValueError, TypeError):
+        eport = 0
+    if eport:
+        try:
+            from .store import Store
+            for h in Store(os.path.join(folder_, "huds")).list():
+                out.append({"src": "embed", "id": h["id"], "name": h["name"], "port": eport})
+        except Exception:
+            pass
+    return out
+
+
+def _builder_port():
+    try:
+        from sccbe.parts import BY_KEY
+        p = BY_KEY.get("builder")
+        if p is not None and p.port:
+            return p.port
+    except Exception:
+        pass
+    return 8800
+
+
+def _host(req):
+    host = (req.headers.get("Host") or "").strip()
+    if host.startswith("["):
+        return host.split("]")[0] + "]"
+    host = host.split(":")[0]
+    return host if re.fullmatch(r"[A-Za-z0-9.-]{1,253}", host or "") else "127.0.0.1"
+
+
+_PICKS = ("design", "profile", "layout", "look", "hudcopy", "hudedit", "still", "anim", "rwin")
 
 
 # --- HTTP ------------------------------------------------------------------------
@@ -461,6 +586,19 @@ def _reply(req, body, ctype="application/json", status=200, cache=False):
 
 def handle(req, method, path, data_dir):
     """Answers /hudedit.js and /hudedit/... on a BaseHTTPRequestHandler. True when it did."""
+    if path == "/overlay" and method == "GET":
+        # A HUD Builder HUD picked as this game's HUD: /overlay goes there (not when a
+        # page asks for a design of its own, or HUD Builder is editing one).
+        custom = get_live(data_dir)["custom"]
+        q = parse_qs(urlparse(req.path).query)
+        if custom and not any(k in q for k in _PICKS):
+            req.send_response(302)
+            req.send_header("Location", f"http://{_host(req)}:{custom['port']}/hud/{custom['id']}")
+            req.send_header("Cache-Control", "no-store")
+            req.send_header("Content-Length", "0")
+            req.end_headers()
+            return True
+        return False
     if path != "/hudedit.js" and not path.startswith("/hudedit/"):
         return False
     q = parse_qs(urlparse(req.path).query)
@@ -469,15 +607,27 @@ def handle(req, method, path, data_dir):
             if path == "/hudedit.js":
                 with open(os.path.join(WEB_DIR, "hudedit.js"), "rb") as f:
                     return _reply(req, f.read(), "text/javascript; charset=utf-8")
+            if path == "/hudedit/picker.js":
+                with open(os.path.join(WEB_DIR, "hudpicker.js"), "rb") as f:
+                    return _reply(req, f.read(), "text/javascript; charset=utf-8")
             if path == "/hudedit/ping":
                 return _reply(req, {"ok": True})
             if path == "/hudedit/edits":
                 design = (q.get("design") or [""])[0]
-                doc = load(data_dir, design)
+                if (q.get("live") or [""])[0] == "1":
+                    doc, served = live_edits(data_dir, design)
+                    doc["served"] = served
+                    same_key = (q.get("served") or [""])[0] == served
+                else:
+                    doc, same_key = load(data_dir, design), True
                 seen = (q.get("rev") or [""])[0]
-                if seen.isdigit() and int(seen) == doc["rev"]:
+                if same_key and seen.isdigit() and int(seen) == doc["rev"]:
                     return _reply(req, {"rev": doc["rev"], "same": True})
                 return _reply(req, doc)
+            if path == "/hudedit/live":
+                game = (q.get("game") or [""])[0]
+                return _reply(req, dict(get_live(data_dir), copies=list_copies(data_dir),
+                                        customs=custom_huds(data_dir, game) if game else []))
             if path == "/hudedit/copies":
                 return _reply(req, {"copies": list_copies(data_dir), "deleted": deleted_copies(data_dir)[:30]})
             if path == "/hudedit/history":
@@ -621,8 +771,10 @@ def catalog(only_game=None):
         if alive[key]:
             try:
                 copies[key] = _get(f"http://127.0.0.1:{port}/hudedit/copies")
+                game_ = next(g for k, g, _t, _p in GAMES if k == key)
+                copies[key]["live"] = _get(f"http://127.0.0.1:{port}/hudedit/live?game={game_}", timeout=2.5)
             except Exception:
-                copies[key] = {}   # (a HUD from before copies)
+                copies[key] = copies.get(key) or {}   # (a HUD from before copies / live)
 
     threads = [threading.Thread(target=probe, args=(k, ports[k][0]), daemon=True) for k, *_ in games]
     for t in threads:
@@ -656,6 +808,12 @@ def catalog(only_game=None):
             while at < len(rows) and rows[at].get("copy"):
                 at += 1
             rows.insert(at, row)
+        live = got.get("live") or {}
+        for r in rows:
+            base = r["copy"]["base"] if r.get("copy") else r["key"]
+            on = (live.get("active") or {}).get(base)
+            r["live"] = not live.get("custom") and (on == r["copy"]["id"] if r.get("copy") else not on)
         out.append({"part": key, "game": game, "title": title, "port": port, "running": bool(alive.get(key)),
-                    "status": status, "designs": rows, "deleted": got.get("deleted") or []})
+                    "status": status, "designs": rows, "deleted": got.get("deleted") or [],
+                    "live": live.get("custom"), "customs": live.get("customs") or [], "has_live": bool(live)})
     return out
