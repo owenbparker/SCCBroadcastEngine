@@ -445,6 +445,7 @@ table.sheet td.c:hover { background: #1d3b5e; }
 .tn-double .tn-col.champ { min-width: 180px; flex: 0 0 180px; }
 .tn-gf-box { display: flex; flex-direction: column; gap: 4px; }
 .tn-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.tn-groups[data-count="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .tn-group { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .tn-group .tn-match { background: var(--panel); }
 .tn-gname { font-weight: 700; }
