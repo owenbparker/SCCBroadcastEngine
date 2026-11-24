@@ -610,12 +610,15 @@ window.Editor = (function () {
   }
   function row(l, inGroup) {
     const live = isLive(l);
-    const r = h("div", { class: "lrow" + (selected.has(l.id) ? " sel" : "") + (inGroup ? " in" : "") + (l.reference ? " ref" : ""), draggable: true,
+    const r = h("div", { class: "lrow" + (selected.has(l.id) ? " sel" : "") + (inGroup ? " in" : "") + (l.reference ? " ref" : "") + (l.clipBelow ? " clipped" : ""), draggable: true,
       dataset: { id: l.id },
-      onclick: ev => { if (picker) { selected.clear(); selected.add(l.id); renderAll(); return picker(l); } pick(l, ev.ctrlKey || ev.metaKey || ev.shiftKey, true); renderAll(); } },
+      onclick: ev => { if (ev.altKey) return toggleClip([l]); if (picker) { selected.clear(); selected.add(l.id); renderAll(); return picker(l); } pick(l, ev.ctrlKey || ev.metaKey || ev.shiftKey, true); renderAll(); } },
       eye([l], l.visible === false),
-      h("span", { class: "lic" }, l.type === "rect" ? ({ ellipse: "◯", angled: "▱" }[l.shape] || "▭") : ICON[l.type] || "•"),
+      l.clipBelow ? h("span", { class: "lclip", title: "Clipped: shows only inside the layer under it (Ctrl+Alt+G)" }, "↳") : null,
+      h("span", { class: "lic" }, l.type === "path" ? "✒" : l.type === "rect" ? ({ ellipse: "◯", angled: "▱" }[l.shape] || "▭") : ICON[l.type] || "•"),
       h("span", { class: "lname", title: "Double-click to rename", ondblclick: ev => { ev.stopPropagation(); rename(l.name, val => { snapshot(); l.name = val; changed(); }); } }, l.name),
+      l.maskOnly ? h("span", { class: "lmeta mask", title: "A mask: not drawn itself, the clipped layers above show inside it" }, "mask") : null,
+      l.blend && l.blend !== "normal" ? h("span", { class: "lmeta", title: "Blend mode" }, BLEND_LABEL[l.blend] || l.blend) : null,
       live ? h("span", { class: "llive", title: "Follows a variable" }, "ƒ") : null,
       l.reference ? h("span", { class: "lmeta" }, "ref") : null,
       lock([l], !!l.locked));
@@ -729,6 +732,8 @@ window.Editor = (function () {
     if (mod && k === "x") { copy(); return remove(); }
     if (mod && k === "v") { e.preventDefault(); return paste(20); }
     if (mod && k === "d") { e.preventDefault(); copy(); return paste(20); }
+    if (mod && e.altKey && e.code === "KeyG") { e.preventDefault(); return toggleClip(sel()); }
+    if (!mod && !e.altKey && k === "i") { e.preventDefault(); return eyedropLayer(); }
     if (mod && k === "g") { e.preventDefault(); return e.shiftKey ? ungroup() : group(); }
     if (mod && k === "]") { e.preventDefault(); return order(e.shiftKey ? "top" : "up"); }
     if (mod && k === "[") { e.preventDefault(); return order(e.shiftKey ? "bottom" : "down"); }
@@ -759,6 +764,74 @@ window.Editor = (function () {
     root.querySelectorAll(".gfx-A").forEach(a => a.getAnimations().forEach(x => x.cancel()));
     b.disabled = false;
   });
+
+  // --- Photoshop / Figma: blend modes, masks, the eyedropper ------------------------------
+  // (the same as the GFX Engine's Composer)
+  const BLEND_GROUPS = [["", ["normal"]], ["Darken", ["darken", "multiply", "color-burn"]],
+    ["Lighten", ["lighten", "screen", "color-dodge", "plus-lighter"]], ["Contrast", ["overlay", "soft-light", "hard-light"]],
+    ["Inversion", ["difference", "exclusion"]], ["Colour", ["hue", "saturation", "color", "luminosity"]]];
+  const BLEND_LABEL = { normal: "Normal", darken: "Darken", multiply: "Multiply", "color-burn": "Colour burn", lighten: "Lighten",
+    screen: "Screen", "color-dodge": "Colour dodge", "plus-lighter": "Add (linear dodge)", overlay: "Overlay", "soft-light": "Soft light",
+    "hard-light": "Hard light", difference: "Difference", exclusion: "Exclusion", hue: "Hue", saturation: "Saturation", color: "Colour", luminosity: "Luminosity" };
+  // Clipping mask: shown only inside the layer under it (Ctrl+Alt+G, Alt + click in Layers).
+  function toggleClip(list) {
+    list = (list || []).filter(Boolean);
+    if (!list.length) return toast("Pick a layer to clip to the one under it", true);
+    const on = !list.every(l => l.clipBelow);
+    snapshot();
+    list.forEach(l => { if (on) l.clipBelow = true; else delete l.clipBelow; });
+    changed();
+  }
+  function baseOf(l) {
+    for (let i = hud.layers.indexOf(l) - 1; i >= 0; i--) if (!hud.layers[i].clipBelow) return hud.layers[i];
+    return null;
+  }
+  // Use as mask (Figma): not drawn itself; the layer above it is clipped to it.
+  function useAsMask(l) {
+    snapshot();
+    if (l.maskOnly) delete l.maskOnly;
+    else {
+      l.maskOnly = true;
+      delete l.clipBelow;
+      const above = hud.layers[hud.layers.indexOf(l) + 1];
+      if (above && !above.clipBelow) above.clipBelow = true;
+    }
+    changed();
+  }
+  function maskProps(l) {
+    const base = l.clipBelow ? baseOf(l) : null, fade = l.fade || null;
+    const FADES = [["", "None"], ["90", "Fade out to the right"], ["270", "Fade out to the left"], ["180", "Fade out down"], ["0", "Fade out up"]];
+    const fadeKey = fade ? String((+fade.angle % 360 + 360) % 360) : "";
+    const setFade = (k, v) => { snapshot(); l.fade = Object.assign({ angle: 90, start: 50, end: 100 }, l.fade, { [k]: v }); changed(); };
+    return sect("Masks",
+      h("label", { class: "check", title: "Photoshop's clipping mask: shown only inside the layer under it" },
+        h("input", { type: "checkbox", checked: !!l.clipBelow, onchange: () => toggleClip([l]) }), "Clip to the layer below (Ctrl+Alt+G)"),
+      l.clipBelow ? h("p", { class: "muted hint" }, base ? `Shows only inside "${base.name}"` : "Nothing under it to clip to") : null,
+      h("label", { class: "check", title: "Figma's mask: not drawn, the layers above clipped to it show only inside its shape" },
+        h("input", { type: "checkbox", checked: !!l.maskOnly, onchange: () => useAsMask(l) }), "Use as mask (not drawn itself)"),
+      grid(lab("Fade", h("select", { onchange: e => { snapshot(); if (!e.target.value) delete l.fade; else l.fade = Object.assign({ start: 50, end: 100 }, l.fade, { angle: +e.target.value }); changed(); } },
+          FADES.map(([v, t]) => h("option", { value: v, selected: v === fadeKey }, t)))),
+        fade ? lab("Starts at %", h("input", { type: "number", min: 0, max: 100, step: 5, value: fade.start ?? 0, onchange: e => setFade("start", +e.target.value || 0) })) : null,
+        fade ? lab("Gone at %", h("input", { type: "number", min: 0, max: 100, step: 5, value: fade.end ?? 100, onchange: e => setFade("end", +e.target.value || 0) })) : null));
+  }
+  async function eyedrop() {
+    if (!window.EyeDropper) { toast("This browser has no eyedropper: use the app, Chrome or Edge", true); return null; }
+    try {
+      const r = await new window.EyeDropper().open(), c = r && r.sRGBHex || "";
+      const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/i.exec(c);
+      return m ? "#" + m.slice(1, 4).map(n => (+n).toString(16).padStart(2, "0")).join("") : c.toLowerCase() || null;
+    } catch (e) { return null; }
+  }
+  // I: the picked layers' colour (a text's colour, a shape's fill) from the screen.
+  async function eyedropLayer() {
+    const list = sel().filter(l => ["text", "rect", "path"].includes(l.type));
+    if (!list.length) return toast("Pick a text or shape, then press I to take its colour from the screen", true);
+    const c = await eyedrop();
+    if (!c) return;
+    snapshot();
+    list.forEach(l => { l[l.type === "text" ? "color" : "fill"] = c; });
+    changed();
+  }
 
   // --- properties ----------------------------------------------------------------------
   // Each edit: an undo step when a field is first changed, drawn as you type.
@@ -818,7 +891,9 @@ window.Editor = (function () {
       set(e.target.value ? token(e.target.value) : (opts.removeEmpty ? "" : "#ffffff"));
       renderProps();
     } }, h("option", { value: "" }, linked ? "Fixed colour" : "ƒ"), varsOf(["color"]).map(v => h("option", { value: v.name, selected: v.name === linked }, v.name)));
-    return h("label", {}, label, h("div", { class: "colour-row" + (linked ? " linked" : "") }, picker, linked ? h("span", { class: "chip" }, "ƒ " + linked) : text, pickVar));
+    const dropper = linked ? null : h("button", { type: "button", class: "small dropper", title: "Eyedropper: pick a colour from anywhere on the screen (I)",
+      onclick: async ev => { ev.preventDefault(); const c = await eyedrop(); if (c) { fresh = true; set(c); renderProps(); } } }, "💧");
+    return h("label", {}, label, h("div", { class: "colour-row" + (linked ? " linked" : "") }, picker, linked ? h("span", { class: "chip" }, "ƒ " + linked) : text, dropper, pickVar));
   }
   // A picture (video, animation): one of the HUD's files, a new one, or a picture variable.
   function sourceField(l) {
@@ -858,8 +933,9 @@ window.Editor = (function () {
       sect(null, bind(l, "name", "text", { label: "Name", after: () => renderLayers() }),
         grid(bind(l, "x", "number", { label: "X" }), bind(l, "y", "number", { label: "Y" }), bind(l, "w", "number", { label: "Width", min: 1 }), bind(l, "h", "number", { label: "Height", min: 1 })),
         grid(bind(l, "rotation", "number", { label: "Rotate °" }), opacityField(l),
-          bind(l, "blend", "select", { label: "Blend", options: [["normal", "Normal"], ["screen", "Screen"], ["multiply", "Multiply"], ["overlay", "Overlay"], ["lighten", "Lighten"], ["darken", "Darken"], ["color-dodge", "Colour dodge"]], def: "normal" })),
+          bind(l, "blend", "select", { label: "Blend", groups: BLEND_GROUPS.map(([g, os]) => [g, os.map(b => [b, BLEND_LABEL[b]])]), def: "normal", after: () => renderLayers() })),
         alignRow(list)),
+      maskProps(l),
     ];
     if (l.type === "rect") kids.push(shapeProps(l));
     if (l.type === "text") kids.push(textProps(l));

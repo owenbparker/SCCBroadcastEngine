@@ -321,3 +321,9 @@ body.embedded .engine-card, body.embedded #ed-game { display: none !important; }
 .he-shapes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .he-shapes button { padding: 4px 0 !important; font-size: 15px; min-width: 0; }
 .he-shapes button.on { background: var(--x-accent) !important; color: var(--x-on-accent) !important; }
+/* Clipping masks and blend modes in Layers; the eyedropper by colours */
+.lrow.clipped { padding-left: 14px; }
+.lrow.in.clipped { padding-left: 30px; }
+.lclip { color: var(--x-accent); font-size: 12px; }
+.lmeta.mask { color: #c9a7ff; }
+.colour-row .dropper { padding: 3px 6px; flex: 0 0 auto; }
