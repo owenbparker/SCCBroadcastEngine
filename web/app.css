@@ -213,6 +213,12 @@ button.mi { padding: 8px 10px; }
 #menu-ws { width: 340px; }
 #menu-ws .wspic { width: 34px; height: 34px; border-radius: 9px; }
 #menu-ws .wsn { display: flex; flex-direction: column; min-width: 0; } #menu-ws .wsn small { color: var(--mut); font-size: 11.5px; }
+/* (the same trash icon as the Composer's graphics list) */
+#menu-ws .ws-trash { margin-left: auto; flex: none; width: 26px; height: 26px; border-radius: 6px; opacity: .35; color: inherit; cursor: pointer; display: grid; place-items: center; }
+#menu-ws .ws-trash::before { content: ""; width: 15px; height: 15px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'/%3E%3C/svg%3E") center / contain no-repeat; }
+#menu-ws .mi:hover .ws-trash { opacity: .7; }
+#menu-ws .ws-trash:hover { opacity: 1 !important; color: #ff5c5c; background: rgba(255, 92, 92, .14); }
+#menu-ws .ws-gone { opacity: .7; } #menu-ws .ws-gone:hover { opacity: 1; }
 
 /* tournaments (on the engine's pages): each one's logo on a dark tile, whole */
 .tnpic { width: 26px; height: 26px; border-radius: 8px; background: #1c1c1e center/80% no-repeat; display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }

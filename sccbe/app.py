@@ -585,6 +585,14 @@ def make_handler(shell):
                     except (ValueError, KeyError, TypeError) as e:
                         log(f"Companion: {e}", "warn")
                         return self._json({**shell.companion.state(), "error": str(e)}, 400)
+                if path == "/api/engine/workspace" and (body.get("delete") or body.get("restore")):
+                    # The Workspaces menu's trash button (never the open one: the engine refuses it)
+                    # and putting a deleted one back. Deleted ones are kept in workspaces/.deleted.
+                    if body.get("delete"):
+                        shell.engine_call("/api/workspaces/delete", {"id": body.get("delete")})
+                    else:
+                        shell.engine_call("/api/workspaces/restore", {"key": body.get("restore")})
+                    return self._json(shell.engine_call("/api/workspaces"))
                 if path == "/api/engine/workspace":
                     shell.engine_call("/api/workspaces/open", {"id": body.get("id")})
                     with shell._engine_lock:

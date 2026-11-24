@@ -368,10 +368,14 @@ async function loadWorkspaces() {
   renderWorkspaceMenu();
 }
 function renderWorkspaceMenu() {
-  const e = S.engine, ws = (wsList && wsList.workspaces) || [];
+  const e = S.engine, ws = (wsList && wsList.workspaces) || [], dels = (wsList && wsList.deleted) || [];
   $("#menu-ws").innerHTML = `<div class="hd">Workspaces</div>` + ws.map(w => `<button class="mi${w.id === wsList.current ? " on" : ""}" data-ws="${esc(w.id)}">
       <span class="wspic"${w.picture ? ` style="background-image:url('${e.base}/api/workspace-picture/${encodeURIComponent(w.id)}?v=${Math.round(w.updated || 0)}')"` : ""}>${w.picture ? "" : esc((w.name || "?").slice(0, 1))}</span>
-      <span class="wsn">${esc(w.name)}<small>${w.graphics || 0} graphics</small></span>${w.id === wsList.current ? `<span class="st">open</span>` : ""}</button>`).join("")
+      <span class="wsn">${esc(w.name)}<small>${w.graphics || 0} graphics</small></span>${w.id === wsList.current ? `<span class="st">open</span>`
+        : `<span class="ws-trash" role="button" data-ws-del="${esc(w.id)}" title="Delete &quot;${esc(w.name)}&quot;" aria-label="Delete ${esc(w.name)}"></span>`}</button>`).join("")
+    + (dels.length ? `<div class="hd">Recently deleted</div>` + dels.slice(0, 5).map(w => `<button class="mi ws-gone" data-ws-restore="${esc(w.key)}" title="Put &quot;${esc(w.name)}&quot; back">
+      <span class="wspic">${esc((w.name || "?").slice(0, 1))}</span>
+      <span class="wsn">${esc(w.name)}<small>${w.graphics || 0} graphics · deleted ${esc(agoText(w.deleted))}</small></span><span class="st">put back</span></button>`).join("") : "")
     + `<a class="mi" href="#engine/home">${icon("settings")}Manage workspaces<span class="st">new, rename, picture</span></a>`
     + (REMOTE || !wsList.current ? "" :
       `<a class="mi" id="ws-export" href="${BASE}/api/engine/workspace-export?id=${encodeURIComponent(wsList.current)}" download>${icon("outputs")}Export this workspace<span class="st">.sccws file</span></a>
@@ -399,7 +403,31 @@ $("#menu-ws").addEventListener("change", async ev => {
 $("#menu-ws").addEventListener("click", ev => {
   if (ev.target.closest("#ws-export")) { closeMenus(); alertBox("Exporting the workspace… (a big one takes a moment)"); }
 });
+function agoText(t) {
+  const m = Math.max(0, Math.round((Date.now() / 1000 - t) / 60));
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+}
+// The trash button on a workspace (not the open one), and putting a deleted one back.
+// Deleting never throws anything away: the workspace is moved to workspaces/.deleted.
 $("#menu-ws").addEventListener("click", async ev => {
+  const del = ev.target.closest("[data-ws-del]"), back = ev.target.closest("[data-ws-restore]");
+  if (!del && !back) return;
+  ev.stopPropagation();
+  if (del) {
+    const w = (wsList.workspaces || []).find(x => x.id === del.dataset.wsDel);
+    if (!w || w.id === wsList.current) return;
+    closeMenus();
+    if (!confirm(`Delete the workspace "${w.name}" (${w.graphics || 0} graphics)?\n\nIt's moved to Recently deleted in this menu, so you can put it back. The open workspace doesn't change.`)) return;
+    try { wsList = await api("/api/engine/workspace", { delete: w.id }); renderWorkspaceMenu(); alertBox(`Deleted "${w.name}". Put it back from Workspaces > Recently deleted.`); }
+    catch (err) { alertBox("Couldn't delete it: " + err.message); }
+  } else {
+    closeMenus();
+    try { wsList = await api("/api/engine/workspace", { restore: back.dataset.wsRestore }); renderWorkspaceMenu(); alertBox("Put the workspace back. Pick it in Workspaces to open it."); }
+    catch (err) { alertBox("Couldn't put it back: " + err.message); }
+  }
+});
+$("#menu-ws").addEventListener("click", async ev => {
+  if (ev.target.closest("[data-ws-del], [data-ws-restore]")) return;
   const b = ev.target.closest("[data-ws]");
   if (!b) return;
   closeMenus();

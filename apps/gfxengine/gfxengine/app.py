@@ -896,7 +896,8 @@ class Engine:
     # --- workspaces ------------------------------------------------------
 
     def workspaces_info(self):
-        return {"workspaces": self.workspaces.list(), "current": self.workspace_id}
+        return {"workspaces": self.workspaces.list(), "current": self.workspace_id,
+                "deleted": self.workspaces.deleted()}
 
     def create_workspace(self, name, template="scc", open_it=True):
         wid = self.workspaces.create(name, template)
@@ -925,6 +926,11 @@ class Engine:
             raise ValueError("Open another workspace before deleting this one")
         self.workspaces.delete(wid)
         self.changed()
+
+    def restore_workspace(self, key):
+        wid = self.workspaces.restore(key)
+        self.changed()
+        return wid
 
     def export_workspace(self, wid):
         """A .sccws of the workspace (the open one as it is now). Returns (temp file path, name):
@@ -1523,6 +1529,8 @@ def make_handler(engine):
                     result = engine.send_workspace(str(body.get("id") or ""), str(body.get("url") or ""), body.get("key") or "")
                 elif path == "/api/workspaces/delete":
                     engine.delete_workspace(body["id"])
+                elif path == "/api/workspaces/restore":
+                    result = {"id": engine.restore_workspace(str(body.get("key") or ""))}
                 elif path == "/api/pack/import":
                     result = {"added": engine.import_pack(body.get("ids"))}
                 # --- the saved tournaments ---
