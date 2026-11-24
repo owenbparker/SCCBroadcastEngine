@@ -584,8 +584,77 @@ def _reply(req, body, ctype="application/json", status=200, cache=False):
     return True
 
 
+# --- recolours shipped with the app for one person's copy ---------------------------
+# web/hudedit-presets/<name>/preset.json: {id, base, copy_name, rules} plus the pictures
+# its rules name. Applied ONCE to each copy of `base` whose name contains copy_name (never
+# to the built-in HUD itself), on top of that copy's own changes: only the fields the
+# preset names change on those parts, everything else on the copy is kept, and the
+# version it replaces goes to Versions like any Save. presets.json remembers what ran.
+PRESET_DIR = os.path.join(WEB_DIR, "hudedit-presets")
+_presets_done = set()
+
+
+def _presets_file(data_dir):
+    return os.path.join(folder(data_dir), "presets.json")
+
+
+def apply_presets(data_dir, preset_dir=None):
+    """Applies the shipped presets that haven't run on this data folder's copies yet.
+    Returns [(preset id, copy id)] applied now."""
+    preset_dir = preset_dir or PRESET_DIR
+    try:
+        names = sorted(os.listdir(preset_dir))
+    except OSError:
+        return []
+    try:
+        with open(_presets_file(data_dir), encoding="utf-8") as f:
+            done = json.load(f).get("applied") or {}
+    except (OSError, ValueError, AttributeError):
+        done = {}
+    copies, out = list_copies(data_dir), []
+    for name in names:
+        try:
+            with open(os.path.join(preset_dir, name, "preset.json"), encoding="utf-8") as f:
+                pre = json.load(f)
+        except (OSError, ValueError):
+            continue
+        pid, base, want = str(pre.get("id") or name), _key(str(pre.get("base") or "")), str(pre.get("copy_name") or "").lower()
+        if not want:
+            continue
+        for c in copies:
+            if c["base"] != base or want not in c["name"].lower() or c["id"] in (done.get(pid) or []):
+                continue
+            stored = {}
+            for sel, r in (pre.get("rules") or {}).items():
+                pic = r.get("img")
+                if pic and pic not in stored:
+                    with open(os.path.join(preset_dir, name, os.path.basename(pic)), "rb") as f:
+                        stored[pic] = store_upload(data_dir, pic, f.read())
+            key = copy_key(base, c["id"])
+            cur = load(data_dir, key)
+            rules = dict(cur["rules"])
+            for sel, r in (pre.get("rules") or {}).items():
+                r = dict(r)
+                if r.get("img"):
+                    r["img"] = stored[r["img"]]
+                rules[sel] = dict(rules.get(sel) or {}, **r)
+            save(data_dir, key, dict(cur, rules=rules), cur["rev"])
+            done.setdefault(pid, []).append(c["id"])
+            out.append((pid, c["id"]))
+    if out:
+        with _lock:
+            _write(_presets_file(data_dir), {"applied": done})
+    return out
+
+
 def handle(req, method, path, data_dir):
     """Answers /hudedit.js and /hudedit/... on a BaseHTTPRequestHandler. True when it did."""
+    if data_dir not in _presets_done:
+        _presets_done.add(data_dir)
+        try:
+            apply_presets(data_dir)
+        except Exception:   # (a shipped recolour must never stop the HUD)
+            pass
     if path == "/overlay" and method == "GET":
         # A HUD Builder HUD picked as this game's HUD: /overlay goes there (not when a
         # page asks for a design of its own, or HUD Builder is editing one).
