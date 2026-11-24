@@ -74,6 +74,7 @@
     const server = App.comp(compId) || App.comps()[0];
     if (!server) { comp = null; compId = null; draw(); renderLayers(); renderProps(); renderComps(); return; }
     if (server.id !== compId) { compId = server.id; force = true; }
+    $("#comp-dup-groups").hidden = !/Tournament!Group [A-D]\b/.test(JSON.stringify(server.layers || []));
     const json = JSON.stringify(server);
     if (!force && (pending || json === JSON.stringify(comp))) return;
     if (!force && json === lastSent) return;
@@ -112,6 +113,12 @@
     location.href = `/api/share?comps=${compId}`;
   });
   $("#comp-dup").addEventListener("click", async () => { if (compId) open((await api("/api/comp/duplicate", { id: compId })).comp.id); });
+  $("#comp-dup-groups").addEventListener("click", async () => {
+    if (!compId) return;
+    const made = (await api("/api/comp/duplicate", { id: compId, groups: true })).comp;
+    toast(`Made "${made.name}": it shows groups E-H (G and H hide with 6 groups)`);
+    open(made.id);
+  });
   // Asks first: a deleted graphic is gone (Undo doesn't bring it back).
   async function deleteComp(id) {
     const c = App.comp(id);

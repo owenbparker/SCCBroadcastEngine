@@ -778,6 +778,33 @@ class TournamentTests(unittest.TestCase):
         self.assertEqual(tournament.clean({"group_count": "8"})["group_count"], 8)
         self.assertEqual(tournament.default()["group_count"], 4)
 
+    def test_copy_any_group_graphic_for_e_to_h(self):
+        import copy
+        from gfxengine import tournament
+        with open(os.path.join(ROOT, "starter", "project.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        mine = copy.deepcopy(next(c for c in data["compositions"] if c["name"] == "Group bracket"))
+        # (a design of their own: a logo in the middle, a rule already on one layer)
+        mine["layers"].append({"id": "x1", "name": "Logo", "type": "image", "x": 900, "y": 480, "w": 120, "h": 120, "src": "a.png"})
+        d_name = next(l for l in mine["layers"] if l.get("text") == "{{Tournament!Group D name}}")
+        d_name["when"] = [{"value": "{{Global!Event}}", "op": "has"}]
+        out = tournament.groups_copy(copy.deepcopy(mine))
+        self.assertEqual(out["name"], "Group bracket E-H")
+        text = json.dumps(out)
+        self.assertNotRegex(text, r"Tournament!Group [A-D]\b")
+        by_text = {l.get("text"): l for l in out["layers"] if l.get("text")}
+        self.assertNotIn("when", by_text["{{Tournament!Group E 1st}}"])
+        self.assertEqual(by_text["{{Tournament!Group G name}}"]["when"], [{"value": "{{Tournament!Groups}}", "op": ">=", "to": "7"}])
+        self.assertEqual(by_text["{{Tournament!Group H name}}"]["when"],
+                         [{"value": "{{Global!Event}}", "op": "has"}, {"value": "{{Tournament!Groups}}", "op": ">=", "to": "8"}])
+        whens = {l["id"]: l.get("when") for l in out["layers"]}
+        self.assertIsNone(whens["x1"])                        # (shared: stays)
+        self.assertIsNone(whens[mine["layers"][0]["id"]])     # (the background)
+        # The pictures inside group H's area hide with it.
+        boxes = [l for l in out["layers"] if l.get("type") == "image" and l["x"] > 1000 and 600 < l["y"] < 960]
+        self.assertTrue(boxes and all(l.get("when") for l in boxes))
+
+
     def test_group_bracket_e_to_h_graphic(self):
         with open(os.path.join(ROOT, "starter", "project.json"), encoding="utf-8") as f:
             data = json.load(f)

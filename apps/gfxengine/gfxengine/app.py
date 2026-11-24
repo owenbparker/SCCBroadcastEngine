@@ -1485,7 +1485,7 @@ def make_handler(engine):
                 elif path == "/api/comp/save":
                     result = {"comp": ws.put_comp(body["comp"])}
                 elif path == "/api/comp/duplicate":
-                    result = {"comp": ws.duplicate_comp(body["id"])}
+                    result = {"comp": ws.duplicate_comp(body["id"], groups=bool(body.get("groups")))}
                 elif path == "/api/comp/delete":
                     engine.delete_comp(body["id"])
                 elif path == "/api/comp/order":

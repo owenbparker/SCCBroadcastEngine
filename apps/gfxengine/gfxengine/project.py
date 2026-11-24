@@ -194,12 +194,16 @@ class Workspace:
                     return comp
         raise KeyError("No such graphic")
 
-    def duplicate_comp(self, cid):
+    def duplicate_comp(self, cid, groups=False):
         comp = self.comp(cid)
         if not comp:
             raise KeyError("No such graphic")
         comp["id"] = new_id("c")
-        comp["name"] += " copy"
+        if groups:     # (a group bracket for groups E-H)
+            from .tournament import groups_copy
+            groups_copy(comp)
+        else:
+            comp["name"] += " copy"
         for layer in comp["layers"]:
             layer["id"] = new_id("l")
         return self.add_comp(comp, after=cid)

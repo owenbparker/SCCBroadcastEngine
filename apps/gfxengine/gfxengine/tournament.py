@@ -28,6 +28,8 @@ and {{Tournament!Top reset}} ("on" / "off");
 and for the final four: {{Tournament!Top semi 1}} ... {{Tournament!Top final 2}}.
 """
 
+import re
+
 SIZES = (8, 16)
 FORMATS = ("single", "double")
 GROUP_NAMES = ("A", "B", "C", "D", "E", "F", "G", "H")
@@ -297,3 +299,65 @@ def rows(t, find=None):
         team(f"Group {g} 1st", first)
         team(f"Group {g} 2nd", second)
     return out
+
+
+_GROUP_REF = re.compile(r"(Tournament!Group )([A-H])\b")
+
+
+def groups_copy(comp, shift=4):
+    """A copy of a group graphic for the next groups: every {{Tournament!Group A ...}}
+    becomes Group E (B -> F, C -> G, D -> H), and each group's part of the
+    graphic (the layers bound to it, and the shapes and pictures inside that
+    area) hides while the tournament has fewer groups. Changes comp in place."""
+    letters = "ABCDEFGH"
+
+    def remap(v, found):
+        if isinstance(v, str):
+            def sub(m):
+                i = letters.index(m.group(2)) + shift
+                found.add(i)
+                return m.group(1) + (letters[i] if i < len(letters) else m.group(2))
+            return _GROUP_REF.sub(sub, v)
+        if isinstance(v, list):
+            return [remap(x, found) for x in v]
+        if isinstance(v, dict):
+            return {k: remap(x, found) for k, x in v.items()}
+        return v
+
+    def box(l):
+        try:
+            return float(l.get("x") or 0), float(l.get("y") or 0), float(l.get("w") or 0), float(l.get("h") or 0)
+        except (TypeError, ValueError):
+            return 0.0, 0.0, 0.0, 0.0
+
+    layers = comp.get("layers") or []
+    owner, areas = {}, {}
+    for n, l in enumerate(layers):
+        found = set()
+        layers[n] = l = remap(l, found)
+        if isinstance(l.get("name"), str):      # (the layer's name is its field's name in Control)
+            l["name"] = re.sub(r"\b(Group|GROUP|group) ([A-D])\b", lambda m: m.group(1) + " " + letters[letters.index(m.group(2)) + shift], l["name"])
+        if len(found) == 1:
+            g = found.pop()
+            owner[n] = g
+            x, y, w, h = box(l)
+            a = areas.setdefault(g, [x, y, x + w, y + h])
+            a[0], a[1], a[2], a[3] = min(a[0], x), min(a[1], y), max(a[2], x + w), max(a[3], y + h)
+    pad = 12
+    for n, l in enumerate(layers):
+        if n in owner:
+            continue
+        x, y, w, h = box(l)
+        cx, cy = x + w / 2, y + h / 2
+        inside = [g for g, a in areas.items() if a[0] - pad <= cx <= a[2] + pad and a[1] - pad <= cy <= a[3] + pad]
+        if len(inside) == 1:
+            owner[n] = inside[0]
+    for n, g in owner.items():
+        if 6 <= g < len(letters):      # (G and H: E and F are there with 6 groups or 8)
+            l = layers[n]
+            rules = l.get("when")
+            rules = [r for r in (rules if isinstance(rules, list) else [rules]) if isinstance(r, dict) and r.get("value")]
+            rules.append({"value": "{{Tournament!Groups}}", "op": ">=", "to": str(g + 1)})
+            l["when"] = rules
+    comp["name"] = str(comp.get("name") or "Group bracket") + " E-H"
+    return comp
