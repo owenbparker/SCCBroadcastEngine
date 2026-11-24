@@ -34,5 +34,21 @@ class DesignToolsTest(unittest.TestCase):
             self.assertIn('layer.type === "rect" || layer.type === "path" ? layer.fill : layer.src', text)
 
 
+
+class PenToolTest(unittest.TestCase):
+    def test_same_file_in_both_apps(self):
+        files = []
+        for app in ("gfxengine", "hudbuilder"):
+            with open(os.path.join(APPS, app, "web", "pentool.js"), encoding="utf-8") as f:
+                files.append(f.read())
+        self.assertEqual(files[0], files[1])
+
+    def test_pages_load_it_before_the_editor(self):
+        for app, page, editor in (("gfxengine", "control.html", "composer.js"), ("hudbuilder", "app.html", "editor.js")):
+            with open(os.path.join(APPS, app, "web", page), encoding="utf-8") as f:
+                html = f.read()
+            self.assertLess(html.index("pentool.js"), html.index(editor))
+
+
 if __name__ == "__main__":
     unittest.main()

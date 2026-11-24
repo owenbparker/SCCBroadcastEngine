@@ -327,3 +327,5 @@ body.embedded .engine-card, body.embedded #ed-game { display: none !important; }
 .lclip { color: var(--x-accent); font-size: 12px; }
 .lmeta.mask { color: #c9a7ff; }
 .colour-row .dropper { padding: 3px 6px; flex: 0 0 auto; }
+.tool.on { background: var(--x-accent); color: #000; }
+.ed-canvas.pen-on, .ed-canvas.pen-on * { cursor: crosshair !important; }

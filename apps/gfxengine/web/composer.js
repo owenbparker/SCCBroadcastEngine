@@ -41,6 +41,7 @@
     redo.length = 0;
   }
   function restore(json) {
+    if (penEdit) penEdit.stop();
     comp = JSON.parse(json);
     if (!comp.layers.some(l => l.id === selected)) selected = null;
     for (const id of [...multi]) if (!comp.layers.some(l => l.id === id)) multi.delete(id);
@@ -527,6 +528,8 @@
   const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   function drawSelection(guides) {
     selLayer.replaceChildren();
+    if (pen) pen.redraw();
+    if (penEdit) { penEdit.redraw(); return; }
     for (const id of multi) {
       const o = layerById(id);
       if (!o || id === selected) continue;
@@ -687,6 +690,7 @@
   }
   canvas.addEventListener("dblclick", () => {
     const l = layerById(selected);
+    if (l && l.type === "path") return editPoints(l);
     if (l && l.type === "text") { const t = document.querySelector("#props textarea[data-k=text]"); if (t) { t.focus(); t.select(); } }
   });
 
@@ -703,6 +707,9 @@
     if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); if (redo.length) { undo.push(JSON.stringify(comp)); restore(redo.pop()); } return; }
     if (mod && e.key.toLowerCase() === "v" && !e.altKey) { e.preventDefault(); pasteLayers(); return; }
     if (mod && e.altKey && e.code === "KeyG") { e.preventDefault(); return toggleClip(picked()); }
+    if (!mod && !e.altKey && e.key.toLowerCase() === "p") { e.preventDefault(); return setTool("pen"); }
+    if (!mod && !e.altKey && e.key.toLowerCase() === "v") { e.preventDefault(); return setTool("move"); }
+    if (e.key === "Enter" && l && l.type === "path") { e.preventDefault(); return editPoints(l); }
     if (e.shiftKey && !mod && (e.key === "+" || e.key === "_")) { e.preventDefault(); return stepBlend(e.key === "+" ? 1 : -1); }
     if (!mod && !e.altKey && e.key.toLowerCase() === "i") { e.preventDefault(); return eyedropLayer(); }
     if (mod && e.key.toLowerCase() === "g" && !e.altKey) { e.preventDefault(); if (e.shiftKey) ungroupLayers(); else groupLayers(); return; }
@@ -952,7 +959,7 @@
     if (!l) return renderCompProps();
     const sections = [];
     sections.push(h("div", { class: "sect" },
-      h("h3", {}, ({ text: "Text", rect: "Shape", image: "Picture", video: "Video", lottie: "Lottie animation", bracket: "Bracket", web: "Web page" }[l.type] || "Layer") + " layer"),
+      h("h3", {}, ({ text: "Text", rect: "Shape", path: "Path", image: "Picture", video: "Video", lottie: "Lottie animation", bracket: "Bracket", web: "Web page" }[l.type] || "Layer") + " layer"),
       lab("Name", bind(l, "name", "text")),
       h("label", { title: "Give it a name to change it from Control (and from data)" }, "Field (changed from Control)",
         h("div", { class: "row-gap" },
@@ -1022,6 +1029,8 @@
         h("p", { class: "muted small" }, "A live web page in this box: a game HUD's page, or the spectated player's cam."),
         l.design != null ? h("button", { class: "small", onclick: () => { snapshot(); l.type = /^#|^rgb|^\{\{Global!.*colou?r/i.test(l.design) ? "rect" : "image";
           if (l.type === "rect") { l.fill = l.design; delete l.src; } else l.src = l.design; delete l.design; delete l.when; changed({ props: true }); } }, "Back to the design's picture") : null));
+    } else if (l.type === "path") {
+      sections.push(pathSection(l));
     } else if (l.type === "rect") {
       sections.push(h("div", { class: "sect" }, h("h3", {}, "Shape"),
         h("div", { class: "grid2" }, bind(l, "fill", "color", { label: "Fill" }), lab("Corner radius", bind(l, "radius", "number", { min: 0 }))),
@@ -1156,6 +1165,88 @@
           lab("All in", h("select", { onchange: e => setAnim("in", e.target.value) }, h("option", { value: "" }, "(as they are)"), GFX.animTypes.map(t => h("option", { value: t }, t)))),
           lab("All out", h("select", { onchange: e => setAnim("out", e.target.value) }, h("option", { value: "" }, "(as they are)"), GFX.animTypes.map(t => h("option", { value: t }, t)))))));
   }
+  // --- tools: the pen (vector paths) ------------------------------------------------------
+  // P: the pen (click for corners, drag for curves, click the first point to
+  // close it, Enter to finish a line). V: back to moving layers. Double-click
+  // a path (or Enter) to move its points. Drawn by pentool.js.
+  let tool = "move", pen = null, penEdit = null;
+  const penOpts = () => ({
+    canvas, scale: () => scale, toScreen: (x, y) => toScreen(x, y),
+    toGfx: (cx, cy) => { const r = canvas.getBoundingClientRect(); return [(cx - r.left - offX) / scale, (cy - r.top - offY) / scale]; },
+  });
+  function setTool(t) {
+    if (t === tool && t !== "pen") return renderDock();
+    if (pen) { const p = pen; pen = null; p.stop(); }
+    if (penEdit) penEdit.stop();
+    tool = t;
+    if (t === "pen") {
+      if (!comp) { tool = "move"; renderDock(); return toast("Make or pick a graphic first", true); }
+      pen = PenTool.draw(Object.assign(penOpts(), {
+        done: (pts, closed) => { pen = null; addPath(pts, closed); tool = "move"; renderDock(); },
+        stopped: () => { pen = null; tool = "move"; renderDock(); },
+      }));
+      toast("Pen: click for corners, drag for curves, click the first point to close. Enter or Esc to finish a line");
+    }
+    renderDock();
+  }
+  async function addPath(pts, closed) {
+    const { layer } = await api("/api/layer/blank", { type: "path" });
+    snapshot();
+    Object.assign(layer, { name: closed ? "Vector" : "Line", fill: closed ? "#f5c518" : "", stroke: "#ffffff", strokeWidth: closed ? 0 : 6 },
+      PenTool.newLayer(pts, closed));
+    comp.layers.push(layer);
+    multi.clear();
+    selected = layer.id;
+    changed({ props: true });
+  }
+  function editPoints(l) {
+    if (!l || l.type !== "path") return;
+    if (l.locked) return toast("That path is locked: unlock it to move its points", true);
+    if (pen) { const p = pen; pen = null; p.stop(); }
+    if (penEdit) penEdit.stop();
+    multi.clear();
+    selected = l.id;
+    let fresh = true;
+    penEdit = PenTool.edit(Object.assign(penOpts(), {
+      points: PenTool.layerPoints(l), closed: !!l.closed,
+      change: (pts, final) => {
+        if (fresh) { snapshot(); fresh = false; }
+        PenTool.setLayerPoints(l, pts);
+        pending = true; saveSoon(); redraw(); syncPropsGeometry();
+        if (final) { fresh = true; changed({ keepList: true }); }
+      },
+      stopped: () => { penEdit = null; drawSelection(); renderDock(); },
+    }));
+    renderLayers(); renderProps(); drawSelection(); renderDock();
+    toast("Editing points: drag points and handles, click a line to add a point, Alt + click a point for corner / curve, Delete removes one. Enter when done");
+  }
+  // The tool dock under the canvas, as Figma's.
+  function renderDock() {
+    const dock = $("#tool-dock");
+    if (!dock) return;
+    const b = (t, icon, tip, on, fn) => h("button", { class: "tool" + (on ? " on" : ""), title: tip, onclick: fn || (() => setTool(t)) }, icon);
+    dock.replaceChildren(
+      b("move", "⬉", "Move (V)", tool === "move" && !penEdit),
+      b("pen", "✒", "Pen (P): click for corners, drag for curves", tool === "pen"),
+      penEdit ? b("", "Done", "Finish editing points (Enter)", true, () => penEdit && penEdit.stop()) : null);
+  }
+  renderDock();
+  function pathSection(l) {
+    return h("div", { class: "sect" }, h("h3", {}, "Path"),
+      h("div", { class: "row-gap" },
+        h("button", { class: "small", title: "Move its points and curves (double-click the path, or Enter)", onclick: () => editPoints(l) }, penEdit ? "Editing points…" : "Edit points"),
+        h("label", { class: "toggle", title: "Closed: the last point joins the first (a shape you can fill)" },
+          h("input", { type: "checkbox", checked: !!l.closed, onchange: e => { snapshot(); l.closed = e.target.checked; changed({ props: true }); } }), "Closed")),
+      h("div", { class: "grid2" }, bind(l, "fill", "color", { label: "Fill" }),
+        h("label", {}, " ", h("button", { class: "small", title: "No fill: just the line", onclick: () => { snapshot(); l.fill = ""; changed({ props: true }); } }, "No fill"))),
+      l.fill ? h("div", { class: "grid2" }, bind(l, "fill2", "color", { label: "Fade to (gradient)" }),
+        l.fill2 ? lab("Direction °", bind(l, "gradAngle", "number", { step: 15 })) : h("span")) : null,
+      h("div", { class: "grid2" }, bind(l, "stroke", "color", { label: "Line colour" }), lab("Line width", bind(l, "strokeWidth", "number", { min: 0 }))),
+      +l.strokeWidth ? h("div", { class: "grid2" },
+        lab("Corners", bind(l, "join", "select", { options: [["round", "Round"], ["miter", "Sharp"], ["bevel", "Bevel"]] })),
+        lab("Ends", bind(l, "cap", "select", { options: [["round", "Round"], ["butt", "Flat"], ["square", "Square"]] }))) : null);
+  }
+
   // --- Photoshop / Figma tools: blend modes, masks, the eyedropper ------------------
   // Blend modes (Photoshop's list, grouped the same way) for the picked
   // layers: in the bar over Layers and in the layer's panel. They blend with

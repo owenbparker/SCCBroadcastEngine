@@ -102,6 +102,7 @@ window.Editor = (function () {
     redo = [];
   }
   function restore(json) {
+    if (penEdit) penEdit.stop();
     const d = JSON.parse(json);
     Object.assign(hud, d);
     for (const id of [...selected]) if (!layerById(id)) selected.delete(id);
@@ -191,6 +192,8 @@ window.Editor = (function () {
   const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   function drawSelection(guides, marquee) {
     selLayer.replaceChildren();
+    if (pen) pen.redraw();
+    if (penEdit) { penEdit.redraw(); return; }
     $("#ed-empty").hidden = !hud || hud.layers.length > 0;
     const list = sel();
     const pos = $("#ed-pos");
@@ -301,6 +304,7 @@ window.Editor = (function () {
     if (!l) return;
     selected.clear(); selected.add(l.id);
     renderAll();
+    if (l.type === "path") return editPoints(l);
     if (l.type === "text") { const t = $("#ed-props textarea[data-k=text]"); if (t) { t.focus(); t.select(); } }
   });
 
@@ -732,6 +736,8 @@ window.Editor = (function () {
     if (mod && k === "x") { copy(); return remove(); }
     if (mod && k === "v") { e.preventDefault(); return paste(20); }
     if (mod && k === "d") { e.preventDefault(); copy(); return paste(20); }
+    if (!mod && !e.altKey && k === "p") { e.preventDefault(); return startPen(); }
+    if (k === "enter" && sel().length === 1 && sel()[0].type === "path") { e.preventDefault(); return editPoints(sel()[0]); }
     if (mod && e.altKey && e.code === "KeyG") { e.preventDefault(); return toggleClip(sel()); }
     if (!mod && !e.altKey && k === "i") { e.preventDefault(); return eyedropLayer(); }
     if (mod && k === "g") { e.preventDefault(); return e.shiftKey ? ungroup() : group(); }
@@ -764,6 +770,55 @@ window.Editor = (function () {
     root.querySelectorAll(".gfx-A").forEach(a => a.getAnimations().forEach(x => x.cancel()));
     b.disabled = false;
   });
+
+  // --- the pen (vector paths), as the GFX Engine's Composer (pentool.js) -----------------
+  let pen = null, penEdit = null;
+  const penOpts = () => ({ canvas, scale: () => scale, toScreen, toGfx: (cx, cy) => toCanvas(cx, cy) });
+  function startPen() {
+    if (!hud) return;
+    if (penEdit) penEdit.stop();
+    if (pen) { const p = pen; pen = null; return p.stop(); }
+    $("#ed-pen").classList.add("on");
+    pen = PenTool.draw(Object.assign(penOpts(), {
+      done: (pts, closed) => { pen = null; $("#ed-pen").classList.remove("on"); addLayers([newLayer("path", Object.assign({ name: closed ? "Vector" : "Line",
+        fill: closed ? "#1f6feb" : "", stroke: "#ffffff", strokeWidth: closed ? 0 : 6 }, PenTool.newLayer(pts, closed)))]); },
+      stopped: () => { pen = null; $("#ed-pen").classList.remove("on"); },
+    }));
+    toast("Pen: click for corners, drag for curves, click the first point to close. Enter or Esc to finish a line");
+  }
+  $("#ed-pen").addEventListener("click", startPen);
+  function editPoints(l) {
+    if (!l || l.type !== "path") return;
+    if (l.locked) return toast("That path is locked: unlock it to move its points", true);
+    if (pen) { const p = pen; pen = null; p.stop(); }
+    if (penEdit) penEdit.stop();
+    selected.clear(); selected.add(l.id);
+    let fresh = true;
+    penEdit = PenTool.edit(Object.assign(penOpts(), {
+      points: PenTool.layerPoints(l), closed: !!l.closed,
+      change: (pts, final) => {
+        if (fresh) { snapshot(); fresh = false; }
+        PenTool.setLayerPoints(l, pts);
+        changed({ keepProps: true });
+        if (final) fresh = true;
+      },
+      stopped: () => { penEdit = null; drawSelection(); renderProps(); },
+    }));
+    renderAll();
+    toast("Editing points: drag points and handles, click a line to add a point, Alt + click a point for corner / curve, Delete removes one. Enter when done");
+  }
+  function pathProps(l) {
+    return sect(l.closed ? "Vector" : "Line",
+      h("div", { class: "row-gap" },
+        h("button", { class: "small", onclick: () => penEdit ? penEdit.stop() : editPoints(l) }, penEdit ? "Done editing points" : "Edit points"),
+        bind(l, "closed", "check", { label: "Closed" })),
+      colourField(l, "fill", "Fill", { removeEmpty: true, placeholder: "none" }),
+      l.fill ? colourField(l, "fill2", "Fade to (a gradient)", { removeEmpty: true, placeholder: "none" }) : null,
+      l.fill && l.fill2 ? bind(l, "gradAngle", "number", { label: "Gradient direction °", def: 90, step: 15 }) : null,
+      grid(bind(l, "strokeWidth", "number", { label: "Line width", min: 0 }), +l.strokeWidth ? colourField(l, "stroke", "Line colour") : null),
+      +l.strokeWidth ? grid(bind(l, "join", "select", { label: "Corners", options: [["round", "Round"], ["miter", "Sharp"], ["bevel", "Bevel"]], def: "round" }),
+        bind(l, "cap", "select", { label: "Ends", options: [["round", "Round"], ["butt", "Flat"], ["square", "Square"]], def: "round" })) : null);
+  }
 
   // --- Photoshop / Figma: blend modes, masks, the eyedropper ------------------------------
   // (the same as the GFX Engine's Composer)
@@ -938,6 +993,7 @@ window.Editor = (function () {
       maskProps(l),
     ];
     if (l.type === "rect") kids.push(shapeProps(l));
+    if (l.type === "path") kids.push(pathProps(l));
     if (l.type === "text") kids.push(textProps(l));
     if (["image", "video", "lottie"].includes(l.type)) kids.push(sourceField(l));
     if (l.type !== "text") kids.push(glowProps(l));
@@ -949,7 +1005,7 @@ window.Editor = (function () {
           h("button", { class: "small", onclick: () => { copy(); paste(20); } }, "Duplicate"), h("button", { class: "small danger", onclick: remove }, "Delete"))));
     box.replaceChildren(...kids);
   }
-  const typeName = l => l.type === "rect" ? ({ ellipse: "Ellipse", angled: "Angled bar" }[l.shape] || "Rectangle") : { text: "Text", image: "Picture", video: "Video", lottie: "Lottie animation", web: "Web page" }[l.type] || l.type;
+  const typeName = l => l.type === "path" ? (l.closed ? "Vector" : "Line") : l.type === "rect" ? ({ ellipse: "Ellipse", angled: "Angled bar" }[l.shape] || "Rectangle") : { text: "Text", image: "Picture", video: "Video", lottie: "Lottie animation", web: "Web page" }[l.type] || l.type;
   function opacityField(l) {
     let fresh = true;
     const input = h("input", { type: "number", min: 0, max: 100, step: 5, value: Math.round((l.opacity == null ? 1 : l.opacity) * 100),
