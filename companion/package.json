@@ -1,0 +1,26 @@
+{
+	"name": "scc-broadcast-engine",
+	"version": "1.0.0",
+	"main": "src/main.js",
+	"private": true,
+	"description": "Bitfocus Companion module for SCC Broadcast Engine",
+	"scripts": {
+		"package": "companion-module-build",
+		"check": "node --check src/main.js && node --check src/presets.js && node --check src/definitions.js",
+		"test": "node test/module.test.js"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/owenbparker/SCCBroadcastEngine.git"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"dependencies": {
+		"@companion-module/base": "~1.11.3"
+	},
+	"devDependencies": {
+		"@companion-module/tools": "~2.3.0"
+	}
+}

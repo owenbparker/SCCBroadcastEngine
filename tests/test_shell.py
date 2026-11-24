@@ -233,6 +233,66 @@ class EverythingTogetherTests(unittest.TestCase):
         self.assertFalse(self.shell.ros.data["auto"])
         post(f"http://127.0.0.1:{self.port}/api/ros/auto", {"on": True})
 
+    def test_companion_reaches_everything(self):
+        # Bitfocus Companion: one address for the engine, the run of show, the
+        # game HUDs, Multistream and the parts (through the engine's port, as
+        # from another PC, and on the app's own port).
+        url = "http://127.0.0.1:8782/sccbe/api/companion"
+        _, body = get(url)
+        s = json.loads(body)
+        self.assertEqual(s["engine_error"], "")
+        self.assertTrue(s["engine"]["graphics"])
+        for cid in ("ros.next", "ros.auto", "val.tech_pause", "val.timeout_left", "cod.demo", "rl.show_boost",
+                    "smash.stock_left_down", "ow.map_left", "lol.first_blood", "lol.demo", "stream.restart",
+                    "part.val", "part.val.restart"):
+            self.assertIn(cid, s["controls"])
+        self.assertNotIn("part.engine", s["controls"])   # (Companion can't switch off the engine it talks through)
+        self.assertIn("lol.bg_speed", s["values"])
+        for name in ("left_name", "series", "ros_current", "val_map", "smash_stocks_left", "part_val"):
+            self.assertIn(name, s["variables"])
+            self.assertIn(name, s["variable_names"])
+        # A game HUD setting, both ways.
+        r = post(url, {"do": "control", "id": "val.tech_pause", "mode": "on"})
+        self.assertTrue(r["controls"]["val.tech_pause"]["on"])
+        r = post(url, {"do": "control", "id": "val.tech_pause"})
+        self.assertFalse(r["controls"]["val.tech_pause"]["on"])
+        # A command.
+        before = int(s["variables"]["smash_stocks_left"])
+        r = post(url, {"do": "control", "id": "smash.stock_left_down"})
+        self.assertEqual(int(r["variables"]["smash_stocks_left"]), before - 1)
+        post(url, {"do": "control", "id": "smash.stocks_reset"})
+        # League's own Companion controls, and its sliders.
+        r = post(url, {"do": "value", "id": "lol.bg_speed", "how": "set", "value": 1.5})
+        self.assertEqual(r["values"]["lol.bg_speed"]["value"], 1.5)
+        post(url, {"do": "value", "id": "lol.bg_speed", "how": "set", "value": 1})
+        # The engine's own actions, through the app.
+        r = post(url, {"do": "engine", "action": "score", "side": "right", "value": 2})
+        self.assertEqual(r["variables"]["right_score"], "2")
+        post(url, {"do": "engine", "action": "score", "side": "right", "value": 0})
+        # The run of show.
+        from sccbe.ros import starter_template
+        t = self.shell.ros.save_template(starter_template("val", 3))
+        self.shell.ros.apply({"team1": "A", "team2": "B", "best_of": 3}, t["id"])
+        r = post(url, {"do": "ros_go", "index": 0})
+        self.assertEqual(r["ros"]["current"], 0)
+        r = post(url, {"do": "control", "id": "ros.next"})
+        self.assertEqual(r["ros"]["current"], 1)
+        self.assertEqual(r["variables"]["ros_current"], r["ros"]["segments"][1]["title"])
+        r = post(url, {"do": "control", "id": "ros.prev"})
+        self.assertEqual(r["ros"]["current"], 0)
+        post(url, {"do": "control", "id": "ros.reset"})
+        self.shell.ros.delete_template(t["id"])
+        # Mistakes are refused, with why.
+        for bad in ({"do": "control", "id": "val.nope"}, {"do": "control", "id": "part.engine", "mode": "off"},
+                    {"do": "nothing"}, {"do": "control", "id": "val.demo", "mode": "maybe"}):
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                post(url, bad)
+            self.assertEqual(e.exception.code, 400, bad)
+        self.assertEqual(P.BY_KEY["engine"].status, "on")
+        # The app's own port answers the same (Companion on a HUD PC without the engine).
+        _, body = get(f"http://127.0.0.1:{self.port}/api/companion")
+        self.assertIn("val.tech_pause", json.loads(body)["controls"])
+
     def test_switch_a_part_off_and_on(self):
         state = post(f"http://127.0.0.1:{self.port}/api/part", {"key": "ow", "on": False})
         self.assertFalse(state["settings"]["parts"]["ow"])

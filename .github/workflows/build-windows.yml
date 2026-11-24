@@ -98,6 +98,35 @@ jobs:
           name: SCCBroadcastEngine-windows
           path: dist/SCCBroadcastEngine
 
+      # The Bitfocus Companion module (companion/): a .tgz to import in
+      # Companion (Modules > Import module package), on every release.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build the Companion module
+        working-directory: companion
+        shell: pwsh
+        run: |
+          $v = $env:VERSION.TrimStart('v')
+          node tools/stamp.js $v
+          if ($LASTEXITCODE) { exit 1 }
+          npm ci
+          if ($LASTEXITCODE) { exit 1 }
+          npm run check
+          if ($LASTEXITCODE) { exit 1 }
+          npm test
+          if ($LASTEXITCODE) { exit 1 }
+          npm run package
+          if ($LASTEXITCODE) { exit 1 }
+          Move-Item "scc-broadcast-engine-$v.tgz" ..\scc-broadcast-engine-companion.tgz
+          Get-Item ..\scc-broadcast-engine-companion.tgz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scc-broadcast-engine-companion
+          path: scc-broadcast-engine-companion.tgz
+
       - name: Build the installer
         if: "!contains(github.event.head_commit.message, '[no release]')"
         shell: pwsh
@@ -117,7 +146,7 @@ jobs:
           $notes = git log -1 --format=%B | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }
           $notes = ($notes -join "`n").Trim()
           $pre = @(); if ($env:CHANNEL -eq 'test') { $pre = @('--prerelease'); $notes = "Test build from ${{ github.ref_name }}: installed apps don't update to it.`n`n" + $notes }
-          gh release create "$env:VERSION" SCCBroadcastEngine-windows.zip dist\SCC-Broadcast-Engine-Setup.exe --target "${{ github.sha }}" --title "SCC Broadcast Engine $env:VERSION" --notes "$notes" @pre
+          gh release create "$env:VERSION" SCCBroadcastEngine-windows.zip dist\SCC-Broadcast-Engine-Setup.exe scc-broadcast-engine-companion.tgz --target "${{ github.sha }}" --title "SCC Broadcast Engine $env:VERSION" --notes "$notes" @pre
         env:
           GH_TOKEN: ${{ github.token }}
 

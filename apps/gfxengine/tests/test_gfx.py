@@ -1154,6 +1154,21 @@ class ServerTests(unittest.TestCase):
             r = post("/api/companion", {"action": "clear", "bus": "both"})
             self.assertFalse(r["states"]["program_any"] or r["states"]["preview_any"])
             post("/api/companion", {"action": "run", "id": "score_reset"})
+            # (SCC Broadcast Engine's module: swap sides, best of, scores, workspaces, tournaments)
+            g0 = r["variables"]["left_name"], r["variables"]["right_name"]
+            r = post("/api/companion", {"action": "run", "id": "swap_sides"})
+            self.assertEqual((r["variables"]["right_name"], r["variables"]["left_name"]), g0)
+            post("/api/companion", {"action": "run", "id": "swap_sides"})
+            r = post("/api/companion", {"action": "run", "id": "best_of_5"})
+            self.assertTrue(r["states"]["best_of_5"] and not r["states"]["best_of_3"])
+            r = post("/api/companion", {"action": "score", "side": "left", "value": 2})
+            self.assertEqual((r["variables"]["series"], r["variables"]["game_number"]), ("2-0", "3"))
+            r = post("/api/companion", {"action": "best_of", "value": 3})
+            post("/api/companion", {"action": "run", "id": "score_reset"})
+            self.assertTrue(r["workspaces"] and r["workspace"])
+            r = post("/api/companion", {"action": "workspace", "id": r["workspaces"][0]["name"]})   # (by name: already open)
+            with self.assertRaises(urllib.error.HTTPError):
+                post("/api/companion", {"action": "team", "side": "left", "team": "No such team"})
             with self.assertRaises(urllib.error.HTTPError):
                 post("/api/companion", {"action": "preview", "id": "no such graphic"})
             post("/api/cue", {"id": cid})
