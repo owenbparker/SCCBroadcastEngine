@@ -75,6 +75,31 @@ class HudEditStore(unittest.TestCase):
             with self.assertRaises(ValueError):
                 hudedit.save(self.dir, bad, {})
 
+    def test_shipped_sakura_recolour_only_touches_the_sakura_copy(self):
+        d = self.dir
+        sak = hudedit.make_copy(d, "val-scc2027", "/scc2027/index.html", "Sakura Class Broadcast HUD Val")
+        other = hudedit.make_copy(d, "val-scc2027", "/scc2027/index.html", "Other look")
+        key = hudedit.copy_key("val-scc2027", sak["id"])
+        cur = hudedit.load(d, key)
+        hudedit.save(d, key, {"rules": {"#event": {"x": 5, "bg": "#000"}, "#keep": {"op": 0.5}}}, cur["rev"])
+        done = hudedit.apply_presets(d)
+        self.assertEqual(done, [("sakura-val-2026-11-24", sak["id"])])
+        rules = hudedit.load(d, key)["rules"]
+        self.assertEqual(rules["#event"], {"x": 5.0, "bg": "#4A1F36"})       # its own change kept, colour set
+        self.assertEqual(rules["#keep"], {"op": 0.5})
+        self.assertEqual(rules["#rwin > div:nth-of-type(6)"], {"color": "#FFF7FA"})
+        pic = rules["#board > div:nth-of-type(1)"]["img"]
+        self.assertTrue(os.path.isfile(os.path.join(hudedit.folder(d), "assets", pic)))
+        self.assertTrue(pic.endswith(".svg"))
+        # SCC 2027 itself and the other copy untouched; the earlier version kept
+        self.assertFalse(os.path.exists(hudedit._path(d, "val-scc2027")))
+        self.assertEqual(hudedit.load(d, hudedit.copy_key("val-scc2027", other["id"]))["rules"], {})
+        self.assertTrue(hudedit.history(d, key))
+        # only once: a later change by hand stays
+        rev = hudedit.load(d, key)["rev"]
+        self.assertEqual(hudedit.apply_presets(d), [])
+        self.assertEqual(hudedit.load(d, key)["rev"], rev)
+
     def test_upload(self):
         name = hudedit.store_upload(self.dir, "logo.PNG", b"\x89PNG....")
         self.assertRegex(name, r"^[0-9a-f]{16}\.png$")
