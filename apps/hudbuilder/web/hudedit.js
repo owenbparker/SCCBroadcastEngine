@@ -2,6 +2,7 @@
  *
  * Loaded by every game HUD page:  <script src="/hudedit.js" data-design="KEY"></script>
  * (a page with several looks, like League's profiles, calls HudEdit.setDesign(id)).
+ * A copy of a HUD is the same page with ?hudcopy=ID: its changes are KEY.cID.
  *
  * On air it reads the saved changes (/hudedit/edits) and follows them, so a Save
  * in HUD Builder shows within a second. The HUD's own code and data are never
@@ -24,7 +25,9 @@
   var POLL_MS = 1000;
 
   function blank() { return { rules: {}, added: [], fonts: [], settings: {} }; }
-  function key() { return sub ? baseKey + ":" + sub : baseKey; }
+  // (a copy of the HUD, made in HUD Builder > Game HUDs: the same page with ?hudcopy=ID, its own changes)
+  var copyId = /^[a-f0-9]{8}$/.test(params.get("hudcopy") || "") ? params.get("hudcopy") : "";
+  function key() { return (sub ? baseKey + ":" + sub : baseKey) + (copyId ? ".c" + copyId : ""); }
   function asset(name) { return "/hudedit/asset/" + encodeURIComponent(name); }
   function num(v, d) { return typeof v === "number" && isFinite(v) ? v : d; }
   function storeKey() { return "hudedit:" + key(); }

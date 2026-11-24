@@ -59,6 +59,7 @@ window.App = (function () {
   function renderHuds() {
     const grid = $("#hud-grid");
     const huds = state.huds || [];
+    renderDeleted();
     // (only when something on the cards changed: the previews are live pages)
     const key = JSON.stringify([current, huds.map(s => [s.id, s.name, s.game, s.layers, s.vars, s.updated])]);
     if (key === gridKey) return;
@@ -78,11 +79,42 @@ window.App = (function () {
       h("div", { class: "hud-btns", onclick: e => e.stopPropagation() },
         h("button", { class: "small", onclick: () => openHud(s.id, "design") }, "Design"),
         h("button", { class: "small", onclick: () => openHud(s.id, "control") }, "Control"),
-        h("button", { class: "small ghost", title: "Make a copy", onclick: async () => { try { const r = await api(`/api/huds/${s.id}/duplicate`, {}); state = r.state; renderHuds(); toast("Copied"); } catch (e) { toast(e.message, true); } } }, "Copy"),
-        h("button", { class: "small ghost danger", onclick: async () => {
-          if (!confirm(`Delete ${s.name}? Its pictures go with it. This can't be undone (Export it first to keep a copy).`)) return;
-          try { state = await api(`/api/huds/${s.id}/delete`, {}); if (current === s.id) closeHud(); renderHuds(); } catch (e) { toast(e.message, true); }
-        } }, "Delete")))));
+        h("span", { class: "grow" }),
+        iconBtn("dup", `Duplicate "${s.name}"`, () => duplicateHud(s)),
+        iconBtn("trash", `Delete "${s.name}"`, () => deleteHud(s))))));
+  }
+  // Duplicate: an editable copy, named first ("<name> copy").
+  async function duplicateHud(s) {
+    const name = await askName({ title: `Duplicate "${s.name}"`, label: "Name of the copy", value: `${s.name} copy`, ok: "Duplicate" });
+    if (!name) return;
+    try { const r = await api(`/api/huds/${s.id}/duplicate`, { name }); state = r.state; renderHuds(); toast(`Made ${r.hud.name}`); } catch (e) { toast(e.message, true); }
+  }
+  // Delete: confirmed by typing its name; kept in Recently deleted.
+  async function deleteHud(s) {
+    const typed = await confirmDelete({ name: s.name, what: "HUD", note: "Its design, variables and pictures are kept in Recently deleted below, so you can bring it back." });
+    if (typed == null) return;
+    try {
+      state = await api(`/api/huds/${s.id}/delete`, { confirm: typed });
+      if (current === s.id) closeHud();
+      renderHuds();
+      toast(`Deleted ${s.name}. Recently deleted brings it back.`);
+    } catch (e) { toast(e.message, true); }
+  }
+  let deletedKey = "";
+  function renderDeleted() {
+    const box = $("#hud-deleted");
+    const list = (state && state.deleted) || [];
+    const key = JSON.stringify(list.map(d => d.tid));
+    if (key === deletedKey) return;
+    deletedKey = key;
+    box.hidden = !list.length;
+    $("#hud-deleted-count").textContent = list.length;
+    $("#hud-deleted-list").replaceChildren(...list.map(d => h("div", { class: "deleted-row" },
+      h("b", {}, d.name), h("span", { class: "muted small" }, `${state.games[d.game] || "Other game"} · deleted ${new Date(d.deleted * 1000).toLocaleString()}`),
+      h("span", { class: "grow" }),
+      h("button", { class: "small", onclick: async () => {
+        try { const r = await api("/api/huds/undelete", { tid: d.tid }); state = r.state; renderHuds(); toast(`${r.hud.name} is back`); } catch (e) { toast(e.message, true); }
+      } }, "Bring back"))));
   }
   function newHud() {
     const dlg = $("#new-dlg");

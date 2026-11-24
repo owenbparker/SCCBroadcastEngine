@@ -77,3 +77,42 @@ const frameFitter = new ResizeObserver(entries => {
   }
 });
 const fitFrame = box => { frameFitter.observe(box); return box; };
+
+// A small dialog asking for a name (duplicating or renaming a HUD). Resolves to the name, or null.
+function askName({ title, label, value, ok }) {
+  return new Promise(done => {
+    const input = h("input", { required: true, maxlength: 80, value: value || "" });
+    const dlg = h("dialog", { class: "dlg" }, h("form", { method: "dialog" },
+      h("h3", {}, title), h("label", {}, label || "Name", input),
+      h("div", { class: "dlg-btns" }, h("button", { value: "cancel", formnovalidate: true }, "Cancel"),
+        h("button", { class: "primary", value: "ok" }, ok || "OK"))));
+    dlg.addEventListener("close", () => { const v = input.value.trim(); dlg.remove(); done(dlg.returnValue === "ok" && v ? v : null); });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    input.select();
+  });
+}
+
+// Delete, confirmed by typing the name (so a slip never deletes the wrong one).
+// Resolves to the typed name (send it with the delete), or null.
+function confirmDelete({ name, what, note }) {
+  return new Promise(done => {
+    const input = h("input", { placeholder: name, autocomplete: "off", spellcheck: false });
+    const go = h("button", { class: "primary danger-fill", value: "ok", disabled: true }, "Delete");
+    const same = () => input.value.trim().toLowerCase() === name.trim().toLowerCase();
+    input.addEventListener("input", () => { go.disabled = !same(); });
+    const dlg = h("dialog", { class: "dlg" }, h("form", { method: "dialog" },
+      h("h3", {}, `Delete ${what || ""} "${name}"?`.replace("  ", " ")),
+      h("p", { class: "muted small" }, note || "It's kept in Recently deleted, so you can bring it back."),
+      h("label", {}, h("span", {}, "Type ", h("b", {}, name), " to delete it"), input),
+      h("div", { class: "dlg-btns" }, h("button", { value: "cancel", formnovalidate: true }, "Cancel"), go)));
+    dlg.addEventListener("close", () => { const ok = dlg.returnValue === "ok" && same(); const v = input.value.trim(); dlg.remove(); done(ok ? v : null); });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    input.focus();
+  });
+}
+
+// The icon buttons on HUD cards (the same trash as GFX Engine's Composer).
+const iconBtn = (kind, title, onclick) => h("button", { class: "icon-btn " + kind, title, "aria-label": title,
+  onclick: e => { e.stopPropagation(); e.preventDefault(); onclick(e); } });

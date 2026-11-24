@@ -319,6 +319,48 @@ class StoreTests(unittest.TestCase):
             designimport.import_design(self.store, hud["id"], "x.fig", b"not a fig")
 
 
+class DeleteDuplicateTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.store = Store(os.path.join(self.dir, "huds"))
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_duplicate_is_its_own_hud(self):
+        hud = self.store.create("Bug", "valorant", TEMPLATES["scorebug"][1]())
+        self.store.add_asset(hud["id"], "logo.png", PNG)
+        a = self.store.duplicate(hud["id"])
+        b = self.store.duplicate(hud["id"])
+        self.assertEqual((a["name"], b["name"]), ("Bug copy", "Bug copy 2"))
+        self.assertEqual(a["layers"], hud["layers"])
+        self.assertEqual(self.store.assets(a["id"]), ["assets/logo.png"])
+        # (changing the copy leaves the original as it was)
+        self.store.save_design(a["id"], {"layers": []})
+        self.assertTrue(self.store.get(hud["id"])["layers"])
+
+    def test_delete_keeps_a_backup_to_bring_back(self):
+        hud = self.store.create("Bug", "cod")
+        self.store.add_asset(hud["id"], "logo.png", PNG)
+        self.store.delete(hud["id"])
+        self.assertEqual(self.store.list(), [])
+        gone = self.store.deleted()
+        self.assertEqual([(d["id"], d["name"], d["game"]) for d in gone], [(hud["id"], "Bug", "cod")])
+        # (a new HUD with the same name meanwhile: the one brought back gets "Bug 2")
+        self.store.create("Bug")
+        back = self.store.undelete(gone[0]["tid"])
+        self.assertEqual((back["id"], back["name"]), (hud["id"], "Bug 2"))
+        self.assertEqual(self.store.assets(hud["id"]), ["assets/logo.png"])
+        self.assertEqual(self.store.deleted(), [])
+        with self.assertRaises(KeyError):
+            self.store.undelete("../../etc-1234567890")
+
+    def test_half_made_import_really_goes(self):
+        hud = self.store.create("Half")
+        self.store.delete(hud["id"], keep=False)
+        self.assertEqual(self.store.deleted(), [])
+
+
 class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -365,8 +407,20 @@ class ServerTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as e:
             self.call("/api/huds/nothere1/save", {"layers": []})
         self.assertEqual(e.exception.code, 404)
-        self.call(f"/api/huds/{hid}/delete", {})
-        self.assertNotIn(hid, [h["id"] for h in self.call("/api/state")["huds"]])
+        # Delete only with the HUD's name typed, and it's kept to bring back.
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.call(f"/api/huds/{hid}/delete", {})
+        self.assertEqual(e.exception.code, 400)
+        dup = self.call(f"/api/huds/{hid}/duplicate", {"name": "Renamed copy"})["hud"]
+        self.assertEqual(dup["name"], "Renamed copy")
+        st = self.call(f"/api/huds/{hid}/delete", {"confirm": "renamed"})
+        self.assertNotIn(hid, [h["id"] for h in st["huds"]])
+        self.assertIn(dup["id"], [h["id"] for h in st["huds"]])
+        tid = [d for d in st["deleted"] if d["id"] == hid][0]["tid"]
+        back = self.call("/api/huds/undelete", {"tid": tid})
+        self.assertEqual(back["hud"]["id"], hid)
+        self.assertEqual(self.call(f"/huds/{hid}/assets/logo.png"), PNG)
+        self.assertNotIn(hid, [d["id"] for d in back["state"]["deleted"]])
 
 
 if __name__ == "__main__":

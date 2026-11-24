@@ -12,6 +12,8 @@
                            "values": {name: value},   what they're set to now
                            "shown": true}             on air (false: played out)
     huds/<id>/assets/     its pictures, videos and fonts
+    huds-deleted/<id>-<ms>/   a deleted HUD (its folder as it was, plus
+                          deleted.json), kept so Delete can be undone
 
 A design saved from the editor never overwrites the values: the control
 panel may have changed them while the editor had the HUD open.
@@ -93,6 +95,8 @@ class Store:
     def __init__(self, folder):
         self.folder = folder
         os.makedirs(folder, exist_ok=True)
+        # (deleted HUDs are moved here, next to huds/, never removed)
+        self.trash = os.path.join(os.path.dirname(os.path.abspath(folder)), "huds-deleted")
         self._lock = threading.RLock()
         self._cache = {}
         self.version = 0          # goes up on every change (the live pages follow it)
@@ -215,19 +219,84 @@ class Store:
             hud["values"] = {}
             return self._write(hud)
 
-    def delete(self, hud_id):
+    def unique_name(self, name):
+        """name, or "name 2", "name 3"... when another HUD has it already."""
+        taken = {h["name"].lower() for h in self.list()}
+        out, n = clean_name(name), 2
+        while out.lower() in taken:
+            out, n = clean_name(f"{name} {n}"), n + 1
+        return out
+
+    def delete(self, hud_id, keep=True):
+        """Takes a HUD off My HUDs. Kept (keep=True, the default) in the
+        deleted folder next to huds/, so it can be brought back (undelete)."""
         with self._lock:
             folder = self.path(hud_id)
+            hud = None
+            try:
+                hud = self.get(hud_id)
+            except (KeyError, OSError, ValueError):
+                pass
             self._cache.pop(hud_id, None)
             if os.path.isdir(folder):
-                shutil.rmtree(folder)
+                if keep:
+                    os.makedirs(self.trash, exist_ok=True)
+                    tid = f"{hud_id}-{int(time.time() * 1000)}"
+                    shutil.move(folder, os.path.join(self.trash, tid))
+                    meta = {"id": hud_id, "name": (hud or {}).get("name") or hud_id,
+                            "game": (hud or {}).get("game") or "other", "deleted": time.time()}
+                    with open(os.path.join(self.trash, tid, "deleted.json"), "w", encoding="utf-8") as f:
+                        json.dump(meta, f)
+                else:
+                    shutil.rmtree(folder)
             self.changed()
 
-    def duplicate(self, hud_id):
+    def deleted(self):
+        """The deleted HUDs (newest first): [{"tid", "id", "name", "game", "deleted"}]."""
+        out = []
+        try:
+            names = os.listdir(self.trash)
+        except OSError:
+            return out
+        for tid in names:
+            try:
+                with open(os.path.join(self.trash, tid, "deleted.json"), encoding="utf-8") as f:
+                    meta = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(meta, dict):
+                out.append(dict(meta, tid=tid))
+        out.sort(key=lambda m: -(m.get("deleted") or 0))
+        return out
+
+    def undelete(self, tid):
+        """A deleted HUD back on My HUDs (with a new id if its old one is taken)."""
+        with self._lock:
+            if not re.fullmatch(r"[a-z0-9]{6,40}-\d{10,16}", tid or ""):
+                raise KeyError("no such deleted HUD")
+            src = os.path.join(self.trash, tid)
+            if not os.path.isfile(os.path.join(src, "hud.json")):
+                raise KeyError("no such deleted HUD")
+            hud_id = tid.rsplit("-", 1)[0]
+            if os.path.exists(os.path.join(self.folder, hud_id)):
+                hud_id = new_id("h")
+            try:
+                os.remove(os.path.join(src, "deleted.json"))
+            except OSError:
+                pass
+            shutil.move(src, os.path.join(self.folder, hud_id))
+            hud = self.get(hud_id)
+            hud["name"] = self.unique_name(hud["name"])
+            return self._write(hud)
+
+    def duplicate(self, hud_id, name=None):
+        """An editable copy of a HUD ("<name> copy"), its pictures included."""
         with self._lock:
             hud = self.get(hud_id)
-            new = dict(hud, id=new_id("h"), name=clean_name(hud["name"] + " copy"), rev=0)
-            shutil.copytree(self.path(hud_id, "assets"), os.path.join(self.folder, new["id"], "assets"), dirs_exist_ok=True)
+            new = dict(hud, id=new_id("h"), name=self.unique_name(name or hud["name"] + " copy"), rev=0)
+            src = self.path(hud_id, "assets")
+            if os.path.isdir(src):
+                shutil.copytree(src, os.path.join(self.folder, new["id"], "assets"), dirs_exist_ok=True)
             return self._write(new)
 
     def add_asset(self, hud_id, filename, blob, sub=""):
