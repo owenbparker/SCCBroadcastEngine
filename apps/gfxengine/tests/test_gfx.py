@@ -752,6 +752,49 @@ class TournamentTests(unittest.TestCase):
         self.assertEqual((rows["Group A 1st"], rows["Group A 2nd"]), ("D", "B"))
         self.assertEqual(rows["Group B name"], "GROUP B")
 
+    def test_six_or_eight_groups_and_old_four_group_tournaments(self):
+        from gfxengine import tournament
+        # A tournament saved before the group count: its four groups come back as they were.
+        old = {"groups": [{"name": f"POOL {g}", "teams": [g + "1", g + "2", g + "3", g + "4"], "scores": {"Opening 1": ["2", "0"]}}
+                          for g in "ABCD"]}
+        t = tournament.clean(old)
+        self.assertEqual(t["group_count"], 4)
+        self.assertEqual(len(t["groups"]), 8)
+        for i, g in enumerate("ABCD"):
+            self.assertEqual(t["groups"][i], old["groups"][i])
+        self.assertEqual(t["groups"][4]["name"], "GROUP E")
+        self.assertEqual(tournament.clean(t), t)
+        rows = dict(tournament.rows(old)[1:])
+        self.assertEqual((rows["Groups"], rows["Group A Winners team 1"], rows["Group D name"]), ("4", "A1", "POOL D"))
+        # Six groups: E and F get the same matches; going back to 4 keeps them.
+        t["group_count"] = 6
+        t["groups"][5] = {"name": "GROUP F", "teams": ["P", "Q", "R", "S"], "scores": {"Opening 1": ["0", "2"]}}
+        t = tournament.clean(t)
+        rows = dict(tournament.rows(t)[1:])
+        self.assertEqual((rows["Groups"], rows["Group F Winners team 1"]), ("6", "Q"))
+        t["group_count"] = 4
+        self.assertEqual(tournament.clean(t)["groups"][5]["teams"], ["P", "Q", "R", "S"])
+        self.assertEqual(tournament.clean({"group_count": 5})["group_count"], 4)
+        self.assertEqual(tournament.clean({"group_count": "8"})["group_count"], 8)
+        self.assertEqual(tournament.default()["group_count"], 4)
+
+    def test_group_bracket_e_to_h_graphic(self):
+        with open(os.path.join(ROOT, "starter", "project.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        comps = {c["name"]: c for c in data["compositions"]}
+        self.assertIn("Group bracket E-H", data["pack_new"])
+        self.assertIn("Group bracket E-H", data["pack_history"])
+        text = json.dumps(comps["Group bracket E-H"])
+        for g in "EFGH":
+            self.assertIn(f"{{{{Tournament!Group {g} 1st}}}}", text)
+        for g in "ABCD":
+            self.assertNotIn(f"Tournament!Group {g} ", text)
+        whens = {l["text"]: l.get("when") for l in comps["Group bracket E-H"]["layers"] if l.get("type") == "text"}
+        self.assertIsNone(whens["{{Tournament!Group E 1st}}"])
+        self.assertEqual(whens["{{Tournament!Group G 1st}}"][0]["to"], "7")
+        self.assertEqual(whens["{{Tournament!Group H name}}"][0]["to"], "8")
+        self.assertFalse(any("when" in l for l in comps["Group bracket"]["layers"]))
+
 
 class SavedTournamentTests(unittest.TestCase):
     """Saved tournaments: each event's brackets, standings, schedule and logo, switched from a dropdown."""

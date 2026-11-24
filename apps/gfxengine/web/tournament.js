@@ -289,11 +289,18 @@
   $("#tn-short").addEventListener("change", e => { t.top.short = e.target.checked; changed(); });
   $("#tn-reset").addEventListener("change", e => { t.top.reset = e.target.checked; changed(); renderTop(); refresh(); });
   $("#tn-top-scores").addEventListener("click", () => { if (confirm("Clear every score in the knockout bracket?")) { t.top.scores = {}; changed(); renderTop(); } });
-  $("#tn-group-scores").addEventListener("click", () => { if (confirm("Clear every score in the groups?")) { t.groups.forEach(g => (g.scores = {})); changed(); renderGroups(); } });
+  $("#tn-group-scores").addEventListener("click", () => { if (confirm("Clear every score in the groups?")) { t.groups.slice(0, [4, 6, 8].includes(t.group_count) ? t.group_count : 4).forEach(g => (g.scores = {})); changed(); renderGroups(); } });
+
+  document.querySelectorAll("#tn-gcount button").forEach(b => b.addEventListener("click", () => {
+    t.group_count = +b.dataset.count; changed(); renderGroups(); refresh();
+  }));
 
   function renderGroups() {
-    $("#tn-groups").replaceChildren(...t.groups.map((g, gi) => {
-      const L = "ABCD"[gi];
+    const count = [4, 6, 8].includes(t.group_count) ? t.group_count : 4;
+    for (const b of document.querySelectorAll("#tn-gcount button")) b.classList.toggle("on", +b.dataset.count === count);
+    $("#tn-groups").dataset.count = count;
+    $("#tn-groups").replaceChildren(...t.groups.slice(0, count).map((g, gi) => {
+      const L = "ABCDEFGH"[gi];
       return h("div", { class: "tn-group" },
         h("input", { class: "tn-gname", value: g.name, oninput: e => { g.name = e.target.value; changed(); } }),
         h("div", { class: "tn-seeds" }, ...g.teams.map((name, i) => h("div", { class: "tn-slot" },

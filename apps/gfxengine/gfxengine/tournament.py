@@ -11,15 +11,17 @@ Global and kept in the workspace's global configuration.
               ("GF": the upper winner against the lower winner) and, with
               "reset" on, a second grand final ("GF2") when the lower
               bracket's team wins the first.
-    "groups": four groups (A-D) of four teams, played GSL style: two
+    "groups": 4, 6 or 8 groups (A-D, A-F, A-H: "group_count") of four
+              teams, played GSL style: two
               opening matches, the winners' match (its winner is 1st), the
               elimination match between the openings' losers, and the
               decider (the winners' match loser against the elimination
-              winner, for 2nd).
+              winner, for 2nd). All eight groups are always kept, so
+              going from 6 groups back to 4 hides E and F without losing them.
 
 The "Tournament" data table has every slot, e.g. {{Tournament!Top R1 M1 team 1}},
 {{Tournament!Top R1 M1 team 1 score}}, {{Tournament!Top champion}},
-{{Tournament!Group A Winners team 2 logo}}, {{Tournament!Group A 1st}};
+{{Tournament!Group A Winners team 2 logo}}, {{Tournament!Group A 1st}}, {{Tournament!Groups}} (4, 6 or 8);
 double elimination adds {{Tournament!Top L1 M1 team 1}}, {{Tournament!Top GF team 1}},
 {{Tournament!Top GF2 team 1}}, {{Tournament!Top format}} ("single" / "double")
 and {{Tournament!Top reset}} ("on" / "off");
@@ -28,7 +30,8 @@ and for the final four: {{Tournament!Top semi 1}} ... {{Tournament!Top final 2}}
 
 SIZES = (8, 16)
 FORMATS = ("single", "double")
-GROUP_NAMES = ("A", "B", "C", "D")
+GROUP_NAMES = ("A", "B", "C", "D", "E", "F", "G", "H")
+GROUP_COUNTS = (4, 6, 8)
 GROUP_MATCHES = ("Opening 1", "Opening 2", "Winners", "Elimination", "Decider")
 ROUND_NAMES = {16: ("Round of 16", "Quarter-finals", "Semi-finals", "Final"),
                8: ("Quarter-finals", "Semi-finals", "Final")}
@@ -76,6 +79,7 @@ def all_keys():
 
 def default():
     return {"top": {"size": 8, "format": "single", "reset": True, "short": False, "teams": [""] * 16, "scores": {}},
+            "group_count": 4,
             "groups": [{"name": f"GROUP {g}", "teams": [""] * 4, "scores": {}} for g in GROUP_NAMES]}
 
 
@@ -92,6 +96,11 @@ def clean(t):
     out = {"top": {"size": size, "format": fmt, "reset": top.get("reset") is not False, "short": bool(top.get("short")),
                    "teams": teams + [""] * (16 - len(teams)), "scores": _scores(top.get("scores"), all_keys())}}
     groups = t.get("groups") if isinstance(t.get("groups"), list) else []
+    try:
+        count = int(t.get("group_count") or 4)
+    except (TypeError, ValueError):
+        count = 4
+    out["group_count"] = count if count in GROUP_COUNTS else 4
     out["groups"] = []
     for i, g in enumerate(GROUP_NAMES):
         raw = groups[i] if i < len(groups) and isinstance(groups[i], dict) else {}
@@ -278,6 +287,7 @@ def rows(t, find=None):
                 team(f"Top semi {i}", match["teams"][s], match["score"][s])
         for s in range(2):
             team(f"Top final {s + 1}", rounds[-1][0]["teams"][s], rounds[-1][0]["score"][s])
+    out.append(["Groups", str(t["group_count"])])
     for g, group in zip(GROUP_NAMES, t["groups"]):
         out.append([f"Group {g} name", group["name"]])
         matches, first, second = group_matches(group)
