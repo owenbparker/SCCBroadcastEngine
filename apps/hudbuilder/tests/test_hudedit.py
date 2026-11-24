@@ -139,6 +139,75 @@ class HudEditHttp(unittest.TestCase):
         st, got = self.req("/hudedit/asset/" + name)
         self.assertEqual(got, b"\x89PNGdata")
 
+    def test_copies(self):
+        st, body = self.req("/hudedit/copies", {"action": "make", "base": "rl-classic", "path": "/overlay-classic", "name": "Copy"})
+        self.assertEqual(st, 200, body)
+        cid = json.loads(body)["copy"]["id"]
+        st, body = self.req("/hudedit/copies")
+        self.assertIn(cid, [c["id"] for c in json.loads(body)["copies"]])
+        st, body = self.req("/hudedit/copies", {"action": "delete", "id": cid, "confirm": "nope"})
+        self.assertEqual(st, 400)
+        st, body = self.req("/hudedit/copies", {"action": "rename", "id": "00000000", "name": "x"})
+        self.assertEqual(st, 404)
+
+
+class Copies(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_copy_starts_from_the_original_and_is_its_own(self):
+        hudedit.save(self.dir, "val-scc2027", {"rules": {"#a": {"x": 10}}, "settings": {"top.mode": "full"}})
+        c = hudedit.make_copy(self.dir, "val-scc2027", "/overlay?design=scc2027", "Finals")
+        key = hudedit.copy_key("val-scc2027", c["id"])
+        self.assertEqual(key, "val-scc2027.c" + c["id"])
+        self.assertEqual(hudedit.load(self.dir, key)["rules"], {"#a": {"x": 10.0}})
+        hudedit.save(self.dir, key, {"rules": {"#a": {"x": 99}}})
+        self.assertEqual(hudedit.load(self.dir, "val-scc2027")["rules"]["#a"]["x"], 10)
+        # a copy of the copy starts from the copy's changes
+        c2 = hudedit.make_copy(self.dir, "val-scc2027", "/overlay?design=scc2027", "Finals 2", c["id"])
+        self.assertEqual(hudedit.load(self.dir, hudedit.copy_key("val-scc2027", c2["id"]))["rules"]["#a"]["x"], 99)
+        hudedit.rename_copy(self.dir, c["id"], "  Grand   final ")
+        self.assertEqual([x["name"] for x in hudedit.list_copies(self.dir)], ["Grand final", "Finals 2"])
+        # use on the original: the original's old changes stay in its versions
+        hudedit.apply_copy(self.dir, c["id"])
+        self.assertEqual(hudedit.load(self.dir, "val-scc2027")["rules"]["#a"]["x"], 99)
+        self.assertEqual(len(hudedit.history(self.dir, "val-scc2027")), 1)
+
+    def test_league_profile_keys(self):
+        c = hudedit.make_copy(self.dir, "lol-overlay:scc-2026", "/overlay?profile=scc-2026", "B")
+        hudedit.save(self.dir, hudedit.copy_key("lol-overlay:scc-2026", c["id"]), {})
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "hud-edits", f"lol-overlay~scc-2026.c{c['id']}.json")))
+
+    def test_delete_needs_the_name_and_keeps_it(self):
+        c = hudedit.make_copy(self.dir, "cod-overlay", "/overlay", "Side B")
+        key = hudedit.copy_key("cod-overlay", c["id"])
+        hudedit.save(self.dir, key, {"rules": {"#b": {"op": 0.5}}})   # (rev 2: one version kept)
+        with self.assertRaises(ValueError):
+            hudedit.delete_copy(self.dir, c["id"], "side")
+        hudedit.delete_copy(self.dir, c["id"], "side b")
+        self.assertEqual(hudedit.list_copies(self.dir), [])
+        self.assertEqual(hudedit.load(self.dir, key)["rev"], 0)
+        gone = hudedit.deleted_copies(self.dir)
+        self.assertEqual([g["name"] for g in gone], ["Side B"])
+        hudedit.undelete_copy(self.dir, gone[0]["tid"])
+        self.assertEqual([x["name"] for x in hudedit.list_copies(self.dir)], ["Side B"])
+        self.assertEqual(hudedit.load(self.dir, key)["rules"], {"#b": {"op": 0.5}})
+        self.assertEqual(len(hudedit.history(self.dir, key)), 1)
+        self.assertEqual(hudedit.deleted_copies(self.dir), [])
+
+    def test_bad_input(self):
+        with self.assertRaises(ValueError):
+            hudedit.make_copy(self.dir, "BAD KEY", "/overlay", "x")
+        with self.assertRaises(ValueError):
+            hudedit.make_copy(self.dir, "cod-overlay", "javascript:alert(1)", "x")
+        with self.assertRaises(KeyError):
+            hudedit.rename_copy(self.dir, "deadbeef", "x")
+        with self.assertRaises(KeyError):
+            hudedit.undelete_copy(self.dir, "../x")
+
 
 class Catalog(unittest.TestCase):
     def test_every_game_and_design(self):

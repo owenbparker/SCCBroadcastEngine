@@ -32,6 +32,8 @@
       <button id="import-btn" title="A HUD (.scchud), a GFX Engine graphic (.sccgfx), a Photoshop file (.psd) or a Figma file (.fig)">Import…</button><input type="file" id="import-file" accept=".scchud,.sccgfx,.psd,.psb,.fig,.zip" hidden>
       <button class="primary" id="new-btn">New HUD</button></div>
     <div id="hud-grid" class="hud-grid"></div>
+    <details id="hud-deleted" class="deleted-box" hidden><summary>Recently deleted (<span id="hud-deleted-count"></span>)</summary>
+      <div id="hud-deleted-list" class="deleted-list"></div></details>
   </section>
 
   <!-- Game HUDs: the built-in HUDs, changed in place (gamehuds.js + hudedit.js) -->

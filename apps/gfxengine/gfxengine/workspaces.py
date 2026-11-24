@@ -138,3 +138,36 @@ class Workspaces:
         os.makedirs(trash, exist_ok=True)
         shutil.move(folder, os.path.join(trash, f"{wid}-{int(time.time())}"))
         log(f"Deleted the workspace {wid} (kept in workspaces/.deleted)")
+
+    def deleted(self):
+        """The deleted workspaces still kept in workspaces/.deleted, newest first."""
+        trash = os.path.join(self.root, ".deleted")
+        out = []
+        try:
+            names = os.listdir(trash)
+        except OSError:
+            return out
+        for key in names:
+            m = re.fullmatch(r"([a-z0-9][a-z0-9-]*)-(\d+)", key)
+            folder = os.path.join(trash, key)
+            if not m or not os.path.isfile(os.path.join(folder, "project.json")):
+                continue
+            data = self._read(folder)
+            out.append({"key": key, "id": m.group(1), "name": data.get("name") or m.group(1),
+                        "graphics": len(data.get("compositions") or []), "deleted": int(m.group(2))})
+        out.sort(key=lambda w: -w["deleted"])
+        return out
+
+    def restore(self, key):
+        """Puts a deleted workspace back (under a new id if its old one is taken). Returns its id."""
+        if not re.fullmatch(r"([a-z0-9][a-z0-9-]*)-(\d+)", key or ""):
+            raise KeyError("No such deleted workspace")
+        folder = os.path.join(self.root, ".deleted", key)
+        if not os.path.isfile(os.path.join(folder, "project.json")):
+            raise KeyError("No such deleted workspace")
+        wid = key.rsplit("-", 1)[0]
+        if os.path.exists(os.path.join(self.root, wid)):
+            wid = self._new_id(self._read(folder).get("name") or wid)
+        shutil.move(folder, os.path.join(self.root, wid))
+        log(f"Put back the deleted workspace {wid}")
+        return wid

@@ -34,9 +34,61 @@ window.GameHuds = (function () {
       h("div", { class: "gh-head" }, h("h3", {}, g.title),
         h("span", { class: "gh-status " + (g.running ? "on" : "off") }, g.running ? "Running" : "Not running"),
         g.running ? null : h("span", { class: "muted small" }, `Turn ${g.title} on (Settings > Parts, or open it from Games) to edit its HUDs.`)),
-      h("div", { class: "gh-cards" }, ...g.designs.map(d => h("div", { class: "gh-card" + (g.running ? "" : " off"), onclick: () => g.running && edit(g, d) },
-        h("b", {}, d.name), h("span", { class: "muted small" }, d.what),
-        h("button", { class: "small primary", disabled: !g.running, onclick: e => { e.stopPropagation(); edit(g, d); } }, "Edit")))))));
+      h("div", { class: "gh-cards" }, ...g.designs.map(d => card(g, d))),
+      deletedCopies(g))));
+  }
+  function card(g, d) {
+    const c = d.copy;
+    const url = `http://localhost:${g.port}${d.path}`;
+    return h("div", { class: "gh-card" + (g.running ? "" : " off") + (c ? " copy" : ""), onclick: () => g.running && edit(g, d) },
+      h("b", {}, d.name), h("span", { class: "muted small" }, d.what),
+      c ? h("span", { class: "gh-url", title: "Its own browser source (click to copy)", onclick: async e => { e.stopPropagation(); toast(await copyText(url) ? "Browser source copied" : url); } }, url) : null,
+      h("div", { class: "gh-card-btns", onclick: e => e.stopPropagation() },
+        h("button", { class: "small primary", disabled: !g.running, onclick: () => edit(g, d) }, "Edit"),
+        c ? h("button", { class: "small ghost", disabled: !g.running, title: "Put this copy's changes on the original HUD (what's on air at its usual address). The original's changes before are kept in its Versions.",
+          onclick: () => applyCopy(g, d) }, "Use on original") : null,
+        h("span", { class: "grow" }),
+        g.running && c ? iconBtn("rename", `Rename "${d.name}"`, () => renameCopy(g, d)) : null,
+        g.running ? iconBtn("dup", `Duplicate "${d.name}"`, () => duplicate(g, d)) : null,
+        // (built-in HUDs can't be deleted, only their changes undone: copies can)
+        g.running && c ? iconBtn("trash", `Delete "${d.name}"`, () => deleteCopy(g, d)) : null));
+  }
+  function deletedCopies(g) {
+    const list = g.deleted || [];
+    if (!list.length || !g.running) return null;
+    return h("details", { class: "deleted-box" }, h("summary", {}, `Recently deleted copies (${list.length})`),
+      h("div", { class: "deleted-list" }, ...list.map(x => h("div", { class: "deleted-row" },
+        h("b", {}, x.name), h("span", { class: "muted small" }, `deleted ${new Date(x.deleted * 1000).toLocaleString()}`), h("span", { class: "grow" }),
+        h("button", { class: "small", onclick: () => copies(g, { action: "undelete", tid: x.tid }, `${x.name} is back`) }, "Bring back")))));
+  }
+  async function copies(g, body, done) {
+    try { const r = await api("/api/game-huds/copies", Object.assign({ part: g.part }, body)); if (done) toast(done); await list(); return r; } catch (e) { toast(e.message, true); return null; }
+  }
+  // Duplicate a game HUD: a copy with its own name and its own changes (starting from these), its own browser source.
+  async function duplicate(g, d) {
+    const name = await askName({ title: `Duplicate "${d.name}"`, label: "Name of the copy", value: `${d.name} copy`, ok: "Duplicate" });
+    if (!name) return;
+    const base = d.copy ? d.copy.base : d.key, path = d.copy ? d.copy.path : d.path;
+    const r = await copies(g, { action: "make", base, path, name, from: d.copy ? d.copy.id : null }, `Made ${name}. Edit it, then add its own browser source to OBS or vMix.`);
+    if (r && open && open.game === g.game) {
+      const fresh = catalog.games.find(x => x.game === g.game);
+      if (fresh) { open.designs = fresh.designs; open.g = fresh; renderDesigns(); }
+    }
+  }
+  async function renameCopy(g, d) {
+    const name = await askName({ title: `Rename "${d.name}"`, label: "Name", value: d.name, ok: "Rename" });
+    if (name && name !== d.name) await copies(g, { action: "rename", id: d.copy.id, name }, "Renamed");
+  }
+  async function deleteCopy(g, d) {
+    const typed = await confirmDelete({ name: d.name, what: "copy", note: "Only this copy goes: the original HUD isn't touched. Its changes and versions are kept in Recently deleted copies, so you can bring it back." });
+    if (typed == null) return;
+    if (open && open.design && open.design.key === d.key) open = null;
+    await copies(g, { action: "delete", id: d.copy.id, confirm: typed }, `Deleted ${d.name}. Recently deleted copies brings it back.`);
+  }
+  async function applyCopy(g, d) {
+    const of = d.what.replace(/^Copy of /, "");
+    if (!confirm(`Put the changes of "${d.name}" on "${of}" (on air now)?\n\nThe changes "${of}" has now are kept in its Versions.`)) return;
+    await copies(g, { action: "apply", id: d.copy.id }, `"${of}" now has the changes of ${d.name}`);
   }
 
   // --- the editor -------------------------------------------------------------------

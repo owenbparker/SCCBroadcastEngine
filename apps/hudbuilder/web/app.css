@@ -333,3 +333,35 @@ body.embedded .engine-card, body.embedded #ed-game { display: none !important; }
 .fx-row.off { opacity: .5; }
 .fx-row select { flex: 1; }
 button.small.on { background: var(--x-accent); color: #000; }
+
+/* Duplicate and delete (trash as in GFX Engine's Composer). */
+.icon-btn { flex: none; width: 28px; height: 28px; padding: 0 !important; min-width: 0 !important; border: 0; border-radius: 6px; background: transparent !important;
+  box-shadow: none !important; cursor: pointer; opacity: .55; color: inherit; }
+.icon-btn::before { content: ""; display: block; width: 15px; height: 15px; margin: auto; background: currentColor; }
+.icon-btn:hover { opacity: 1; background: var(--x-hover) !important; }
+.icon-btn.trash::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'/%3E%3C/svg%3E") center / contain no-repeat; }
+.icon-btn.trash:hover { color: #ff5c5c; background: rgba(255, 92, 92, .14) !important; }
+.icon-btn.dup::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8' y='8' width='13' height='13' rx='2'/%3E%3Cpath d='M16 8V5a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h3'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8' y='8' width='13' height='13' rx='2'/%3E%3Cpath d='M16 8V5a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h3'/%3E%3C/svg%3E") center / contain no-repeat; }
+.icon-btn.rename::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16z'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16z'/%3E%3C/svg%3E") center / contain no-repeat; }
+.hud-btns { align-items: center; }
+.hud-btns .grow, .gh-card-btns .grow { flex: 1; }
+body .dlg button.primary.danger-fill:not(:disabled) { background: #e5484d !important; border-color: #e5484d !important; color: #fff !important; }
+.dlg label > span { font-size: 13px; }
+/* Recently deleted */
+.deleted-box { margin-top: 28px; }
+.deleted-box summary { cursor: pointer; color: var(--x-muted); font-size: 13px; font-weight: 600; }
+.deleted-list { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; max-width: 640px; }
+.deleted-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 7px; background: var(--x-surface); }
+.deleted-row b { font-weight: 600; } .deleted-row .grow { flex: 1; }
+/* Game HUD cards: copies */
+.gh-card { position: relative; }
+.gh-card.copy { border-left: 3px solid var(--x-accent); }
+.gh-card-btns { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 8px; }
+.gh-card-btns button { margin-top: 0 !important; white-space: nowrap; }
+.gh-url { font-size: 11px; color: var(--x-muted); word-break: break-all; cursor: copy; }
