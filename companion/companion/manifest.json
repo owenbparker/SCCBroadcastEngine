@@ -1,0 +1,35 @@
+{
+	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
+	"id": "scc-broadcast-engine",
+	"name": "scc-broadcast-engine",
+	"shortname": "scc-be",
+	"description": "SCC Broadcast Engine: graphics (Preview, Program, Take, stingers), scores and series, teams, run of show, every game HUD, Multistream and the app's parts",
+	"version": "0.0.0",
+	"license": "MIT",
+	"repository": "git+https://github.com/owenbparker/SCCBroadcastEngine.git",
+	"bugs": "https://github.com/owenbparker/SCCBroadcastEngine/issues",
+	"maintainers": [
+		{
+			"name": "St. Clair Saints"
+		}
+	],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../src/main.js"
+	},
+	"legacyIds": [],
+	"manufacturer": "St. Clair Saints",
+	"products": [
+		"SCC Broadcast Engine"
+	],
+	"keywords": [
+		"graphics",
+		"broadcast",
+		"esports",
+		"hud",
+		"run of show",
+		"multistream"
+	]
+}

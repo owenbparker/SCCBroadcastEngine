@@ -61,6 +61,20 @@ keep working as they did until the box is ticked.
 
 See [docs/STATE.md](docs/STATE.md) for which part owns which data (the one place each thing is set).
 
+## Bitfocus Companion (Stream Deck)
+
+Download **scc-broadcast-engine-companion.tgz** from the
+[latest release](https://github.com/owenbparker/SCCBroadcastEngine/releases/latest)
+and import it on Companion's **Modules** page (Companion 3.5 or later). Add an
+**SCC Broadcast Engine** connection: the PC's address and port `8782` (from
+another PC, turn on *Let other PCs use this engine* and enter the pairing code;
+a HUD PC without the GFX Engine uses port `8770` from that PC). One connection
+runs the graphics (Preview, Program, Take with any transition or stinger),
+scores and series, swap sides, teams, workspaces and tournaments, the run of
+show, every game HUD that's on, Multistream and the parts, with lit buttons,
+variables and ready-made presets. The module is in `companion/`; the app's side
+is `sccbe/companion.py` (`/api/companion`).
+
 ## Your files
 
 Everything that's yours is in the `data` folder next to `SCCBroadcastEngine.exe`,

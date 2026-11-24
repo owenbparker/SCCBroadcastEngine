@@ -23,6 +23,7 @@ from .config import APP_DIR, DATA_DIR, FROZEN, ROLES, Settings, control_pc_url, 
 from .log import log, lines
 from . import rosnet
 from .ros import EXT, RunOfShow, clean_template, export_doc, graphic_rows, read_doc
+from .companion import Companion
 from .updater import Updater, clean_up_old_update
 from .version import VERSION
 
@@ -56,6 +57,7 @@ class Shell:
         self._engine = {"t": 0, "data": None}
         self._engine_lock = threading.Lock()
         self.ros = RunOfShow(os.path.join(DATA_DIR, "shell", "run-of-show.json"))
+        self.companion = Companion(self)
         self._share_ros_with_workspaces()
 
     def _share_ros_with_workspaces(self):
@@ -396,8 +398,11 @@ def open_folder(path):
 # _shell), which adds X-SCCBE-Remote: the address that browser used. It gets
 # the top bar, Control with its run of show, and the engine's pages: not this
 # PC's settings, parts or updates.
-REMOTE_GET = {"/api/state", "/api/ros", "/api/ros/export", "/api/ros/pcs", "/api/engine/workspaces", "/api/engine/tournaments"}
-REMOTE_POST = ("/api/ros/", "/api/engine/workspace", "/api/engine/tournament", "/api/engine/cue")
+# Bitfocus Companion on another PC comes the same way (/sccbe/api/companion,
+# with the engine's pairing code when it asks for one).
+REMOTE_GET = {"/api/state", "/api/ros", "/api/ros/export", "/api/ros/pcs", "/api/engine/workspaces", "/api/engine/tournaments",
+              "/api/companion"}
+REMOTE_POST = ("/api/ros/", "/api/engine/workspace", "/api/engine/tournament", "/api/engine/cue", "/api/companion")
 _REMOTE_RE = re.compile(r"^https?://([A-Za-z0-9.\-]+|\[[0-9A-Fa-f:.]+\])(:\d{1,5})?$")
 
 
@@ -461,6 +466,8 @@ def make_handler(shell):
                 return self._json(remote_state(shell.state()) if self._remote() else shell.state())
             if path == "/api/log":
                 return self._json({"lines": lines()})
+            if path == "/api/companion":
+                return self._json(shell.companion.state())
             if path == "/api/ros":
                 return self._json(shell.ros_state())
             if path == "/api/ros/export":
@@ -572,6 +579,12 @@ def make_handler(shell):
                 body = self._body()
                 if path.startswith("/api/ros/"):
                     return self._json(shell.ros_post(path, body))
+                if path == "/api/companion":
+                    try:
+                        return self._json(shell.companion.act(body))
+                    except (ValueError, KeyError, TypeError) as e:
+                        log(f"Companion: {e}", "warn")
+                        return self._json({**shell.companion.state(), "error": str(e)}, 400)
                 if path == "/api/engine/workspace":
                     shell.engine_call("/api/workspaces/open", {"id": body.get("id")})
                     with shell._engine_lock:
