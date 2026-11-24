@@ -18,6 +18,15 @@ Each HUD app answers these on its own port, from handle() below:
     POST /hudedit/save     {design, edits, base_rev}  (409 when someone saved meanwhile)
     POST /hudedit/restore  {design, version}           an earlier version back (saved as a new one)
     POST /hudedit/upload?name=FILE           (raw bytes) -> {"name": stored name}
+    GET  /hudedit/copies                     {"copies": [...], "deleted": [...]}
+    POST /hudedit/copies   {action: make|rename|delete|undelete|apply, ...}
+
+Copies: a built-in HUD can be duplicated into a copy with its own name and its
+own changes (starting from the original's saved ones). A copy is the same page
+with ?hudcopy=<id> (its own browser source); its changes are saved under the
+design key "<original key>.c<id>". copies.json lists them. Deleting a copy
+moves its changes and versions to deleted/ (Recently deleted brings it back);
+built-in HUDs themselves can't be deleted, only their changes undone.
 
 Saved in <the app's data folder>/hud-edits/: <design>.json, assets/ and
 history/<design>/ (every version a Save replaced, the last HISTORY kept), so
@@ -31,6 +40,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import threading
 import time
 from urllib.parse import parse_qs, unquote, urlparse
@@ -254,6 +264,176 @@ def store_upload(data_dir, name, blob):
     return stored
 
 
+# --- copies of a built-in HUD ------------------------------------------------------
+COPY_ID = re.compile(r"[a-f0-9]{8}")
+PATH = re.compile(r"/[A-Za-z0-9/_.-]*(\?[A-Za-z0-9_.=&%-]*)?")
+
+
+def copy_key(base, cid):
+    return _key(f"{_key(base)}.c{cid}")
+
+
+def _copies_file(data_dir):
+    return os.path.join(folder(data_dir), "copies.json")
+
+
+def list_copies(data_dir):
+    try:
+        with open(_copies_file(data_dir), encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return []
+    out = []
+    for c in (doc.get("copies") if isinstance(doc, dict) else None) or []:
+        if isinstance(c, dict) and COPY_ID.fullmatch(str(c.get("id") or "")) and KEY.fullmatch(str(c.get("base") or "")):
+            out.append({"id": c["id"], "base": c["base"], "name": str(c.get("name") or "Copy")[:80],
+                        "path": str(c.get("path") or ""), "created": c.get("created") or 0})
+    return out
+
+
+def _save_copies(data_dir, copies):
+    _write(_copies_file(data_dir), {"copies": copies})
+
+
+def _clean_copy_name(name, fallback="Copy"):
+    return re.sub(r"\s+", " ", str(name or "")).strip()[:80] or fallback
+
+
+def _find(copies, cid):
+    for c in copies:
+        if c["id"] == cid:
+            return c
+    raise KeyError("That copy isn't there any more")
+
+
+def make_copy(data_dir, base, path, name, start_from=None):
+    """A copy of a built-in HUD design, with the original's saved changes to
+    start from (or another copy's, start_from = that copy's id)."""
+    base = _key(base)
+    path = str(path or "")
+    if not PATH.fullmatch(path) or "hudcopy=" in path:
+        raise ValueError("Unknown HUD page")
+    with _lock:
+        copies = list_copies(data_dir)
+        cid = os.urandom(4).hex()
+        while any(c["id"] == cid for c in copies):
+            cid = os.urandom(4).hex()
+        entry = {"id": cid, "base": base, "name": _clean_copy_name(name), "path": path, "created": time.time()}
+        copies.append(entry)
+        _save_copies(data_dir, copies)
+    start = load(data_dir, copy_key(base, start_from) if start_from and COPY_ID.fullmatch(str(start_from)) else base)
+    for k in ("rev", "saved"):
+        start.pop(k, None)
+    save(data_dir, copy_key(base, cid), start)
+    return entry
+
+
+def rename_copy(data_dir, cid, name):
+    with _lock:
+        copies = list_copies(data_dir)
+        c = _find(copies, cid)
+        c["name"] = _clean_copy_name(name, c["name"])
+        _save_copies(data_dir, copies)
+        return c
+
+
+def _deleted_dir(data_dir):
+    return os.path.join(folder(data_dir), "deleted")
+
+
+def delete_copy(data_dir, cid, confirm):
+    """Takes a copy off the list. Its changes and versions are kept in deleted/."""
+    with _lock:
+        copies = list_copies(data_dir)
+        c = _find(copies, cid)
+        if str(confirm or "").strip().lower() != c["name"].strip().lower():
+            raise ValueError(f"Type {c['name']} to delete it")
+        key = copy_key(c["base"], cid)
+        dest = os.path.join(_deleted_dir(data_dir), f"{cid}-{int(time.time() * 1000)}")
+        os.makedirs(dest, exist_ok=True)
+        if os.path.exists(_path(data_dir, key)):
+            os.replace(_path(data_dir, key), os.path.join(dest, "edits.json"))
+        if os.path.isdir(_history_dir(data_dir, key)):
+            os.replace(_history_dir(data_dir, key), os.path.join(dest, "history"))
+        _write(os.path.join(dest, "copy.json"), dict(c, deleted=time.time()))
+        _save_copies(data_dir, [x for x in copies if x["id"] != cid])
+        return c
+
+
+def deleted_copies(data_dir):
+    out = []
+    try:
+        names = os.listdir(_deleted_dir(data_dir))
+    except OSError:
+        return out
+    for tid in names:
+        try:
+            with open(os.path.join(_deleted_dir(data_dir), tid, "copy.json"), encoding="utf-8") as f:
+                c = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if isinstance(c, dict):
+            out.append({"tid": tid, "id": c.get("id"), "base": c.get("base"), "name": c.get("name"),
+                        "deleted": c.get("deleted") or 0})
+    out.sort(key=lambda c: -c["deleted"])
+    return out
+
+
+def undelete_copy(data_dir, tid):
+    """A deleted copy back, its changes and versions with it."""
+    if not re.fullmatch(r"[a-f0-9]{8}-\d{10,16}", str(tid or "")):
+        raise KeyError("That deleted copy isn't there")
+    src = os.path.join(_deleted_dir(data_dir), tid)
+    with _lock:
+        try:
+            with open(os.path.join(src, "copy.json"), encoding="utf-8") as f:
+                c = json.load(f)
+        except (OSError, ValueError):
+            raise KeyError("That deleted copy isn't there")
+        copies = list_copies(data_dir)
+        if any(x["id"] == c["id"] for x in copies):
+            raise ValueError("That copy is back already")
+        key = copy_key(c["base"], c["id"])
+        if os.path.exists(os.path.join(src, "edits.json")):
+            os.makedirs(folder(data_dir), exist_ok=True)
+            os.replace(os.path.join(src, "edits.json"), _path(data_dir, key))
+        if os.path.isdir(os.path.join(src, "history")):
+            os.makedirs(os.path.dirname(_history_dir(data_dir, key)), exist_ok=True)
+            os.replace(os.path.join(src, "history"), _history_dir(data_dir, key))
+        entry = {"id": c["id"], "base": c["base"], "name": c.get("name") or "Copy", "path": c.get("path") or "",
+                 "created": c.get("created") or 0}
+        copies.append(entry)
+        _save_copies(data_dir, copies)
+        shutil.rmtree(src, ignore_errors=True)
+        return entry
+
+
+def apply_copy(data_dir, cid):
+    """The copy's changes put on the original HUD (what's on air at its usual
+    address). The original's changes before are kept in its Versions."""
+    c = _find(list_copies(data_dir), cid)
+    doc = load(data_dir, copy_key(c["base"], cid))
+    for k in ("rev", "saved"):
+        doc.pop(k, None)
+    return save(data_dir, c["base"], doc)
+
+
+def copies_post(data_dir, body):
+    act = body.get("action")
+    if act == "make":
+        return {"copy": make_copy(data_dir, body.get("base"), body.get("path"), body.get("name"), body.get("from"))}
+    if act == "rename":
+        return {"copy": rename_copy(data_dir, str(body.get("id") or ""), body.get("name"))}
+    if act == "delete":
+        return {"copy": delete_copy(data_dir, str(body.get("id") or ""), body.get("confirm"))}
+    if act == "undelete":
+        return {"copy": undelete_copy(data_dir, body.get("tid"))}
+    if act == "apply":
+        doc = apply_copy(data_dir, str(body.get("id") or ""))
+        return {"ok": True, "rev": doc["rev"]}
+    raise ValueError("Unknown action")
+
+
 # --- HTTP ------------------------------------------------------------------------
 
 def _local(ip):
@@ -298,6 +478,8 @@ def handle(req, method, path, data_dir):
                 if seen.isdigit() and int(seen) == doc["rev"]:
                     return _reply(req, {"rev": doc["rev"], "same": True})
                 return _reply(req, doc)
+            if path == "/hudedit/copies":
+                return _reply(req, {"copies": list_copies(data_dir), "deleted": deleted_copies(data_dir)[:30]})
             if path == "/hudedit/history":
                 return _reply(req, {"versions": history(data_dir, (q.get("design") or [""])[0])})
             m = re.fullmatch(r"/hudedit/asset/(.+)", path)
@@ -330,10 +512,14 @@ def handle(req, method, path, data_dir):
                 return _reply(req, {"error": "These changes were saved somewhere else meanwhile.", "rev": c.rev,
                                     "conflict": True}, status=409)
             return _reply(req, {"ok": True, "rev": doc["rev"], "saved": doc["saved"]})
+        if path == "/hudedit/copies":
+            return _reply(req, copies_post(data_dir, body))
         if path == "/hudedit/restore":
             doc = restore(data_dir, body.get("design"), body.get("version"))
             return _reply(req, dict(doc, ok=True))
         return _reply(req, {"error": "not found"}, status=404)
+    except KeyError as e:
+        return _reply(req, {"error": str(e).strip("'")}, status=404)
     except (OSError, ValueError, TypeError) as e:
         return _reply(req, {"error": str(e) or type(e).__name__}, status=400)
 
@@ -389,17 +575,54 @@ def _get(url, timeout=0.8):
         return json.loads(r.read())
 
 
+def _post(url, body, timeout=5):
+    import urllib.error
+    import urllib.request
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    req = urllib.request.Request(url, json.dumps(body).encode("utf-8"), {"Content-Type": "application/json"})
+    try:
+        with opener.open(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read()).get("error")
+        except Exception:
+            msg = None
+        raise ValueError(msg or f"The HUD answered {e.code}")
+    except OSError:
+        raise ValueError("That game HUD isn't running. Turn it on to change its copies")
+
+
+def copies_action(body):
+    """HUD Builder > Game HUDs: make / rename / delete / bring back / put on air
+    a copy, in the game HUD app that has it (body["part"] says which)."""
+    part = str(body.get("part") or "")
+    ports = _ports()
+    if part not in ports:
+        raise ValueError("Unknown game HUD")
+    return _post(f"http://127.0.0.1:{ports[part][0]}/hudedit/copies", {k: v for k, v in body.items() if k != "part"})
+
+
+def with_copy(path, cid):
+    return path + ("&" if "?" in path else "?") + "hudcopy=" + cid
+
+
 def catalog(only_game=None):
     """Every HUD design that can be edited, and whether its HUD is running."""
     ports = _ports()
     games = [g for g in GAMES if not only_game or g[1] == only_game]
-    alive, lol_profiles = {}, list(LOL_PROFILES)
+    alive, lol_profiles, copies = {}, list(LOL_PROFILES), {}
 
     def probe(key, port):
         try:
             alive[key] = bool(_get(f"http://127.0.0.1:{port}/hudedit/ping").get("ok"))
         except Exception:
             alive[key] = False
+        if alive[key]:
+            try:
+                copies[key] = _get(f"http://127.0.0.1:{port}/hudedit/copies")
+            except Exception:
+                copies[key] = {}   # (a HUD from before copies)
 
     threads = [threading.Thread(target=probe, args=(k, ports[k][0]), daemon=True) for k, *_ in games]
     for t in threads:
@@ -421,7 +644,18 @@ def catalog(only_game=None):
             designs += [(f"lol-overlay:{p['id']}", p["name"], f"/overlay?profile={p['id']}", "In-game HUD profile")
                         for p in lol_profiles]
         designs += [(k, n, p, what) for g, k, n, p, what in DESIGNS if g == game]
+        rows = [{"key": k, "name": n, "path": p, "what": what} for k, n, p, what in designs]
+        got = copies.get(key) or {}
+        for c in got.get("copies") or []:
+            # (under the HUD it's a copy of)
+            of = next((r for r in rows if r["key"] == c["base"] and r["path"] == c["path"]), None) \
+                or next((r for r in rows if r["key"] == c["base"]), None)
+            row = {"key": copy_key(c["base"], c["id"]), "name": c["name"], "path": with_copy(c["path"], c["id"]),
+                   "what": f"Copy of {of['name'] if of else c['base']}", "copy": {"id": c["id"], "base": c["base"], "path": c["path"]}}
+            at = rows.index(of) + 1 if of else len(rows)
+            while at < len(rows) and rows[at].get("copy"):
+                at += 1
+            rows.insert(at, row)
         out.append({"part": key, "game": game, "title": title, "port": port, "running": bool(alive.get(key)),
-                    "status": status,
-                    "designs": [{"key": k, "name": n, "path": p, "what": what} for k, n, p, what in designs]})
+                    "status": status, "designs": rows, "deleted": got.get("deleted") or []})
     return out

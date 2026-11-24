@@ -85,7 +85,7 @@ class HudBuilderApp:
                 "update": None if self.embed else self.updater.info(), "data_dir": self.data_dir}
 
     def state(self):
-        return {"app": self.info(), "huds": self.store.list(), "games": GAMES, "kinds": KINDS,
+        return {"app": self.info(), "huds": self.store.list(), "deleted": self.store.deleted()[:50], "games": GAMES, "kinds": KINDS,
                 "embed": {"game": self.embed["game"], "title": self.embed["title"], "host_url": self.engine.status()["url"]} if self.embed else None,
                 "templates": {k: v[0] for k, v in TEMPLATES.items()}}
 
@@ -312,7 +312,7 @@ def make_handler(app):
                             out = designimport.import_design(app.store, hud["id"], name, blob)
                             hud = app.store.save_design(hud["id"], {"name": out["name"], "layers": out["layers"], "vars": out["vars"]})
                         except Exception:
-                            app.store.delete(hud["id"])
+                            app.store.delete(hud["id"], keep=False)   # (the half-made HUD from this import)
                             raise
                         return self._json({"hud": hud, "state": app.state(), "notes": out["notes"], "fonts_missing": out["fonts_missing"]})
                     hud = pack.import_(app.store, blob)
@@ -332,12 +332,23 @@ def make_handler(app):
                         hud = app.store.save_design(hud_id, body)
                         return self._json({"rev": hud["rev"], "updated": hud["updated"]})
                     if what == "delete":
+                        # (the name typed to confirm must be the HUD's: a slip can't delete the wrong one)
                         name = app.store.get(hud_id)["name"]
+                        if str(body.get("confirm") or "").strip().lower() != name.strip().lower():
+                            raise ValueError(f"Type {name} to delete it")
                         app.store.delete(hud_id)
-                        log(f"Deleted {name}")
+                        log(f"Deleted {name} (kept in Recently deleted)")
                         return self._json(app.state())
-                    hud = app.store.duplicate(hud_id)
+                    hud = app.store.duplicate(hud_id, body.get("name"))
+                    log(f"Duplicated as {hud['name']}")
                     return self._json({"hud": hud, "state": app.state()})
+                if path == "/api/huds/undelete":
+                    hud = app.store.undelete(str(body.get("tid") or ""))
+                    log(f"Brought back {hud['name']}")
+                    return self._json({"hud": hud, "state": app.state()})
+                if path == "/api/game-huds/copies":
+                    # Game HUDs: copies of a built-in HUD (made, renamed, deleted, put on the main HUD) in its own app
+                    return self._json(hudedit.copies_action(body))
                 if path == "/api/network":
                     app.set_network(bool(body.get("on")))
                     return self._json(app.state())
