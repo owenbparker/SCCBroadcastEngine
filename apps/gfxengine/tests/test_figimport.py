@@ -6,6 +6,7 @@ import shutil
 import struct
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 import zlib
 
@@ -154,7 +155,8 @@ class FigTests(unittest.TestCase):
             src = os.path.join(tmp, "upload")
             with open(src, "wb") as f:
                 f.write(make_fig(nodes, {h: pic.getvalue()}))
-            r = assets.add("SCC 2027.fig", src, graphic=True)
+            with mock.patch("gfxengine.sysfonts.font_files", return_value=[]):   # (as on a PC without Inter installed)
+                r = assets.add("SCC 2027.fig", src, graphic=True)
             ws.close()
             self.assertFalse(os.path.exists(src))
             self.assertEqual([c["name"] for c in r["comps"]], ["Scorebug", "Lower third"])

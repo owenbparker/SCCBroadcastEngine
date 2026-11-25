@@ -49,9 +49,28 @@
     // Each font by its PostScript name, then by its other names (its file
     // name, full name...), which a design may know it by; the first claim wins.
     const named = new Map();
-    const files = fonts.filter(f => f.path);
+    const files = fonts.filter(f => f.path && !f.system);
     for (const f of files) if (f.postscript && !named.has(f.postscript.toLowerCase())) named.set(f.postscript.toLowerCase(), [f.postscript, f]);
     for (const f of files) for (const a of f.aliases || []) if (a && !named.has(a.toLowerCase())) named.set(a.toLowerCase(), [a, f]);
+    // Fonts installed on this PC (Windows' Fonts folder...): by their family
+    // ("Gotham", each weight its own face) and by every other name a design may
+    // know them by ("Gotham-Bold", "Gotham Bold"). The browser finds them by
+    // name (local()), else the engine serves the file (OBS on another PC).
+    const installed = fonts.filter(f => f.system);
+    const builtinLow = new Set(GFX.builtinFonts.map(x => x.toLowerCase()));
+    systemFamilies = new Set();
+    const familyCss = [];
+    for (const f of installed) {
+      const fam = (f.family || "").toLowerCase();
+      if (!fam || builtinLow.has(fam) || named.has(fam)) continue;
+      systemFamilies.add(fam);
+      familyCss.push(`@font-face{font-family:"${cssq(f.family)}";src:${systemSrc(f)};font-weight:${f.weight || 400};` +
+        `font-style:${f.italic ? "italic" : "normal"};font-display:block}`);
+    }
+    for (const f of installed) for (const a of [f.postscript, ...(f.aliases || [])]) {
+      const low = String(a || "").toLowerCase();
+      if (low && !named.has(low) && !systemFamilies.has(low) && !builtinLow.has(low)) named.set(low, [a, f]);
+    }
     assetFonts = new Set([...named.keys()]);
     // Adobe Fonts (no files here): ones Creative Cloud installed on this PC,
     // found by name (local()), then the web project's (its CSS from Adobe).
@@ -73,13 +92,18 @@
     }
     const css = [...kits].map(id => `@import url("https://use.typekit.net/${encodeURIComponent(id)}.css");`).concat(adobeCss, BUILTIN.map(([fam, file, weight, extra]) =>
       `@font-face{font-family:"${fam}";src:url("${url(file)}");font-weight:${weight};font-display:block${extra ? ";" + extra : ""}}`));
-    for (const [name, f] of named.values()) css.push(`@font-face{font-family:"${cssq(name)}";src:url("${url(encodeURI(f.path))}");font-display:block}`);
+    for (const [name, f] of named.values()) css.push(`@font-face{font-family:"${cssq(name)}";src:${f.system ? systemSrc(f) : `url("${url(encodeURI(f.path))}")`};font-display:block}`);
+    css.push(...familyCss);
     if (!fontStyle) { fontStyle = document.createElement("style"); document.head.appendChild(fontStyle); }
     fontStyle.dataset.key = key;
     fontStyle.textContent = css.join("\n");
     if (document.fonts) document.fonts.ready.then(() => GFX.refit());
   };
   const cssq = s => String(s).replace(/["\\]/g, "");
+  // An installed font: by its names on this PC, then its file from the engine.
+  const systemSrc = f => (f.local || []).map(n => `local("${cssq(n)}")`)
+    .concat(f.path ? [`url("${url(encodeURI(f.path))}")`] : []).join(",");
+  let systemFamilies = new Set();
   const fontKey = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   let adobeFonts = new Map();
   // [font-family stack, weight] for a text layer.
@@ -96,7 +120,8 @@
     for (const [re, fam, weight] of STANDINS) if (re.test(name)) return [`"${cssq(name)}", "${fam}", "Inter", sans-serif`, weight];
     return [`"${cssq(name)}", "Inter", sans-serif`, layer.weight || 400];
   };
-  GFX.hasFont = name => assetFonts.has(String(name || "").toLowerCase()) || adobeFonts.has(fontKey(name)) || GFX.builtinFonts.includes(name);
+  GFX.hasFont = name => assetFonts.has(String(name || "").toLowerCase()) || systemFamilies.has(String(name || "").toLowerCase()) ||
+    adobeFonts.has(fontKey(name)) || GFX.builtinFonts.includes(name);
 
   // --- data and fields -----------------------------------------------------------
   const ctx = { tables: {} };

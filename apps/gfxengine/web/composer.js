@@ -869,15 +869,19 @@
   function setFont(l, name) { snapshot(); l.font = name; useFont(name); changed({ props: true }); }
   function fontOptions(current) {
     const fonts = App.state.fonts || [];
-    const assetFonts = fonts.filter(f => !f.adobe).map(f => f.postscript);
+    const assetFonts = fonts.filter(f => !f.adobe && !f.system).map(f => f.postscript);
     const adobe = fonts.filter(f => f.adobe);
-    const all = [...GFX.builtinFonts, ...assetFonts, ...adobe.map(f => f.postscript)];
-    const nameOf = f => { const a = adobe.find(x => x.postscript === f); return a ? `${a.family} ${a.style}`.trim() : f; };
+    // (installed on this PC: ones with the same name as an added font are that font)
+    const added = new Set([...assetFonts, ...adobe.map(f => f.postscript)].map(x => String(x).toLowerCase()));
+    const installed = fonts.filter(f => f.system && f.postscript && !added.has(f.postscript.toLowerCase()));
+    const all = [...GFX.builtinFonts, ...assetFonts, ...adobe.map(f => f.postscript), ...installed.map(f => f.postscript)];
+    const nameOf = f => { const a = adobe.find(x => x.postscript === f) || installed.find(x => x.postscript === f);
+      return a ? `${a.family} ${a.style}`.trim() : f; };
     let picked = false;   // only the first option for the current font is selected
     const sel = f => !picked && f === current ? (picked = true) : false;
     const out = [];
     if (current && !all.includes(current)) out.push(h("option", { value: current, selected: sel(current) },
-      GFX.hasFont(current) ? `${current} (Adobe Fonts)` : `${current} (not added: stand-in)`));
+      GFX.hasFont(current) ? current : `${current} (not on this PC: stand-in)`));
     // Only fonts this workspace has (a recent one from elsewhere would be a stand-in here).
     const recent = recentFonts().filter(f => all.includes(f)).slice(0, 8);
     if (recent.length) out.push(h("optgroup", { label: "Recent" }, recent.map(f => h("option", { value: f, selected: sel(f) }, nameOf(f)))));
@@ -888,6 +892,10 @@
         title: f.adobe === "pc" ? (f.kit ? "On this PC (Creative Cloud) and in the web project" : "On this PC through Creative Cloud: other PCs need it too, or add it to the web project")
           : "From the Adobe Fonts web project (any PC with internet)" },
         `${f.family} ${f.style}`.trim() + (f.adobe === "pc" && !f.kit ? " · this PC" : "")))));
+    if (installed.length) out.push(h("optgroup", { label: "Installed on this PC" }, installed.slice()
+      .sort((a, b) => a.family.localeCompare(b.family) || (a.weight || 400) - (b.weight || 400) || (a.italic ? 1 : 0) - (b.italic ? 1 : 0))
+      .map(f => h("option", { value: f.postscript, selected: sel(f.postscript),
+        title: "Installed in Windows' Fonts: OBS on another PC gets it from this engine" }, `${f.family} ${f.style}`.trim()))));
     return out;
   }
   function assetSelect(kind, value, onChange) {
@@ -984,7 +992,7 @@
         lab("Text", bind(l, "text", "textarea")),
         h("div", { class: "muted small" }, "Use data: {{Source!B2}} · clock: {{time}} · {{countdown:19:30}}"),
         lab("Font", h("select", { onchange: e => setFont(l, e.target.value) }, fontOptions(l.font))),
-        missing ? h("div", { class: "warnline" }, `"${l.font}" isn't added: a similar font stands in. Add the font file in Assets.`) : null,
+        missing ? h("div", { class: "warnline" }, `"${l.font}" isn't installed on this PC or added: a similar font stands in. Install it in Windows or add the font file in Assets.`) : null,
         h("div", { class: "grid3" }, lab("Size", bind(l, "size", "number", { min: 1 })), bind(l, "color", "color", { label: "Colour" }),
           lab("Weight", bind(l, "weight", "select", { num: true, options: [[300, "Light"], [400, "Regular"], [500, "Medium"], [600, "Semibold"], [700, "Bold"], [800, "Extra bold"], [900, "Black"]] }))),
         lab("Colour set in Control", bind(l, "color", "select", { options: [

@@ -115,7 +115,7 @@ addEventListener("drop", e => {
     const missing = [...used].filter(f => !GFX.hasFont(f)).sort();
     const note = $("#missing-fonts");
     note.hidden = !missing.length;
-    note.textContent = missing.length ? `The graphics use fonts that aren't added yet (similar ones stand in): ${missing.join(", ")}. Drop their .ttf / .otf files here, or add them from Adobe Fonts (below).` : "";
+    note.textContent = missing.length ? `The graphics use fonts that aren't installed on this PC or added (similar ones stand in): ${missing.join(", ")}. Install them in Windows, drop their .ttf / .otf files here, or add them from Adobe Fonts (below).` : "";
     renderAdobe(s.adobe_fonts || {});
     const shown = App.assets.filter(a => kind === "all" || a.kind === kind);
     const folders = new Map();

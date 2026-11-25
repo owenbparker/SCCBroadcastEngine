@@ -31,7 +31,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import adobefonts, appearance, companion, discover, export, globalcfg, media, pack, share, wsshare
+from . import adobefonts, appearance, sysfonts, companion, discover, export, globalcfg, media, pack, share, wsshare
 from scc_shared.enginelink import PROTOCOL as LINK_PROTOCOL
 from .assets import Assets
 from .config import DATA_DIR, WEB_DIR, Settings, safe_join
@@ -46,7 +46,7 @@ from . import data as data_mod, matchup, results, schedule, standings, tournamen
 from .updater import Updater, clean_up_old_update
 from .workspaces import Workspaces
 
-for ext, kind in ((".ttf", "font/ttf"), (".otf", "font/otf"), (".woff", "font/woff"), (".woff2", "font/woff2"),
+for ext, kind in ((".ttf", "font/ttf"), (".otf", "font/otf"), (".woff", "font/woff"), (".woff2", "font/woff2"), (".ttc", "font/collection"),
                   (".svg", "image/svg+xml"), (".webm", "video/webm"), (".mp4", "video/mp4"), (".json", "application/json"),
                   (".webp", "image/webp"), (".mjs", "text/javascript"), (".js", "text/javascript")):
     mimetypes.add_type(kind, ext)
@@ -152,6 +152,8 @@ class Engine:
         self.library_dir = library_dir or config.LIBRARY_DIR
         self.teams = Teams(self.library_dir)
         self.adobe_kit = adobefonts.Kit(self.library_dir)
+        self.system_fonts = sysfonts.shared(self.library_dir)
+        threading.Thread(target=self.system_fonts.fonts, daemon=True).start()   # (read once, in the background)
         self.jobs = Jobs()
         self.updater = Updater()
         self.server = None
@@ -347,8 +349,10 @@ class Engine:
     def _fonts(self):
         key = (id(self.ws), self.assets_rev)
         if self._fonts_cache[0] != key or time.monotonic() - self._fonts_cache[1] > 5:
-            # (the added fonts, then Adobe Fonts: on this PC and the web project)
-            self._fonts_cache = (key, time.monotonic(), self.assets.fonts() + adobefonts.all_fonts(self.adobe_kit))
+            # (the added fonts, then Adobe Fonts: on this PC and the web project,
+            # then the fonts installed on this PC: the first one with a name wins)
+            self._fonts_cache = (key, time.monotonic(), self.assets.fonts() + adobefonts.all_fonts(self.adobe_kit)
+                                 + self.system_fonts.fonts())
         return self._fonts_cache[2]
 
     def adobe_info(self):
@@ -1407,6 +1411,10 @@ def make_handler(engine):
                     shutil.rmtree(tmp, ignore_errors=True)
                 return self._send(blob, "application/zip", headers={
                     "Content-Disposition": f"attachment; filename=\"GFX workspace {time.strftime('%Y-%m-%d')}.zip\""})
+            if path.startswith("/sysfonts/"):
+                # (a font installed on this PC: only files in its font folders)
+                full = engine.system_fonts.file(unquote(path[1:]))
+                return self._file(full, cache=True) if full else self._json({"error": "not found"}, 404)
             if path.startswith(("/assets/", "/library/")):
                 full = engine.assets.path_of(unquote(path[1:]))
                 if not full or not os.path.isfile(full):

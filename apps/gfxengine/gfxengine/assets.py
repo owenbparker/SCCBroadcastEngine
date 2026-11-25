@@ -222,6 +222,11 @@ class Assets:
                 adobe = adobefonts.known_names(adobefonts.all_fonts(adobefonts.Kit(self.library_dir)))
                 missing = [f for f in missing if adobefonts.norm(f) not in adobe]
             if missing:
+                # (installed on this PC)
+                from . import sysfonts
+                installed = sysfonts.known_names(sysfonts.shared(self.library_dir).fonts())
+                missing = [f for f in missing if f.lower() not in installed]
+            if missing:
                 log(f"{os.path.basename(name)} uses fonts that aren't added yet: {', '.join(missing)}", "warn")
             result["missing_fonts"] = missing
             return result

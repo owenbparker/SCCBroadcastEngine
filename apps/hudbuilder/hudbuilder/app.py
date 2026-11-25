@@ -29,6 +29,7 @@ from .updater import Updater, clean_up_old_update
 
 mimetypes.add_type("font/ttf", ".ttf")
 mimetypes.add_type("font/otf", ".otf")
+mimetypes.add_type("font/collection", ".ttc")
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("image/svg+xml", ".svg")
 mimetypes.add_type("video/webm", ".webm")
@@ -94,6 +95,7 @@ class HudBuilderApp:
         hud["tables"] = dict(self.engine.tables, **tables(hud))
         hud["assets"] = self.store.assets(hud_id)
         hud["adobe_fonts"] = adobe_fonts()
+        hud["system_fonts"] = system_fonts()
         hud["engine"] = self.engine_brief()
         return hud
 
@@ -111,6 +113,24 @@ class HudBuilderApp:
         self.engine.stop()
         if self.server:
             self.server.stop()
+
+
+def _system_fonts():
+    try:
+        from gfxengine import sysfonts, config as gfxconfig
+        return sysfonts.shared(gfxconfig.LIBRARY_DIR)
+    except Exception:
+        return None
+
+
+def system_fonts():
+    """The fonts installed on this PC (as the GFX Engine lists them), so a
+    design's "Gotham-Bold" finds the installed Gotham; [] without the engine."""
+    sf = _system_fonts()
+    try:
+        return sf.fonts() if sf else []
+    except Exception:
+        return []
 
 
 def adobe_fonts():
@@ -234,7 +254,12 @@ def make_handler(app):
                 m = re.fullmatch(r"/huds/" + ID + r"/(.+)", path)
                 if m:
                     rel = unquote(m.group(2))
-                    full = app.store.asset_file(m.group(1), rel[len("assets/"):]) if rel.startswith("assets/") else web_file(rel)
+                    if rel.startswith("sysfonts/"):
+                        # (a font installed on this PC: only files in its font folders)
+                        sf = _system_fonts()
+                        full = sf.file(rel) if sf else None
+                    else:
+                        full = app.store.asset_file(m.group(1), rel[len("assets/"):]) if rel.startswith("assets/") else web_file(rel)
                     if not full:
                         return self._json({"error": "not found"}, 404)
                     return self._file(full)
