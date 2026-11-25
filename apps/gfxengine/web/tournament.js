@@ -202,7 +202,9 @@
 
   function teamInput(value, onchange) {
     return h("input", { class: "tn-team", list: "team-names", value, placeholder: "Team",
-      oninput: e => { onchange(e.target.value); } });
+      oninput: e => { onchange(e.target.value); },
+      // (done typing: a match that became a bye, or stopped being one, folds or opens)
+      onchange: () => { if (t && byeSig() !== shownSig) { renderTop(); refresh(); } } });
   }
   function scoreInput(scores, key, side) {
     return h("input", { class: "tn-score", value: (scores[key] || ["", ""])[side], inputmode: "numeric", "data-score": key + "|" + side,
@@ -220,12 +222,31 @@
   const lowerCounts = size => { const out = []; for (let n = size / 4; n >= 1; n = n / 2) out.push(n, n); return out; };
   const lowerName = (r, n) => r === n - 1 ? "Lower final" : `Lower round ${r + 1}`;
   const upperName = (r, n) => r === n - 1 ? "Upper final" : r === n - 2 ? "Upper semi-finals" : `Upper round ${r + 1}`;
+  // Byes: a first round match with one team and nobody against it isn't on
+  // air (its team waits in the next round), so here it folds up too, and its
+  // team is typed in the next round's slot. "+ Opponent" opens it again.
+  const opened = new Set();           // (first round byes opened to type an opponent)
+  let shownSig = "";
+  const byeSig = () => t.top.size + ":" + t.top.teams.slice(0, t.top.size).map(Boolean).join("") + [...opened].join();
+  const anyTeam = top => top.teams.slice(0, top.size).some(Boolean);
+  const isBye = (top, m) => anyTeam(top) && !opened.has(m) && !top.teams[2 * m] !== !top.teams[2 * m + 1];
+  const byeIndex = (top, m) => top.teams[2 * m] ? 2 * m : 2 * m + 1;
   function matchBox(top, key, first, m) {
-    const side = s => h("div", { class: "tn-slot" },
-      h("i", { class: "tn-logo", "data-logo": `Top ${key} team ${s + 1}` }),
-      first ? teamInput(top.teams[2 * m + s], v => { top.teams[2 * m + s] = v; changed(); }) : nameBox(`Top ${key} team ${s + 1}`),
-      scoreInput(top.scores, key, s));
-    return h("div", { class: "tn-match" }, side(0), side(1));
+    if (first && isBye(top, m)) {
+      const name = top.teams[byeIndex(top, m)];
+      return h("div", { class: "tn-match tn-bye", title: "Nobody against this team: it goes straight through, and the graphic leaves this match out" },
+        h("span", { class: "muted small" }, "Bye: ", h("b", {}, name), " goes through"),
+        h("button", { class: "ghost small", title: "Type a team to play them", onclick: () => { opened.add(m); renderTop(); refresh(); } }, "+ Opponent"));
+    }
+    const second = /^R2 /.test(key);
+    const side = s => {
+      const feed = 2 * m + s;     // (the first round match a second round slot's team comes from)
+      const input = first ? teamInput(top.teams[2 * m + s], v => { top.teams[2 * m + s] = v; changed(); })
+        : second && isBye(top, feed) ? teamInput(top.teams[byeIndex(top, feed)], v => { top.teams[byeIndex(top, feed)] = v; changed(); })
+        : nameBox(`Top ${key} team ${s + 1}`);
+      return h("div", { class: "tn-slot" }, h("i", { class: "tn-logo", "data-logo": `Top ${key} team ${s + 1}` }), input, scoreInput(top.scores, key, s));
+    };
+    return h("div", { class: "tn-match", "data-key": key }, side(0), side(1));
   }
   const champCol = () => h("div", { class: "tn-col champ" }, h("div", { class: "tn-title" }, "Champion"),
     h("div", { class: "tn-col-body" }, h("div", { class: "tn-match" }, h("div", { class: "tn-slot" },
@@ -256,6 +277,7 @@
 
   function renderTop() {
     const top = t.top, size = top.size, box = $("#tn-top");
+    shownSig = byeSig();
     for (const b of document.querySelectorAll("#tn-size button")) b.classList.toggle("on", +b.dataset.size === size);
     const fmt = top.format === "double" ? "double" : "single";
     for (const b of document.querySelectorAll("#tn-format button")) b.classList.toggle("on", b.dataset.format === fmt);
@@ -265,19 +287,10 @@
     if (fmt === "double") return renderDouble(top, box);
     const cols = ROUNDS[size].map((title, r) => {
       const matches = [];
-      for (let m = 0; m < size >> (r + 1); m++) {
-        const key = `R${r + 1} M${m + 1}`;
-        const side = s => h("div", { class: "tn-slot" },
-          h("i", { class: "tn-logo", "data-logo": `Top ${key} team ${s + 1}` }),
-          r === 0 ? teamInput(top.teams[2 * m + s], v => { top.teams[2 * m + s] = v; changed(); }) : nameBox(`Top ${key} team ${s + 1}`),
-          scoreInput(top.scores, key, s));
-        matches.push(h("div", { class: "tn-match" }, side(0), side(1)));
-      }
+      for (let m = 0; m < size >> (r + 1); m++) matches.push(matchBox(top, `R${r + 1} M${m + 1}`, r === 0, m));
       return h("div", { class: "tn-col" }, h("div", { class: "tn-title" }, title), h("div", { class: "tn-col-body" }, ...matches));
     });
-    cols.push(h("div", { class: "tn-col champ" }, h("div", { class: "tn-title" }, "Champion"),
-      h("div", { class: "tn-col-body" }, h("div", { class: "tn-match" }, h("div", { class: "tn-slot" },
-        h("i", { class: "tn-logo", "data-logo": "Top champion" }), nameBox("Top champion"))))));
+    cols.push(champCol());
     box.replaceChildren(...cols);
   }
   document.querySelectorAll("#tn-size button").forEach(b => b.addEventListener("click", () => {
@@ -321,6 +334,19 @@
     for (const el of document.querySelectorAll(".g-tournament [data-logo]")) {
       const logo = val(el.dataset.logo + " logo");
       el.style.backgroundImage = logo ? `url("${pic(logo)}")` : "";
+    }
+    // (a match nobody can play, later on: not on air)
+    for (const el of document.querySelectorAll(".g-tournament .tn-match[data-key]")) {
+      const kind = val(`Top ${el.dataset.key} kind`);
+      el.classList.toggle("tn-skip", kind === "bye" || kind === "none");
+      el.title = kind === "bye" ? "Nobody to play: the team goes straight through, and the graphic leaves this match out"
+        : kind === "none" ? "No teams: the graphic leaves this match out" : "";
+    }
+    if (t) {
+      const n = t.top.teams.slice(0, t.top.size).filter(Boolean).length;
+      let byes = 0;
+      for (let m = 0; m < t.top.size / 2; m++) if (!t.top.teams[2 * m] !== !t.top.teams[2 * m + 1]) byes++;
+      $("#tn-count").textContent = n ? `${n} team${n === 1 ? "" : "s"}` + (byes ? ` · ${byes} bye${byes === 1 ? "" : "s"}` : "") : "";
     }
     for (const el of document.querySelectorAll(".g-tournament .tn-team")) el.title = logoOf(el.value) ? "" : el.value ? "Not in the team list (no logo)" : "";
   }

@@ -481,17 +481,14 @@
   function drawBracket(box) {
     const layer = box._layer;
     const rows = (ctx.tables.Tournament || []).filter(r => /^Top /.test(r[0] || ""));
-    const size = +GFX.lookup(rows, "Top teams") === 16 ? 16 : 8;
+    // ("Top size": the bracket's 8 or 16; older tables only had "Top teams")
+    const size = +(GFX.lookup(rows, "Top size") || GFX.lookup(rows, "Top teams")) === 16 ? 16 : 8;
     const key = JSON.stringify([rows, layer.w, layer.h, layer.font, layer.color, layer.gold, layer.line]);
     if (box._key === key) return;
     box._key = key;
     box.textContent = "";
     const get = k => GFX.lookup(rows, k);
     const Wd = layer.w, Ht = layer.h, rounds = Math.log2(size);
-    const sw = Wd * (size === 16 ? 0.17 : 0.196), cw = Wd * (size === 16 ? 0.25 : 0.278);
-    const gap = (Wd - rounds * sw - cw) / rounds;
-    const unit = Ht / (size / 2);
-    const sh = Math.min(Ht * 0.08, unit * 0.34), g = sh / 6;
     const gold = layer.gold || "#b28a1d", dark = layer.dark || "#000b05", line = layer.line || gold;
     const [family, weight] = GFX.fontFor(layer);
     const svgNS = "http://www.w3.org/2000/svg";
@@ -499,6 +496,7 @@
     svg.setAttribute("width", Wd); svg.setAttribute("height", Ht);
     Object.assign(svg.style, { position: "absolute", left: 0, top: 0, overflow: "visible" });
     box.appendChild(svg);
+    let sh = 0, g = 0;
     const path = d => { const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d); p.setAttribute("fill", "none");
       p.setAttribute("stroke", line); p.setAttribute("stroke-width", Math.max(2, sh / 18)); svg.appendChild(p); };
     function slot(x, y, w, hgt, team, score, fill, lost, big) {
@@ -526,37 +524,78 @@
       // (too long: narrower)
       requestAnimationFrame(() => { const k = nameBox.clientWidth / (nameBox.scrollWidth || 1); if (k < 1) nameBox.style.fontSize = parseFloat(nameBox.style.fontSize) * Math.max(0.5, k) + "px"; });
     }
+    // A match: two slots, the team that lost dimmed.
+    const match = (key, x, cy, w, fill, unneeded) => {
+      const winner = get(`Top ${key} winner`);
+      for (let t = 0; t < 2; t++) {
+        const team = `Top ${key} team ${t + 1}`;
+        const lost = unneeded || (!!winner && !!get(team) && get(team) !== winner);
+        slot(x, t ? cy + g / 2 : cy - g / 2 - sh, w, sh, team, team + " score", fill, lost);
+      }
+    };
+    // (a line from a match on to a slot of a later one)
+    const into = (x, w, gap, cy, tx, ncy, side) => {
+      const ty = side ? ncy + g / 2 + sh / 2 : ncy - g / 2 - sh / 2;
+      const x1 = x + w + 4, x2 = tx - 4, xm = x2 - gap / 2 + 4;
+      path(`M${x1} ${cy}H${xm}V${ty}H${x2}`);
+    };
+
+    // Which matches are on the graphic. A match with nobody against one of
+    // its teams (a bye: 12 teams in the 16 bracket) is left out, and its team
+    // waits in the next round's slot; a match with nobody either side, and a
+    // round with no match left, aren't there at all. Each match's place: the
+    // middle of the two it comes from, a waiting team taking half a match's
+    // room, so the rest close up.
+    const kinds = {};
+    for (const r of rows) { const m = /^Top (\S+ M\d+) kind$/.exec(r[0]); if (m) kinds[m[1]] = r[1]; }
+    const played = !Object.keys(kinds).length || Object.values(kinds).includes("match");
+    const kindOf = key => played && (kinds[key] === "bye" || kinds[key] === "none") ? kinds[key] : "match";
+    function tree(keyOf, sidesOf, alloc, byeRoom) {
+      // -> null (nobody), {cy} (a team waiting in a slot) or {key, cy} (a match on the graphic)
+      const drawn = [];
+      function place(...at) {
+        const key = keyOf(...at), kind = kindOf(key);
+        if (kind === "none") return null;
+        const sides = sidesOf(...at);
+        if (kind === "bye" && sides.every(s => s.leaf)) return alloc(byeRoom);   // (the one team, in the next round's slot)
+        const kids = sides.map(s => s.leaf ? alloc(s.weight) : place(...s.at));
+        if (kind === "bye") {
+          const real = kids.filter(k => k && k.cy !== undefined);
+          if (real.length < 2) return real[0] || alloc(0.5);
+        }
+        const fixed = kids.map(k => k || alloc(0.5));
+        const ys = fixed.map(k => k.cy).filter(y => y !== undefined);
+        const cy = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : alloc(1).cy;
+        const node = { key, at, cy, kids: fixed };
+        drawn.push(node);
+        return node;
+      }
+      return { place, drawn };
+    }
+    const counter = () => { const c = { u: 0 }; c.alloc = w => { if (!w) return { cy: undefined }; const cy = c.u + w / 2; c.u += w; return { cy }; }; return c; };
+    const upKey = (r, m) => `R${r + 1} M${m + 1}`;
+    const upSides = (r, m) => r === 0 ? [{ leaf: true, weight: 0.5 }, { leaf: true, weight: 0.5 }] : [{ at: [r - 1, 2 * m] }, { at: [r - 1, 2 * m + 1] }];
+    const uc = counter(), up = tree(upKey, upSides, uc.alloc, 0.5);
+    const upRoot = up.place(rounds - 1, 0);
+
     if (get("Top format") === "double") return drawDouble();
-    let centres = [];
-    for (let r = 0; r < rounds; r++) {
-      const n = size >> (r + 1), x = r * (sw + gap), next = [];
-      for (let m = 0; m < n; m++) {
-        const cy = r === 0 ? unit * (m + 0.5) : (centres[2 * m] + centres[2 * m + 1]) / 2;
-        next.push(cy);
-        const k = `Top R${r + 1} M${m + 1}`;
-        const winner = get(r + 1 < rounds ? `Top R${r + 2} M${(m >> 1) + 1} team ${(m & 1) + 1}` : "Top champion");
-        for (let t = 0; t < 2; t++) {
-          const team = `${k} team ${t + 1}`;
-          const lost = !!winner && !!get(team) && get(team) !== winner;
-          slot(x, t ? cy + g / 2 : cy - g / 2 - sh, sw, sh, team, team + " score", r === 0 ? gold : dark, lost);
-        }
-        if (r + 1 === rounds) path(`M${x + sw + 4} ${cy}H${x + sw + gap - 4}`);   // (on to the champion)
-      }
-      if (r + 1 < rounds) {
-        // The line on to where the winner goes: the next round's matches sit
-        // between the two that feed them.
-        for (let m = 0; m < n; m++) {
-          const cy = next[m], pair = m >> 1, side = m & 1;
-          const ny = (next[2 * pair] + next[2 * pair + 1]) / 2;
-          const ty = side ? ny + g / 2 + sh / 2 : ny - g / 2 - sh / 2;
-          const x1 = x + sw + 4, x2 = x + sw + gap - 4, xm = (x1 + x2) / 2;
-          path(`M${x1} ${cy}H${xm}V${ty}H${x2}`);
-        }
-      }
-      centres = next;
+    // Single elimination: the rounds in columns, then the champion.
+    const cols = [...new Set(up.drawn.map(n => n.at[0]))].sort((a, b) => a - b);
+    const colOf = r => cols.indexOf(r), ncol = Math.max(1, cols.length);
+    const [swk, cwk] = { 1: [0.4, 0.35], 2: [0.25, 0.3], 3: [0.196, 0.278] }[ncol] || [0.17, 0.25];
+    const sw = Wd * swk, cw = Wd * cwk;
+    const gap = (Wd - ncol * sw - cw) / ncol;
+    const unit = Ht / Math.max(uc.u, 1);
+    sh = Math.min(Ht * 0.08, unit * 0.34); g = sh / 6;
+    const X = r => colOf(r) * (sw + gap);
+    for (const n of up.drawn) {
+      const x = X(n.at[0]);
+      match(n.key, x, n.cy * unit, sw, colOf(n.at[0]) === 0 ? gold : dark);
+      n.kids.forEach((k, s) => { if (k.key) into(X(k.at[0]), sw, gap, k.cy * unit, x, n.cy * unit, s); });
     }
     // The champion.
-    const cx = rounds * (sw + gap), ch = sh * 2.4, cy = centres[0];
+    const cx = ncol * (sw + gap), ch = sh * 2.4, cy = (upRoot && upRoot.cy !== undefined ? upRoot.cy : 0.5) * unit;
+    if (upRoot && upRoot.key) path(`M${X(upRoot.at[0]) + sw + 4} ${cy}H${cx - 4}`);   // (on to the champion)
     const frame = el("div", "gfx-bk-champ", { left: cx + "px", top: cy - ch / 2 + "px", width: cw + "px", height: ch + "px",
       borderColor: layer.champ || "#ffc52a", borderWidth: Math.max(2, sh / 14) + "px" });
     box.appendChild(frame);
@@ -569,13 +608,27 @@
     // champion. The same slots, lines and champion frame as the single one.
     function drawDouble() {
       const k = rounds, L = 2 * k - 2, reset = get("Top reset") !== "off";
-      const ncols = L + 1 + (reset ? 1 : 0);
+      // The lower bracket: its first round is the upper first round's losers;
+      // then each odd round, its winners against the upper bracket's losers
+      // dropping in (they wait in their slot, no line); then it halves.
+      const lc = counter();
+      const lowKey = (r, m) => `L${r + 1} M${m + 1}`;
+      const lowSides = (r, m) => r === 0 ? [{ leaf: true, weight: 0.5 }, { leaf: true, weight: 0.5 }]
+        : r % 2 ? [{ at: [r - 1, m] }, { leaf: true, weight: 0 }] : [{ at: [r - 1, 2 * m] }, { at: [r - 1, 2 * m + 1] }];
+      // (a first round bye's team plays the dropping team next: a whole match's room)
+      const low = tree(lowKey, lowSides, lc.alloc, 1);
+      const lowRoot = low.place(L - 1, 0);
+      // The columns: upper round r with the lower round it drops into; a column with nothing in it goes.
+      const upCol = r => r === 0 ? 0 : 2 * r - 1;
+      const used = [...new Set([...up.drawn.map(n => upCol(n.at[0])), ...low.drawn.map(n => n.at[0])])].sort((a, b) => a - b);
+      const nb = used.length, ncols = nb + 1 + (reset ? 1 : 0);
       const sw = Wd / (ncols * 1.22 + 1.15), gap = sw * 0.22, cw = sw * 1.15;
       const lh = Math.max(14, Ht * 0.045), sepH = Ht * 0.03;
-      const unit = (Ht - 2 * lh - sepH) / (size * 0.75);
-      const sh = Math.min(Ht * 0.08, unit * (size === 16 ? 0.36 : 0.42)), g = sh / 6;
-      const uTop = lh, lTop = lh + unit * size / 2 + sepH + lh;
+      const unit = (Ht - 2 * lh - sepH) / Math.max(uc.u + lc.u, 1);
+      sh = Math.min(Ht * 0.08, unit * (size === 16 ? 0.36 : 0.42)); g = sh / 6;
+      const uTop = lh, lTop = lh + unit * uc.u + sepH + lh;
       const colX = c => c * (sw + gap);
+      const ux = r => colX(used.indexOf(upCol(r))), lx = r => colX(used.indexOf(r));
       const label = (text, x, y, w, align) => {
         const t = el("div", "gfx-bk-label", { left: x + "px", top: y + "px", width: w + "px", height: lh + "px", fontSize: lh * 0.8 + "px",
           fontFamily: family, fontWeight: weight, color: line, justifyContent: align || "flex-start" });
@@ -584,59 +637,34 @@
       };
       label("Upper bracket", 0, 0, Wd * 0.5);
       label("Lower bracket", 0, lTop - lh, Wd * 0.5);
-      const match = (key, x, cy, fill, unneeded) => {
-        const winner = get(`Top ${key} winner`);
-        for (let t = 0; t < 2; t++) {
-          const team = `Top ${key} team ${t + 1}`;
-          const lost = unneeded || (!!winner && !!get(team) && get(team) !== winner);
-          slot(x, t ? cy + g / 2 : cy - g / 2 - sh, sw, sh, team, team + " score", fill, lost);
-        }
-      };
-      // (a line from a match on to a slot of a later one)
-      const into = (x, cy, tx, ncy, side) => {
-        const ty = side ? ncy + g / 2 + sh / 2 : ncy - g / 2 - sh / 2;
-        const x1 = x + sw + 4, x2 = tx - 4, xm = x2 - gap / 2 + 4;
-        path(`M${x1} ${cy}H${xm}V${ty}H${x2}`);
-      };
+      const uy = n => uTop + n.cy * unit, ly = n => lTop + n.cy * unit;
       // The upper bracket.
-      let ucs = [], ucol = 0;
-      for (let r = 0; r < k; r++) {
-        const n = size >> (r + 1), col = r === 0 ? 0 : 2 * r - 1, x = colX(col), next = [];
-        for (let m = 0; m < n; m++) {
-          const cy = r === 0 ? uTop + unit * (m + 0.5) : (ucs[2 * m] + ucs[2 * m + 1]) / 2;
-          next.push(cy);
-          match(`R${r + 1} M${m + 1}`, x, cy, r === 0 ? gold : dark);
-        }
-        if (r > 0) for (let m = 0; m < ucs.length; m++) into(colX(ucol), ucs[m], x, next[m >> 1], m & 1);
-        ucs = next; ucol = col;
+      for (const n of up.drawn) {
+        match(n.key, ux(n.at[0]), uy(n), sw, upCol(n.at[0]) === used[0] ? gold : dark);
+        n.kids.forEach((kid, s) => { if (kid.key) into(ux(kid.at[0]), sw, gap, uy(kid), ux(n.at[0]), uy(n), s); });
       }
       // The lower bracket.
-      let lcs = [];
-      for (let r = 0; r < L; r++) {
-        const n = (size / 4) >> (r >> 1), x = colX(r), next = [];
-        const halves = r > 0 && r % 2 === 0;
-        for (let m = 0; m < n; m++) {
-          const cy = r === 0 ? lTop + unit * (m + 0.5) : halves ? (lcs[2 * m] + lcs[2 * m + 1]) / 2 : lcs[m];
-          next.push(cy);
-          match(`L${r + 1} M${m + 1}`, x, cy, dark);
-        }
-        if (r > 0) for (let m = 0; m < lcs.length; m++) into(colX(r - 1), lcs[m], x, halves ? next[m >> 1] : next[m], halves ? m & 1 : 0);
-        lcs = next;
+      for (const n of low.drawn) {
+        match(n.key, lx(n.at[0]), ly(n), sw, dark);
+        n.kids.forEach((kid, s) => { if (kid.key) into(lx(kid.at[0]), sw, gap, ly(kid), lx(n.at[0]), ly(n), s); });
       }
       // The grand final (the upper bracket's winner against the lower's), its reset, the champion.
-      const gy = (ucs[0] + lcs[0]) / 2, gx = colX(L);
-      into(colX(L - 1), ucs[0], gx, gy, 0);
-      into(colX(L - 1), lcs[0], gx, gy, 1);
+      const gx = colX(nb);
+      const ucy = upRoot && upRoot.cy !== undefined ? uy(upRoot) : uTop;
+      const lcy = lowRoot && lowRoot.cy !== undefined ? ly(lowRoot) : ucy;
+      const gy = (ucy + lcy) / 2;
+      if (upRoot && upRoot.key) into(ux(upRoot.at[0]), sw, gap, ucy, gx, gy, 0);
+      if (lowRoot && lowRoot.key) into(lx(lowRoot.at[0]), sw, gap, lcy, gx, gy, 1);
       label("Grand final", gx, gy - g / 2 - sh - lh * 1.15, sw, "center");
-      match("GF", gx, gy, dark);
+      match("GF", gx, gy, sw, dark);
       let last = gx;
       if (reset) {
-        const rx = colX(L + 1);
+        const rx = colX(nb + 1);
         label("Reset", rx, gy - g / 2 - sh - lh * 1.15, sw, "center");
         path(`M${gx + sw + 4} ${gy}H${rx - 4}`);
         // (dimmed when the upper bracket's team won the grand final: no reset)
         const gfw = get("Top GF winner");
-        match("GF2", rx, gy, dark, !!gfw && gfw === get("Top GF team 1"));
+        match("GF2", rx, gy, sw, dark, !!gfw && gfw === get("Top GF team 1"));
         last = rx;
       }
       const cx = colX(ncols), ch = sh * 2.4;
