@@ -26,6 +26,11 @@ double elimination adds {{Tournament!Top L1 M1 team 1}}, {{Tournament!Top GF tea
 {{Tournament!Top GF2 team 1}}, {{Tournament!Top format}} ("single" / "double")
 and {{Tournament!Top reset}} ("on" / "off");
 and for the final four: {{Tournament!Top semi 1}} ... {{Tournament!Top final 2}}.
+{{Tournament!Top teams}} is how many teams are typed in (12 in the 16 bracket:
+"12 COMPETITOR BRACKET"), {{Tournament!Top size}} the bracket's 8 or 16, and each
+match's "kind" ({{Tournament!Top R1 M1 kind}}) is "match", "bye" (one team and
+nobody against it: the bracket graphic leaves it out and the team waits in the
+next round) or "none" (nobody either side: left out too).
 """
 
 SIZES = (8, 16)
@@ -127,31 +132,57 @@ def result(a, b, score, byes=False):
     return (a, b) if sa > sb else (b, a)
 
 
+def _entered(top):
+    """The first round's slots: a team, or "" (nobody: a bye) once any team is
+    in; None (not known yet) for each while the bracket is still empty, so an
+    empty bracket shows every match."""
+    teams = top["teams"][:top["size"]]
+    return teams if any(teams) else [None] * len(teams)
+
+
+def _kind(a, b):
+    """"match" (two teams play, or will), "bye" (one team, nobody against it:
+    it goes straight through, and the graphics leave the match out) or
+    "none" (nobody either side)."""
+    n = (a != "") + (b != "")
+    return ("none", "bye", "match")[n]
+
+
 def top_rounds(top):
-    """[[{"teams": [a, b], "score": [x, y], "winner"}, ...] per round], champion."""
-    size = top["size"]
-    cur = top["teams"][:size]
+    """[[{"teams": [a, b], "score": [x, y], "winner", "kind"}, ...] per round], champion.
+    A team with nobody against it goes through, in any round: 12 teams in the
+    16 bracket give 4 byes, whose teams wait in the quarter-finals."""
+    shown = lambda x: x or ""
+    cur = _entered(top)
     rounds, r = [], 1
     while len(cur) > 1:
-        matches = []
+        matches, wins = [], []
         for m in range(len(cur) // 2):
             a, b = cur[2 * m], cur[2 * m + 1]
             score = top["scores"].get(f"R{r} M{m + 1}", ["", ""])
-            win, _ = result(a, b, score, byes=r == 1)
-            matches.append({"teams": [a, b], "score": score, "winner": win})
+            w, _ = _play(a, b, score)
+            matches.append({"teams": [shown(a), shown(b)], "score": score, "winner": shown(w), "kind": _kind(a, b)})
+            wins.append(w)
         rounds.append(matches)
-        cur = [m["winner"] for m in matches]
+        cur = wins
         r += 1
-    return rounds, cur[0] if cur else ""
+    return rounds, shown(cur[0]) if cur else ""
+
+
+def entrants(top):
+    """How many teams the bracket has: the teams typed in, or its size while
+    it's empty or full."""
+    n = sum(1 for x in top["teams"][:top["size"]] if x)
+    return n if 2 <= n < top["size"] else top["size"]
 
 
 def _play(a, b, score):
     """A double elimination match: a and b are a team, "" (nobody: a bye)
     or None (not known yet). (winner, loser), each the same."""
+    if a == "" or b == "":
+        return (b if a == "" else a), ""    # (nobody against it: through, whoever it turns out to be)
     if a is None or b is None:
         return None, None
-    if not a or not b:
-        return (a or b), ""
     win, lose = result(a, b, score)
     return (win or None), (lose or None)
 
@@ -161,7 +192,7 @@ def double_rounds(top):
     "gf2": match or None}, champion. A match: {"teams", "score", "winner"}."""
     size, sc = top["size"], top["scores"]
     shown = lambda x: x or ""
-    cur = [x for x in top["teams"][:size]]
+    cur = _entered(top)
     upper, drops, r = [], [], 1
     while len(cur) > 1:
         matches, wins, losses = [], [], []
@@ -169,7 +200,7 @@ def double_rounds(top):
             a, b = cur[2 * m], cur[2 * m + 1]
             score = sc.get(f"R{r} M{m + 1}", ["", ""])
             w, l = _play(a, b, score)
-            matches.append({"teams": [shown(a), shown(b)], "score": score, "winner": shown(w)})
+            matches.append({"teams": [shown(a), shown(b)], "score": score, "winner": shown(w), "kind": _kind(a, b)})
             wins.append(w)
             losses.append(l)
         upper.append(matches)
@@ -191,7 +222,7 @@ def double_rounds(top):
         for m, (a, b) in enumerate(pairs):
             score = sc.get(f"L{li} M{m + 1}", ["", ""])
             w, _ = _play(a, b, score)
-            matches.append({"teams": [shown(a), shown(b)], "score": score, "winner": shown(w)})
+            matches.append({"teams": [shown(a), shown(b)], "score": score, "winner": shown(w), "kind": _kind(a, b)})
             wins.append(w)
         lower.append(matches)
         li += 1
@@ -248,7 +279,8 @@ def rows(t, find=None):
             out.append([label + " score", score])
 
     top = t["top"]
-    out.append(["Top teams", str(top["size"])])
+    out.append(["Top teams", str(entrants(top))])     # (12 teams in the 16 bracket: 12)
+    out.append(["Top size", str(top["size"])])
     out.append(["Top format", top["format"]])
     out.append(["Top reset", "on" if top["reset"] else "off"])
     out.append(["Top short names", "on" if top["short"] else "off"])     # (the bracket graphic shows each team's short name)
@@ -259,6 +291,7 @@ def rows(t, find=None):
                 for s in range(2):
                     team(f"Top {prefix}{r} M{m} team {s + 1}", match["teams"][s], match["score"][s])
                 out.append([f"Top {prefix}{r} M{m} winner", match["winner"]])
+                out.append([f"Top {prefix}{r} M{m} kind", match.get("kind", "match")])
 
     if top["format"] == "double":
         d, champion = double_rounds(top)

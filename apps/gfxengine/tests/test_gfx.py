@@ -698,7 +698,7 @@ class TournamentTests(unittest.TestCase):
         t = tournament.clean({"top": {"size": 8, "teams": ["A", "B", "C", "D", "E", "", "G", "H"],
                                       "scores": {"R1 M1": [2, 0], "R1 M2": ["1", "2"], "R1 M4": ["3", "3"], "R2 M1": ["2", "1"]}}})
         rows = dict(tournament.rows(t, lambda n: {"short": n.lower(), "logo": f"library/teams/{n}.png"} if n == "A" else None)[1:])
-        self.assertEqual(rows["Top teams"], "8")
+        self.assertEqual((rows["Top teams"], rows["Top size"]), ("7", "8"))    # (7 teams typed in: "7 COMPETITOR BRACKET")
         self.assertEqual((rows["Top R2 M1 team 1"], rows["Top R2 M1 team 2"]), ("A", "D"))
         self.assertEqual(rows["Top R2 M2 team 1"], "E")                  # nobody against it: through
         self.assertEqual(rows["Top R2 M2 team 2"], "")                   # a draw: not decided
@@ -711,6 +711,41 @@ class TournamentTests(unittest.TestCase):
         self.assertIn("Top R4 M1 team 1", rows16)
         self.assertEqual(rows16["Top R2 M3 team 1"], "")                 # (16: the 9th team on is empty)
         self.assertEqual(tournament.clean({"top": {"size": 12}})["top"]["size"], 8)
+
+    def test_byes_are_left_out_and_their_teams_wait_in_the_next_round(self):
+        from gfxengine import tournament
+        # owen's 12 teams in the 16 bracket: 4 first round matches with nobody against one team.
+        teams = ["SC", "", "WL", "CC", "HP", "", "UW", "OT", "UT", "", "WA", "TM", "YU", "", "DC", "US"]
+        t = tournament.clean({"top": {"size": 16, "teams": teams, "scores": {"R1 M2": ["2", "0"]}}})
+        rows = dict(tournament.rows(t)[1:])
+        self.assertEqual((rows["Top teams"], rows["Top size"]), ("12", "16"))
+        kinds = [rows[f"Top R1 M{m} kind"] for m in range(1, 9)]
+        self.assertEqual(kinds, ["bye", "match"] * 4)
+        self.assertEqual(rows["Top R1 M1 winner"], "SC")
+        self.assertEqual((rows["Top R2 M1 team 1"], rows["Top R2 M1 team 2"]), ("SC", "WL"))
+        self.assertEqual((rows["Top R2 M2 team 1"], rows["Top R2 M2 team 2"]), ("HP", ""))
+        self.assertTrue(all(rows[f"Top R{r} M{m} kind"] == "match" for r, n in ((2, 4), (3, 2), (4, 1)) for m in range(1, n + 1)))
+        # Teams only in the top half: the bottom half's matches aren't there, and the semi-final winner is champion.
+        half = tournament.clean({"top": {"size": 16, "teams": list("ABCDEFGH"), "scores": {
+            "R1 M1": [1, 0], "R1 M2": [1, 0], "R1 M3": [1, 0], "R1 M4": [1, 0], "R2 M1": [1, 0], "R2 M2": [0, 1], "R3 M1": [1, 0]}}})
+        hr = dict(tournament.rows(half)[1:])
+        self.assertEqual((hr["Top R1 M5 kind"], hr["Top R3 M2 kind"], hr["Top R4 M1 kind"]), ("none", "none", "bye"))
+        self.assertEqual((hr["Top teams"], hr["Top champion"]), ("8", "A"))
+        # A full bracket, and an empty one: every match is played, as before.
+        full = dict(tournament.rows({"top": {"size": 8, "teams": list("ABCDEFGH")}})[1:])
+        empty = dict(tournament.rows({"top": {"size": 16}})[1:])
+        for rws, n in ((full, 8), (empty, 16)):
+            self.assertEqual(rws["Top teams"], str(n))
+            self.assertEqual({v for k, v in rws.items() if k.endswith(" kind")}, {"match"})
+        # Double elimination: a bye has no loser, so the lower bracket's first round is byes too.
+        d = tournament.clean({"top": {"size": 16, "format": "double", "teams": teams, "scores": {}}})
+        dr = dict(tournament.rows(d)[1:])
+        self.assertEqual([dr[f"Top R1 M{m} kind"] for m in range(1, 9)], ["bye", "match"] * 4)
+        self.assertEqual({dr[f"Top L1 M{m} kind"] for m in range(1, 5)}, {"bye"})
+        self.assertEqual({dr[f"Top L2 M{m} kind"] for m in range(1, 5)}, {"match"})
+        d["top"]["scores"] = {"R1 M2": ["2", "0"]}
+        dr = dict(tournament.rows(d)[1:])
+        self.assertEqual((dr["Top L1 M1 winner"], dr["Top L2 M1 team 1"]), ("CC", "CC"))    # (the loser goes on, nobody to play)
 
     def test_double_elimination(self):
         from gfxengine import tournament
