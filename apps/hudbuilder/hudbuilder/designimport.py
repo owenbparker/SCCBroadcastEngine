@@ -111,6 +111,14 @@ def _missing_fonts(layers, known):
             from gfxengine.adobefonts import known_names, norm
             have = known_names(fonts)
             missing = {f for f in missing if norm(f) not in have}
+    if missing:
+        # (fonts installed on this PC)
+        from .app import system_fonts
+        fonts = system_fonts()
+        if fonts:
+            from gfxengine.sysfonts import known_names
+            have = known_names(fonts)
+            missing = {f for f in missing if f.lower() not in have}
     return sorted(missing)
 
 

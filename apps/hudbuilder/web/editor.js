@@ -45,7 +45,8 @@ window.Editor = (function () {
     loadGameData();
   }
   function takeLive(payload) {
-    live = { tables: payload.tables || {}, assets: payload.assets || [], values: payload.values || {}, adobe_fonts: payload.adobe_fonts || [] };
+    live = { tables: payload.tables || {}, assets: payload.assets || [], values: payload.values || {}, adobe_fonts: payload.adobe_fonts || [],
+      system_fonts: payload.system_fonts || [] };
     if (payload.engine) engine = payload.engine;
     loadFonts();
     GFX.setData(dataTables());
@@ -91,7 +92,7 @@ window.Editor = (function () {
     const list = live.assets.filter(a => /\.(ttf|otf|woff2?)$/i.test(a)).map(p => {
       const name = p.replace(/^assets\//, "").replace(/\.[^.]+$/, "");
       return { path: p, postscript: name, aliases: [name] };
-    }).concat(live.adobe_fonts || []);
+    }).concat(live.adobe_fonts || [], live.system_fonts || []);
     GFX.loadFonts(list);
   }
   const design = () => JSON.stringify({ name: hud.name, game: hud.game, layers: hud.layers, vars: hud.vars });
@@ -1091,7 +1092,8 @@ window.Editor = (function () {
   }
   function textProps(l) {
     const fonts = [...GFX.builtinFonts, ...live.assets.filter(a => /\.(ttf|otf|woff2?)$/i.test(a)).map(a => a.replace(/^assets\//, "").replace(/\.[^.]+$/, "")),
-      ...(live.adobe_fonts || []).map(f => f.postscript)];   // (Adobe Fonts, from the GFX Engine)
+      ...(live.adobe_fonts || []).map(f => f.postscript),   // (Adobe Fonts, from the GFX Engine)
+      ...(live.system_fonts || []).map(f => f.postscript)];   // (installed on this PC)
     const recent = recentFonts().filter(f => fonts.includes(f)).slice(0, 8);
     if (l.font && !fonts.includes(l.font)) fonts.push(l.font);
     const ta = bind(l, "text", "textarea", { label: "Text" });
