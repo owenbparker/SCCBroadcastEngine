@@ -15,6 +15,7 @@ window.Editor = (function () {
   const selected = new Set();  // selected layer ids
   let undo = [], redo = [];
   let scale = 0.5, offX = 0, offY = 0;
+  let resizing = null;          // the layer whose handle is being dragged
   let saveTimer = null, saving = false, dirty = false;
   let clip = null;             // copied layers
   let games = {};
@@ -174,6 +175,7 @@ window.Editor = (function () {
     root = GFX.buildComp(comp(), {}, { showHidden: true, muted: true });
     stage.appendChild(root);
     drawSelection();
+    settle();
   }
   function redraw() {
     if (!hud) return;
@@ -181,9 +183,35 @@ window.Editor = (function () {
     GFX.updateComp(root, comp(), {});
     $("#ed-empty").hidden = hud.layers.length > 0;
     drawSelection();
+    settle();
   }
   const toCanvas = (cx, cy) => { const r = canvas.getBoundingClientRect(); return [(cx - r.left - offX) / scale, (cy - r.top - offY) / scale]; };
   const toScreen = (x, y) => [offX + x * scale, offY + y * scale];
+  // The box a layer shows as on the canvas: a text layer's letters (like Figma),
+  // not its whole frame. The frame (x, y, w, h) is unchanged and still what's
+  // saved, fitted and drawn on air; only the outline, clicking and snapping use this.
+  // (a turned or scrolling text layer, or one with nothing in it: its frame)
+  function vbox(l) {
+    if (!l || l.type !== "text" || l.rotation || l.scroll > 0 || !root || !window.TextInk) return l;
+    const L = [...root.children].find(c => c.dataset.id === l.id);
+    const t = L && L.querySelector(".gfx-text");
+    let ink = null;
+    try { ink = t && TextInk.rect(t); } catch (e) { ink = null; }
+    if (!ink) return l;
+    const [x, y] = toCanvas(ink.left, ink.top);
+    return { id: l.id, x, y, w: (ink.right - ink.left) / scale, h: (ink.bottom - ink.top) / scale, frame: l };
+  }
+  const inside = (l, px, py) => {
+    const o = vbox(l), pad = o === l ? 0 : 4 / scale;
+    return px >= o.x - pad && px <= o.x + o.w + pad && py >= o.y - pad && py <= o.y + o.h + pad;
+  };
+  // (the outline after text is fitted to its frame, which happens just after it's drawn)
+  let lastSel = [null, null], settleId = 0;
+  function settle() {
+    cancelAnimationFrame(settleId);
+    settleId = requestAnimationFrame(() => { settleId = 0; if (hud) drawSelection(...lastSel); });
+  }
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", settle);
   function bounds(list) {
     const x0 = Math.min(...list.map(l => l.x)), y0 = Math.min(...list.map(l => l.y));
     const x1 = Math.max(...list.map(l => l.x + l.w)), y1 = Math.max(...list.map(l => l.y + l.h));
@@ -192,6 +220,7 @@ window.Editor = (function () {
 
   const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   function drawSelection(guides, marquee) {
+    lastSel = [guides || null, marquee || null];
     selLayer.replaceChildren();
     if (pen) pen.redraw();
     if (penEdit) { penEdit.redraw(); return; }
@@ -210,16 +239,20 @@ window.Editor = (function () {
     };
     if (list.length === 1) {
       const l = list[0];
-      const box = outline(l, "sel-box" + (l.locked ? " locked" : ""));
+      const v = vbox(l);
+      // (resizing text: its frame, dashed, which is what the handles change)
+      if (v !== l && resizing === l.id) selLayer.appendChild(outline(l, "sel-box frame"));
+      const box = outline(v, "sel-box" + (l.locked ? " locked" : ""));
       if (!l.locked) for (const hd of HANDLES) {
+        if ((hd === "n" || hd === "s") && v.h * scale < 28) continue;   // (a line of text: the corners, not handles over its letters)
         const hx = hd.includes("w") ? 0 : hd.includes("e") ? 100 : 50, hy = hd.includes("n") ? 0 : hd.includes("s") ? 100 : 50;
         box.appendChild(h("div", { class: "handle", dataset: { h: hd }, style: { left: hx + "%", top: hy + "%", cursor: hd + "-resize" } }));
       }
       selLayer.appendChild(box);
       pos.textContent = `${Math.round(l.x)}, ${Math.round(l.y)} · ${Math.round(l.w)} × ${Math.round(l.h)}`;
     } else {
-      for (const l of list) selLayer.appendChild(outline(l, "sel-each"));
-      const b = bounds(list);
+      for (const l of list) selLayer.appendChild(outline(vbox(l), "sel-each"));
+      const b = bounds(list.map(vbox));
       selLayer.appendChild(outline(b, "sel-box multi"));
       pos.textContent = `${list.length} layers · ${Math.round(b.x)}, ${Math.round(b.y)} · ${Math.round(b.w)} × ${Math.round(b.h)}`;
     }
@@ -233,7 +266,7 @@ window.Editor = (function () {
   function hit(px, py) {
     for (const l of [...hud.layers].reverse()) {
       if (l.visible === false || l.locked) continue;
-      if (px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h) return l;
+      if (inside(l, px, py)) return l;
     }
     return null;
   }
@@ -253,8 +286,9 @@ window.Editor = (function () {
   function snap(box, moving) {
     const tol = 6 / scale;
     const xs = [0, W() / 2, W()], ys = [0, H() / 2, H()];
-    for (const o of hud.layers) {
-      if (moving.has(o.id) || o.visible === false) continue;
+    for (const layer of hud.layers) {
+      if (moving.has(layer.id) || layer.visible === false) continue;
+      const o = vbox(layer);
       xs.push(o.x, o.x + o.w / 2, o.x + o.w);
       ys.push(o.y, o.y + o.h / 2, o.y + o.h);
     }
@@ -285,7 +319,7 @@ window.Editor = (function () {
     }
     const add = e.shiftKey || e.ctrlKey || e.metaKey;
     // Clicking inside the selection keeps it (to drag it, even over another layer).
-    const inSel = list.length && !add && list.some(l => !l.locked && px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h);
+    const inSel = list.length && !add && list.some(l => !l.locked && inside(l, px, py));
     if (!inSel) {
       const l = hit(px, py);
       if (!l) {
@@ -319,7 +353,7 @@ window.Editor = (function () {
     const list = sel().filter(l => !l.locked);
     if (!list.length) return;
     const start = list.map(l => [l, l.x, l.y]);
-    const b0 = bounds(list), ids = new Set(list.map(l => l.id));
+    const b0 = bounds(list.map(vbox)), ids = new Set(list.map(l => l.id));   // (text snaps by its letters)
     let moved = false;
     drag(ev => {
       const [qx, qy] = toCanvas(ev.clientX, ev.clientY);
@@ -332,7 +366,8 @@ window.Editor = (function () {
         const s = snap({ x: b0.x + dx, y: b0.y + dy, w: b0.w, h: b0.h }, ids);
         dx += s.dx; dy += s.dy; guides = s.guides;
       }
-      for (const [l, x, y] of start) { l.x = Math.round(x + dx); l.y = Math.round(y + dy); }
+      dx = Math.round(dx); dy = Math.round(dy);
+      for (const [l, x, y] of start) { l.x = x + dx; l.y = y + dy; }
       redraw();
       drawSelection(guides);
     }, () => { if (moved) changed(); });
@@ -344,6 +379,7 @@ window.Editor = (function () {
     const ratio = s.w / (s.h || 1);
     snapshot();
     let moved = false;
+    resizing = l.id;
     drag(ev => {
       moved = true;
       const [qx, qy] = toCanvas(ev.clientX, ev.clientY);
@@ -362,7 +398,7 @@ window.Editor = (function () {
       l.w = Math.max(2, Math.round(w)); l.h = Math.max(2, Math.round(hh));
       l.x = Math.round(Math.min(x, s.x + s.w - 2)); l.y = Math.round(Math.min(y, s.y + s.h - 2));
       redraw();
-    }, () => { if (moved) changed(); else undo.pop(); });
+    }, () => { resizing = null; if (moved) changed(); else { undo.pop(); drawSelection(); } });
   }
   function startMarquee(e, px, py, add) {
     const before = new Set(selected);
@@ -374,7 +410,8 @@ window.Editor = (function () {
       if (add) before.forEach(id => selected.add(id));
       for (const l of hud.layers) {
         if (l.visible === false || l.locked) continue;
-        if (l.x < box.x + box.w && l.x + l.w > box.x && l.y < box.y + box.h && l.y + l.h > box.y) groupOf(l).forEach(o => selected.add(o.id));
+        const v = vbox(l);
+        if (v.x < box.x + box.w && v.x + v.w > box.x && v.y < box.y + box.h && v.y + v.h > box.y) groupOf(l).forEach(o => selected.add(o.id));
       }
       drawSelection(null, box);
     }, () => renderAll());
