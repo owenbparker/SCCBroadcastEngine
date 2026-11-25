@@ -245,6 +245,25 @@
   </section>
 
   <section data-page="editor">
+    <h2>Round win bug</h2>
+    <p class="note" style="margin-top:0">The graphic that plays when a team wins a round (SCC 2027 and its HUD Builder copies).
+      Leave a colour empty for the bug's own.</p>
+    <div class="row" style="align-items:center">
+      <select id="rw-bug" style="flex:0 0 220px" title="Which round win bug plays">
+        <option value="own">This HUD's own</option><option value="scc2027">SCC 2027</option><option value="cen">CEN (St. Clair Saints)</option></select>
+      <button id="rw-test" title="Play the round win once on the HUD (left team)">Test</button>
+    </div>
+    <div class="row">
+      <div><label>Intro colour wipe</label>
+        <div class="row"><input type="color" class="swatch" id="rw-intro-color"><input id="rw-intro" maxlength="7" spellcheck="false" placeholder="bug's own"></div></div>
+      <div><label>Outro colour wipe</label>
+        <div class="row"><input type="color" class="swatch" id="rw-outro-color"><input id="rw-outro" maxlength="7" spellcheck="false" placeholder="bug's own"></div></div>
+    </div>
+    <button id="rw-reset" style="margin-top:10px">Back to the bug's own colours</button>
+    <p class="note" style="margin:6px 0 0" id="rw-note"></p>
+  </section>
+
+  <section data-page="editor">
     <h2>HUD colours</h2>
     <p class="note" style="margin-top:0">The Default 2026 HUD's two side colours. They still swap at half time, with the sides.
       (SCC 2027 has its own: blue for the left team, red for the right, swapping with the sides at round 13 and in overtime.)</p>
@@ -677,6 +696,23 @@ for (const k of ["defense", "attack"]) {
     else e.target.value = state.config[`${k}_color`];
   });
 }
+// Round win bug (SCC 2027): which one plays, and its colour wipes in and out.
+const RW_OWN = { own: { intro: "#f9c229", outro: "" }, scc2027: { intro: "#f9c229", outro: "" }, cen: { intro: "#fc003b", outro: "#fc003b" } };
+const rwPost = o => post("/api/config", { round_win: o });
+$("rw-bug").onchange = e => rwPost({ bug: e.target.value });
+$("rw-test").onclick = () => rwPost({ test: Date.now() });
+$("rw-reset").onclick = () => rwPost({ intro: "", outro: "" });
+for (const k of ["intro", "outro"]) {
+  $(`rw-${k}-color`).addEventListener("input", e => { $(`rw-${k}`).value = e.target.value; });
+  $(`rw-${k}-color`).addEventListener("change", e => rwPost({ [k]: e.target.value.toLowerCase() }));
+  $(`rw-${k}`).addEventListener("change", e => {
+    let v = e.target.value.trim();
+    if (!v) return rwPost({ [k]: "" });
+    if (!v.startsWith("#")) v = "#" + v;
+    if (/^#[0-9a-f]{6}$/i.test(v)) rwPost({ [k]: v.toLowerCase() });
+    else e.target.value = (state.config.round_win || {})[k] || "";
+  });
+}
 $("colors-reset").onclick = () => post("/api/config", { defense_color: COLOR_DEFAULTS.defense, attack_color: COLOR_DEFAULTS.attack });
 
 function apply(s) {
@@ -740,6 +776,15 @@ function apply(s) {
     ? "Listen In and the Ace graphic come with it; the round tracker is on the buy-phase board."
     : "The HUD as it was before SCC 2027.";
   for (const id of ["listen-left", "listen-right", "show-ace", "event-text", "ace-pic-left", "ace-pic-right"]) $(id).disabled = design !== "scc2027";
+  const rw = cfg.round_win || {}, rwBug = RW_OWN[rw.bug] ? rw.bug : "own";
+  setIfIdle($("rw-bug"), rwBug);
+  for (const k of ["intro", "outro"]) {
+    setIfIdle($(`rw-${k}`), rw[k] || "");
+    if (document.activeElement !== $(`rw-${k}-color`)) $(`rw-${k}-color`).value = rw[k] || RW_OWN[rwBug][k] || "#000000";
+  }
+  $("rw-note").textContent = (rw.outro || RW_OWN[rwBug].outro ? "" : "No outro colour: the bug fades out. ")
+    + (rwBug === "own" ? "This HUD's own: SCC 2027, or a HUD Builder copy's own restyled one." : "");
+  for (const id of ["rw-bug", "rw-test", "rw-intro", "rw-outro", "rw-intro-color", "rw-outro-color", "rw-reset"]) $(id).disabled = design !== "scc2027";
   const rd = app.reader;
   $("reader").classList.toggle("reading", !!rd.enabled);
   $("reader").textContent = rd.enabled ? "Reading VALORANT — click to stop" : "Read VALORANT on this PC";
