@@ -333,37 +333,37 @@ html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold);
    crest, ROUND WIN and the yellow bar with the winning team come in. */
 /* (drawn at the fig's size, then scaled to the Default 2026 banner's
    780 px width at 570,150, owen: "match the sizing of the previous one") */
-:is(#rwin, #rwbug) { left: 570px; top: 159px; width: 1573px; height: 467px; transform: scale(.4959); transform-origin: 0 0;
+:is(#rwin, #rwbug, #tobug) { left: 570px; top: 159px; width: 1573px; height: 467px; transform: scale(.4959); transform-origin: 0 0;
   z-index: 6; visibility: hidden; pointer-events: none; transition: opacity .35s ease; }
-:is(#rwin, #rwbug).on { visibility: visible; }
-:is(#rwin, #rwbug).out { opacity: 0; }
-:is(#rwin, #rwbug) .bg { left: 0; top: 42px; width: 1573px; height: 381px; background: url("assets/roundwin-bg.png") center / 100% 100% no-repeat; opacity: 0; }
-:is(#rwin, #rwbug) .flash { left: 0; top: 42px; width: 1573px; height: 381px; transform: scaleX(0); border-radius: 10px;
+:is(#rwin, #rwbug, #tobug).on { visibility: visible; }
+:is(#rwin, #rwbug, #tobug).out { opacity: 0; }
+:is(#rwin, #rwbug, #tobug) .bg { left: 0; top: 42px; width: 1573px; height: 381px; background: url("assets/roundwin-bg.png") center / 100% 100% no-repeat; opacity: 0; }
+:is(#rwin, #rwbug, #tobug) .flash { left: 0; top: 42px; width: 1573px; height: 381px; transform: scaleX(0); border-radius: 10px;
   background: linear-gradient(90deg, rgba(249, 194, 41, 0), #F9C229 20%, #F9C229 79.8%, rgba(249, 194, 41, 0)); }
-:is(#rwin, #rwbug) .crest { left: 704px; top: 0; width: 165px; height: 165px; background: url("assets/roundwin-logo.png") center / contain no-repeat;
+:is(#rwin, #rwbug, #tobug) .crest { left: 704px; top: 0; width: 165px; height: 165px; background: url("assets/roundwin-logo.png") center / contain no-repeat;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .45)); opacity: 0; transform: scale(.6); }
-:is(#rwin, #rwbug) .word { font-size: 200px; color: #fff; opacity: 0; transform: translateY(30px); }
-:is(#rwin, #rwbug) .bar { left: 116px; top: 377px; width: 1370px; height: 90px; transform: scaleX(0);
+:is(#rwin, #rwbug, #tobug) .word { font-size: 200px; color: #fff; opacity: 0; transform: translateY(30px); }
+:is(#rwin, #rwbug, #tobug) .bar { left: 116px; top: 377px; width: 1370px; height: 90px; transform: scaleX(0);
   background: linear-gradient(90deg, rgba(249, 194, 41, 0), #F9C229 20%, #F9C229 80%, rgba(249, 194, 41, 0)); }
-:is(#rwin, #rwbug) .who { left: 116px; top: 377px; width: 1370px; height: 90px; display: flex; align-items: center; justify-content: center; gap: 28px;
+:is(#rwin, #rwbug, #tobug) .who { left: 116px; top: 377px; width: 1370px; height: 90px; display: flex; align-items: center; justify-content: center; gap: 28px;
   font: 52px/1 "S27 Gridnik", sans-serif; color: var(--navy); text-transform: uppercase; opacity: 0; }
-:is(#rwin, #rwbug) .who span, :is(#rwin, #rwbug) .who img { position: static; }
-:is(#rwin, #rwbug) .who .how.hidden { display: none; }
+:is(#rwin, #rwbug, #tobug) .who span, :is(#rwin, #rwbug, #tobug) .who img { position: static; }
+:is(#rwin, #rwbug, #tobug) .who .how.hidden { display: none; }
 /* (dots between the team, the side and how they won) */
-:is(#rwin, #rwbug) .who span + span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+:is(#rwin, #rwbug, #tobug) .who span + span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%;
   background: var(--navy); margin: 0 28px 0 0; vertical-align: middle; transform: translateY(-.1em); }
-:is(#rwin, #rwbug).on .flash { animation: rwFlash .75s ease-out forwards; }
-:is(#rwin, #rwbug).on .bg { opacity: 1; transition: opacity .3s ease .25s; }
-:is(#rwin, #rwbug).on .crest { opacity: 1; transform: none; transition: opacity .3s ease .35s, transform .45s cubic-bezier(.2, 1.4, .4, 1) .35s; }
-:is(#rwin, #rwbug).on .word { opacity: 1; transform: none; transition: opacity .3s ease .4s, transform .45s cubic-bezier(.2, .8, .2, 1) .4s; }
-:is(#rwin, #rwbug).on .bar { transform: none; transition: transform .35s cubic-bezier(.2, .8, .2, 1) .5s; }
-:is(#rwin, #rwbug).text .who { opacity: 1; transition: opacity .4s linear; }
+:is(#rwin, #rwbug, #tobug).on .flash { animation: rwFlash .75s ease-out forwards; }
+:is(#rwin, #rwbug, #tobug).on .bg { opacity: 1; transition: opacity .3s ease .25s; }
+:is(#rwin, #rwbug, #tobug).on .crest { opacity: 1; transform: none; transition: opacity .3s ease .35s, transform .45s cubic-bezier(.2, 1.4, .4, 1) .35s; }
+:is(#rwin, #rwbug, #tobug).on .word { opacity: 1; transform: none; transition: opacity .3s ease .4s, transform .45s cubic-bezier(.2, .8, .2, 1) .4s; }
+:is(#rwin, #rwbug, #tobug).on .bar { transform: none; transition: transform .35s cubic-bezier(.2, .8, .2, 1) .5s; }
+:is(#rwin, #rwbug, #tobug).text .who { opacity: 1; transition: opacity .4s linear; }
 @keyframes rwFlash { 0% { transform: scaleX(0); opacity: 1; } 35% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
 /* The outro colour (Control > Round win bug): the colour opens over the
    graphic from the middle, the graphic goes, then the colour closes up. */
-:is(#rwin, #rwbug).out.wipe { opacity: 1; transition: none; }
-:is(#rwin, #rwbug).out.wipe .flash { z-index: 9; animation: rwWipeOut .75s cubic-bezier(.6, 0, .3, 1) forwards; }
-:is(#rwin, #rwbug).out.wipe :is(.bg, .crest, .word, .bar, .who) { opacity: 0; transition: opacity .1s linear .3s; }
+:is(#rwin, #rwbug, #tobug).out.wipe { opacity: 1; transition: none; }
+:is(#rwin, #rwbug, #tobug).out.wipe .flash { z-index: 9; animation: rwWipeOut .75s cubic-bezier(.6, 0, .3, 1) forwards; }
+:is(#rwin, #rwbug, #tobug).out.wipe :is(.bg, .crest, .word, .bar, .who) { opacity: 0; transition: opacity .1s linear .3s; }
 @keyframes rwWipeOut { 0% { transform: scaleX(0); opacity: 1; } 45% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(0); opacity: 1; } }
 /* "CEN Round Win" (owen 2026-11-25): St. Clair Saints crest, red maple leaf,
    red bar with white text; the winner's logo in the crest as SCC's does. */
@@ -372,3 +372,18 @@ html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold);
 #rwbug.cen .bar { background: linear-gradient(90deg, rgba(252, 0, 59, 0), #FC003B 20%, #FC003B 80%, rgba(252, 0, 59, 0)); }
 #rwbug.cen .who { color: #fff; }
 #rwbug.cen .who span + span::before { background: #fff; }
+/* Timeout / technical pause (owen's designs, 2026-11-25): the round win
+   bug's layout; blue for the defenders' timeout, red for the attackers',
+   grey for a technical pause. The crest is the calling team's logo (the
+   St. Clair Saints crest when there's none, and for a technical pause). */
+#tobug { z-index: 7; }
+#tobug .crest { background-image: url("assets/roundwin-cen-logo.png"); }
+#tobug .who { color: #fff; }
+#tobug .who span + span::before { background: #fff; }
+#tobug.defend .bg { background-image: url("assets/timeout-defend-bg.png"); }
+#tobug.attack .bg { background-image: url("assets/timeout-attack-bg.png"); }
+#tobug.tech .bg { background-image: url("assets/techpause-bg.png"); }
+#tobug.defend :is(.bar, .flash) { background: linear-gradient(90deg, rgba(0, 179, 255, 0), #00B3FF 20%, #00B3FF 80%, rgba(0, 179, 255, 0)); }
+#tobug.attack :is(.bar, .flash) { background: linear-gradient(90deg, rgba(255, 78, 93, 0), #FF4E5D 20%, #FF4E5D 80%, rgba(255, 78, 93, 0)); }
+#tobug.tech :is(.bar, .flash) { background: linear-gradient(90deg, rgba(55, 55, 55, 0), #373737 20%, #373737 80%, rgba(55, 55, 55, 0)); }
+#tobug .who .hidden { display: none; }
