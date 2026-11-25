@@ -387,3 +387,5 @@ html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold);
 #tobug.attack :is(.bar, .flash) { background: linear-gradient(90deg, rgba(255, 78, 93, 0), #FF4E5D 20%, #FF4E5D 80%, rgba(255, 78, 93, 0)); }
 #tobug.tech :is(.bar, .flash) { background: linear-gradient(90deg, rgba(55, 55, 55, 0), #373737 20%, #373737 80%, rgba(55, 55, 55, 0)); }
 #tobug .who .hidden { display: none; }
+/* (owen 2026-11-25: the white VALORANT logo in a tech pause's crest) */
+#tobug.tech .crest { background-image: url("assets/valorant-white.png") !important; background-size: 66% auto; background-position: center 100%; filter: none; }
