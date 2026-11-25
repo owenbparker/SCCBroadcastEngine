@@ -272,6 +272,19 @@ def fields(state, cfg):
         f[f"SIDE {S}"] = "ATK" if m["attackers"] == side else "DEF"
         f[f"ALIVE {S}"] = sum(1 for p in playing if p["team"] == side and p["alive"])
         f[f"CREDITS {S}"] = sum(p["credits"] for p in playing if p["team"] == side)
+        f[f"TIMEOUTS {S}"] = int((cfg.get("timeouts") or {}).get(side, 0) or 0)   # (timeouts the team has left)
+    # A tactical timeout on now: the one read off the screen (valhud/timeouts.py)
+    # or put up by hand (Control > Broadcast > Timeout: <team>).
+    live = m.get("timeout") or {}
+    call = cfg.get("timeout_call") if cfg.get("timeout_call") in SIDES else live.get("team") if live.get("team") in SIDES else ""
+    f["TIMEOUT"] = (live.get("state") or "active").upper() if call else ""
+    f["TIMEOUT SIDE"] = call.upper()
+    f["TIMEOUT TEAM"] = cfg[call]["name"] if call else ""
+    f["TIMEOUT TRI-CODE"] = cfg[call]["tricode"] if call else ""
+    secs = live.get("seconds") if call and live.get("team") == call else None
+    f["TIMEOUT SECONDS"] = "" if secs is None else secs
+    f["TIMEOUT TIMER"] = "" if secs is None else f"{int(secs) // 60}:{int(secs) % 60:02d}"
+    f["TECH PAUSE"] = "1" if cfg.get("tech_pause") else ""
     for p in state["players"]:
         k = f"{p['team'].upper()} P{p['slot']}"
         f[f"{k} NAME"] = p["name"]
