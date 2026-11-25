@@ -806,10 +806,10 @@
     if (key === tob.key) return;
     tob.key = key;
     clearTimeout(tob.timer);
-    if (!kind) {   // down: a fade
+    if (!kind) {   // down: the banner's colour wipes over it and closes up
       if (B.classList.contains("on")) {
-        B.classList.add("out");
-        tob.timer = setTimeout(function () { B.className = ""; }, 400);
+        B.classList.add("wipe", "out");
+        tob.timer = setTimeout(function () { B.className = ""; }, 800);
       }
       return;
     }
