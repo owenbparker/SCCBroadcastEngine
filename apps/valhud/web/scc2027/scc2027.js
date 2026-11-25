@@ -204,7 +204,8 @@
     // the crest: the round winner's logo (owen, 2026-11-19), the SCC crest
     // when the team has none
     o.crest = el("crest", box);
-    setText(text("nar", box, 329, 192, 916, 138, "c", null, "word"), "ROUND WIN");
+    o.word = text("nar", box, 329, 192, 916, 138, "c", null, "word");
+    setText(o.word, "ROUND WIN");
     el("bar", box);
     var who = el("who", box);
     // the yellow bar: who, their side and how they won (no logo: it's up top)
@@ -214,6 +215,13 @@
   }
   ui.rwinOwn = buildRwin("rwin");
   ui.rwinBug = buildRwin("rwbug");
+  // Timeout and technical pause (owen's designs, 2026-11-25): built like the
+  // round win bug, the calling team's logo in the crest (the St. Clair
+  // Saints crest when they have none), TIMEOUT / TECH PAUSE, and the info in
+  // the bar: blue for the defenders' timeout, red for the attackers', grey
+  // for a technical pause.
+  ui.tob = buildRwin("tobug");
+  ui.tob.box.className = "";
   ui.banner = el("", stage); ui.banner.id = "banner";
   el("bar", ui.banner);
   ui.bannerText = text("nar", ui.banner, 8, 0, null, null, "c", null, "txt");
@@ -321,7 +329,7 @@
     return { el: t, cam: cam, logo: logo, name: nm, side: "left", slot: n + 1 };
   });
 
-  if (BOARD_ONLY) [top, ui.bomb, ui.banner, ui.event, ui.sponsor, ui.side.left, ui.side.right, ui.ace, ui.listen]
+  if (BOARD_ONLY) [top, ui.bomb, ui.banner, ui.tob.box, ui.event, ui.sponsor, ui.side.left, ui.side.right, ui.ace, ui.listen]
     .forEach(function (e) { e.classList.add("hidden"); });
 
   // ---------------------------------------------------------- sponsors
@@ -771,15 +779,47 @@
 
   // ------------------------------------------------------------- banner
   var won = { key: "", until: 0 };
+  // The timeout / technical pause banner (#tobug): up while Control's (or
+  // the screen reader's) timeout or technical pause is on.
+  var tob = { key: "", timer: null };
   function setBanner(s) {
-    var cfg = s.config, m = s.game.match, txt = "", c = "#fff";
-    if (cfg.tech_pause) txt = "TECHNICAL PAUSE";
+    var cfg = s.config, m = s.game.match, kind = "", team = "";
+    if (cfg.tech_pause) kind = "tech";
     else if (cfg.timeout_call === "left" || cfg.timeout_call === "right") {
-      txt = "TIMEOUT · " + upper(cfg[cfg.timeout_call].tricode || cfg[cfg.timeout_call].name);
-      c = COL[cfg.timeout_call];
+      team = cfg.timeout_call;
+      kind = m.attackers === team ? "attack" : "defend";
     }
-    toggle(ui.banner, "on", !!txt && !BOARD_ONLY);
-    if (txt) { setText(ui.bannerText, txt); ui.banner.style.setProperty("--c", c); }
+    if (BOARD_ONLY) kind = "";
+    toggle(ui.banner, "on", false);   // (the old strip: replaced by the banner)
+    var o = ui.tob, B = o.box;
+    var left = team ? Math.max(0, Number((cfg.timeouts || {})[team]) || 0) : 0;
+    var live = m.timeout || {};
+    var key = kind + "|" + team;
+    if (kind) {
+      // the bar: who called it, their side and the timeouts they have left
+      o.team.textContent = team ? upper(cfg[team].tricode || cfg[team].name) : "PLEASE STAND BY";
+      o.side.textContent = team ? (kind === "attack" ? "ATTACK" : "DEFENSE") : "";
+      o.how.textContent = team ? left + (left === 1 ? " TIMEOUT LEFT" : " TIMEOUTS LEFT") : "";
+      toggle(o.side, "hidden", !team);
+      toggle(o.how, "hidden", !team);
+    }
+    if (key === tob.key) return;
+    tob.key = key;
+    clearTimeout(tob.timer);
+    if (!kind) {   // down: a fade
+      if (B.classList.contains("on")) {
+        B.classList.add("out");
+        tob.timer = setTimeout(function () { B.className = ""; }, 400);
+      }
+      return;
+    }
+    setText(o.word, kind === "tech" ? "TECH PAUSE" : "TIMEOUT");
+    var logo = team && cfg[team].logo ? url(cfg[team].logo) : "";
+    o.crest.style.backgroundImage = logo ? 'url("' + logo + '")' : "";
+    B.className = kind;
+    void B.offsetWidth;
+    B.classList.add("on");
+    tob.timer = setTimeout(function () { B.classList.add("text"); }, 750);
   }
 
   // A round won (a score went up, not on the page's first look): the round
