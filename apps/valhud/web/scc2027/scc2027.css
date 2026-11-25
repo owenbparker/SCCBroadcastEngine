@@ -113,10 +113,15 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 /* event strip + sponsor box: owen's "Sponsor Rotation Full" fig (one outline
    round both, the strip running into the box) and "... Condensed" (the box
    alone once the strip tucks away); under the top bar in the stack */
-#event { left: 1375px; top: 0; width: 325px; height: 25px; background: var(--navy); border: 1px solid #fff; border-right: 0;
+#event { left: 1295px; top: 0; width: 405px; height: 25px; background: var(--navy); border: 1px solid #fff; border-right: 0;
   border-radius: 0 0 0 10.5px; }
-#event.solo { width: 355px; border-right: 1px solid #fff; border-radius: 0 0 10.5px 10.5px; }
-#event .t { left: 0; width: 314px; top: 7px; height: 8px; font-size: 12px; }
+#event.solo { width: 435px; border-right: 1px solid #fff; border-radius: 0 0 10.5px 10.5px; }
+/* (owen, 2026-11-25: the full top bar is wider, to 1375, and runs over the
+   strip's start; its words keep to the part that shows) */
+#event .t { left: 80px; width: 314px; top: 7px; height: 8px; font-size: 12px; }
+#event.solo .t { width: 344px; }
+#top.cond ~ #event .t { left: 0; width: 394px; }   /* (the condensed bar leaves it all showing) */
+#top.cond ~ #event.solo .t { width: 424px; }
 #sponsor { left: 1688px; top: 0; width: 231px; height: 92px; background: var(--navy); border: 1px solid #fff; border-radius: 0 0 0 11px; }
 #sponsor .logo { left: 31px; top: 28px; width: 168px; height: 33px; transition: opacity .4s ease; }
 #sponsor .logo.white { background: #fff; -webkit-mask: var(--img) center / contain no-repeat; mask: var(--img) center / contain no-repeat; }
