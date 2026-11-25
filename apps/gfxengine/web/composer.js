@@ -11,6 +11,7 @@
   let selected = null;        // selected layer id
   const multi = new Set();    // more layers picked with Ctrl / Shift (their "Show when" set together)
   let scale = 0.5, offX = 0, offY = 0;
+  let resizing = null;        // the layer whose handle is being dragged
   let pending = false, lastSent = "";
   const undo = [], redo = [];
   try { compId = localStorage.getItem("gfx-edit"); } catch (e) { /* */ }
@@ -509,6 +510,7 @@
     root = GFX.buildComp(comp, {}, { showHidden: true, muted: true });
     stage.appendChild(root);
     drawSelection();
+    settle();
   }
   function redraw() {
     if (!comp) return;
@@ -516,9 +518,33 @@
     GFX.updateComp(root, comp, {});
     $("#canvas-name").textContent = comp.name;
     drawSelection();
+    settle();
   }
   const layerById = id => comp && comp.layers.find(l => l.id === id);
   const toScreen = (x, y) => [offX + x * scale, offY + y * scale];
+
+  // The box a layer shows as on the canvas: a text layer's letters (like Figma),
+  // not its whole frame. The frame (x, y, w, h) is unchanged and still what's
+  // saved, fitted and drawn on air; only the outline, clicking and snapping use this.
+  // (a turned or scrolling text layer, or one with nothing in it: its frame)
+  function vbox(l) {
+    if (!l || l.type !== "text" || l.rotation || l.scroll > 0 || !root || !window.TextInk) return l;
+    const L = [...root.children].find(c => c.dataset.id === l.id);
+    const t = L && L.querySelector(".gfx-text");
+    let ink = null;
+    try { ink = t && TextInk.rect(t); } catch (e) { ink = null; }
+    if (!ink) return l;
+    const r = canvas.getBoundingClientRect();
+    const x = (ink.left - r.left - offX) / scale, y = (ink.top - r.top - offY) / scale;
+    return { id: l.id, x, y, w: (ink.right - ink.left) / scale, h: (ink.bottom - ink.top) / scale, frame: l };
+  }
+  // (the outline after text is fitted to its frame, which happens just after it's drawn)
+  let lastGuides = null, settleId = 0;
+  function settle() {
+    cancelAnimationFrame(settleId);
+    settleId = requestAnimationFrame(() => { settleId = 0; if (comp) drawSelection(lastGuides); });
+  }
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", settle);
 
   // The box around some layers.
   const boundsOf = layers => {
@@ -527,14 +553,16 @@
   };
   const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   function drawSelection(guides) {
+    lastGuides = guides || null;
     selLayer.replaceChildren();
     if (pen) pen.redraw();
     if (penEdit) { penEdit.redraw(); return; }
     for (const id of multi) {
       const o = layerById(id);
       if (!o || id === selected) continue;
-      const [ox, oy] = toScreen(o.x, o.y);
-      selLayer.appendChild(h("div", { class: "sel-box also", style: { left: ox + "px", top: oy + "px", width: o.w * scale + "px", height: o.h * scale + "px",
+      const v = vbox(o);
+      const [ox, oy] = toScreen(v.x, v.y);
+      selLayer.appendChild(h("div", { class: "sel-box also", style: { left: ox + "px", top: oy + "px", width: v.w * scale + "px", height: v.h * scale + "px",
         transform: o.rotation ? `rotate(${o.rotation}deg)` : "" } }));
     }
     const l = layerById(selected);
@@ -542,18 +570,25 @@
     // A group picked whole: a box around it.
     const groups = new Set(picked().map(o => o.group).filter(g => g && membersOf(g).every(m => m.id === selected || multi.has(m.id))));
     for (const g of groups) {
-      const b = boundsOf(membersOf(g));
+      const b = boundsOf(membersOf(g).map(vbox));
       const [gx, gy] = toScreen(b.x, b.y);
       selLayer.appendChild(h("div", { class: "sel-box group", style: { left: gx + "px", top: gy + "px", width: b.w * scale + "px", height: b.h * scale + "px" } },
         h("span", { class: "sel-tag" }, groupNameOf(g))));
     }
-    const [x, y] = toScreen(l.x, l.y);
-    const w = l.w * scale, hgt = l.h * scale;
+    const v = vbox(l);
+    // (resizing text: its frame, dashed, which is what the handles change)
+    if (v !== l && resizing === l.id) {
+      const [fx, fy] = toScreen(l.x, l.y);
+      selLayer.appendChild(h("div", { class: "sel-box frame", style: { left: fx + "px", top: fy + "px", width: l.w * scale + "px", height: l.h * scale + "px" } }));
+    }
+    const [x, y] = toScreen(v.x, v.y);
+    const w = v.w * scale, hgt = v.h * scale;
     const many = multi.size > 1;
     const box = h("div", { class: "sel-box" + (l.locked ? " locked" : "") + (many ? " also" : ""), style: { left: x + "px", top: y + "px", width: w + "px", height: hgt + "px",
       transform: l.rotation ? `rotate(${l.rotation}deg)` : "" } });
     // (handles: one layer picked; in a group, Alt + click picks one to resize)
     if (!l.locked && !many) for (const hd of HANDLES) {
+      if ((hd === "n" || hd === "s") && hgt < 28) continue;   // (a line of text: the corners, not handles over its letters)
       const hx = hd.includes("w") ? 0 : hd.includes("e") ? 100 : 50;
       const hy = hd.includes("n") ? 0 : hd.includes("s") ? 100 : 50;
       box.appendChild(h("div", { class: "handle", "data-h": hd, style: { left: hx + "%", top: hy + "%", cursor: hd + "-resize" } }));
@@ -569,10 +604,11 @@
   }
 
   // Which layer is at a point (top first, visible ones only).
+  // (text: on its letters, give or take a few pixels)
   function hit(px, py) {
     for (const l of [...comp.layers].reverse()) {
       if (l.visible === false || l.locked) continue;
-      if (px >= l.x && px <= l.x + l.w && py >= l.y && py <= l.y + l.h) return l;
+      if (inside(l, px, py)) return l;
     }
     return null;
   }
@@ -581,8 +617,9 @@
   function snap(l, moving, skip) {
     const tol = 6 / scale;
     const xs = [0, GFX.W / 2, GFX.W], ys = [0, GFX.H / 2, GFX.H];
-    for (const o of comp.layers) {
-      if (o.id === l.id || (skip && skip.has(o.id)) || o.visible === false) continue;
+    for (const layer of comp.layers) {
+      if (layer.id === l.id || (skip && skip.has(layer.id)) || layer.visible === false) continue;
+      const o = vbox(layer);
       xs.push(o.x, o.x + o.w / 2, o.x + o.w);
       ys.push(o.y, o.y + o.h / 2, o.y + o.h);
     }
@@ -601,7 +638,10 @@
     return guides;
   }
 
-  const inside = (o, px, py) => px >= o.x && px <= o.x + o.w && py >= o.y && py <= o.y + o.h;
+  const inside = (l, px, py) => {
+    const o = vbox(l), pad = o === l ? 0 : 4 / scale;
+    return px >= o.x - pad && px <= o.x + o.w + pad && py >= o.y - pad && py <= o.y + o.h + pad;
+  };
   canvas.addEventListener("mousedown", e => {
     if (!comp || e.button !== 0) return;
     const r = canvas.getBoundingClientRect();
@@ -644,7 +684,9 @@
     if (!group.length) return;
     const starts = group.map(o => ({ o, x: o.x, y: o.y }));
     const skip = new Set(group.map(o => o.id));
-    const start = Object.assign(handle ? { x: l.x, y: l.y, w: l.w, h: l.h } : boundsOf(group), { px, py });
+    // (moving: the boxes shown snap, text by its letters; a handle changes the frame)
+    const start = Object.assign(handle ? { x: l.x, y: l.y, w: l.w, h: l.h } : boundsOf(group.map(vbox)), { px, py });
+    if (handle) resizing = l.id;
     const ratio = l.w / Math.max(1, l.h);
     let moved = false;
     const move = ev => {
@@ -656,9 +698,9 @@
       if (!handle) {
         if (ev.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
         // (the whole box snaps, then every layer in it moves the same)
-        const box = { id: null, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: start.w, h: start.h };
+        const box = { id: null, x: start.x + Math.round(dx), y: start.y + Math.round(dy), w: start.w, h: start.h };
         if (!ev.ctrlKey) guides = snap(box, true, skip);
-        const mx = Math.round(box.x) - start.x, my = Math.round(box.y) - start.y;
+        const mx = Math.round(box.x - start.x), my = Math.round(box.y - start.y);
         for (const st of starts) { st.o.x = st.x + mx; st.o.y = st.y + my; }
       } else {
         let { x, y, w, h: hh } = start;
@@ -682,6 +724,7 @@
     const up = () => {
       removeEventListener("mousemove", move);
       removeEventListener("mouseup", up);
+      resizing = null;
       if (moved) changed();
       drawSelection();
     };

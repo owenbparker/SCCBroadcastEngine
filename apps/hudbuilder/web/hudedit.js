@@ -565,7 +565,7 @@
   // The selection and hover outlines (and the handles to resize with).
   function drawBox(box, el, all) {
     if (!el) { box.style.display = "none"; return; }
-    var r = el.getBoundingClientRect();
+    var r = shownBox(el);
     box.style.display = "block";
     box.style.left = r.left + "px"; box.style.top = r.top + "px";
     box.style.width = Math.max(r.width, 1) + "px"; box.style.height = Math.max(r.height, 1) + "px";
@@ -682,6 +682,113 @@
     peeked = [];
   }
 
+  // Text parts: the box their letters cover (like Figma), not their whole frame.
+  // (the same code as textink.js in the Composer and HUD Builder)
+  // --- text ink ---
+  var inkCtx = null;
+  function inkMeasure(cs, s) {
+    if (!inkCtx) inkCtx = document.createElement("canvas").getContext("2d");
+    if (!inkCtx) return null;
+    inkCtx.font = [cs.fontStyle, cs.fontVariant === "small-caps" ? "small-caps" : "", cs.fontWeight, cs.fontSize, cs.fontFamily].join(" ");
+    if ("letterSpacing" in inkCtx) inkCtx.letterSpacing = cs.letterSpacing && cs.letterSpacing !== "normal" ? cs.letterSpacing : "0px";
+    var m = inkCtx.measureText(s);
+    return m && m.fontBoundingBoxAscent != null && m.actualBoundingBoxAscent != null ? m : null;
+  }
+  function inkCase(s, t) {
+    if (t === "uppercase") return s.toUpperCase();
+    if (t === "lowercase") return s.toLowerCase();
+    if (t === "capitalize") return s.replace(/(^|\s)(\S)/g, function (a, b, c) { return b + c.toUpperCase(); });
+    return s;
+  }
+  function inkRect(el) {
+    if (!el || !el.getBoundingClientRect) return null;
+    var box = null;
+    function add(l, t, r, b) {
+      if (!(r > l) || !(b > t)) return;
+      if (!box) box = { left: l, top: t, right: r, bottom: b };
+      else { box.left = Math.min(box.left, l); box.top = Math.min(box.top, t); box.right = Math.max(box.right, r); box.bottom = Math.max(box.bottom, b); }
+    }
+    var walk = document.createTreeWalker(el, 5 /* elements + text */), n = el, range = document.createRange();
+    for (; n; n = walk.nextNode()) {
+      if (n.nodeType === 1) {
+        if (/^(img|image|video|canvas|svg)$/i.test(n.localName) && n !== el && !(n.closest && n.closest("text"))) {
+          var pr = n.getBoundingClientRect();
+          if (pr.width > 0.5 && pr.height > 0.5 && getComputedStyle(n).visibility !== "hidden") add(pr.left, pr.top, pr.right, pr.bottom);
+        }
+        continue;
+      }
+      var text = n.nodeValue || "", p = n.parentElement;
+      if (!p || !/\S/.test(text)) continue;
+      var cs = getComputedStyle(p);
+      if (cs.visibility === "hidden" || cs.display === "none") continue;
+      var svg = typeof SVGElement !== "undefined" && p instanceof SVGElement;
+      var rects = [];
+      if (svg) {
+        var sr = p.getBoundingClientRect();
+        if (sr.width > 0.01 && sr.height > 0.01) rects.push(sr);
+      } else {
+        range.selectNodeContents(n);
+        var list = range.getClientRects();
+        for (var i = 0; i < list.length; i++) if (list[i].width > 0.01 && list[i].height > 0.01) rects.push(list[i]);
+      }
+      if (!rects.length) continue;
+      var shown = inkCase(text, cs.textTransform);
+      var all = inkMeasure(cs, shown.replace(/\s+/g, " "));
+      if (!all) { rects.forEach(function (r) { add(r.left, r.top, r.right, r.bottom); }); continue; }
+      var fa = all.fontBoundingBoxAscent, fd = all.fontBoundingBoxDescent;
+      // (one line of measured text for each line box, when they pair up)
+      var lines = svg && p.firstElementChild ? [] : shown.split("\n").filter(function (s) { return s.length; });
+      var paired = lines.length === rects.length;
+      for (var j = 0; j < rects.length; j++) {
+        var r = rects[j];
+        // (how big the page draws it: the box's height over the font's)
+        var ky = r.height / Math.max(1e-6, fa + fd);
+        var base = r.top + fa * ky;
+        var top = base - all.actualBoundingBoxAscent * ky, bottom = base + all.actualBoundingBoxDescent * ky;
+        var left = r.left, right = r.right;
+        if (paired) {
+          if (!/\S/.test(lines[j])) continue;
+          var m = inkMeasure(cs, lines[j]);
+          if (m && m.width > 0) {
+            var kx = r.width / m.width;   // (squeezed text is narrower than the font)
+            var ml = r.left - m.actualBoundingBoxLeft * kx, mr = r.left + m.actualBoundingBoxRight * kx;
+            if (mr > ml) { left = ml; right = mr; }
+            top = base - m.actualBoundingBoxAscent * ky; bottom = base + m.actualBoundingBoxDescent * ky;
+          }
+        }
+        add(left, top, right, bottom);
+      }
+    }
+    if (box) {
+      // (text cut off by its box: only what's shown)
+      var ecs = getComputedStyle(el);
+      if (ecs.overflow !== "visible" && ecs.overflow !== "") {
+        var er = el.getBoundingClientRect();
+        box = { left: Math.max(box.left, er.left), top: Math.max(box.top, er.top), right: Math.min(box.right, er.right), bottom: Math.min(box.bottom, er.bottom) };
+        if (box.right <= box.left || box.bottom <= box.top) return null;
+      }
+    }
+    return box;
+  }
+  // --- end text ink ---
+  // (a box with a colour, border or picture of its own shows as itself: a score box with its number)
+  function ownLook(el) {
+    if (typeof SVGElement !== "undefined" && el instanceof SVGElement) return false;
+    var cs = getComputedStyle(el);
+    if (cs.backgroundImage !== "none" || cs.boxShadow !== "none" || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0 ||
+        parseFloat(cs.borderBottomWidth) > 0 || parseFloat(cs.borderRightWidth) > 0) return true;
+    var bg = cs.backgroundColor.match(/[\d.]+/g);
+    return !!(bg && (bg.length < 4 || parseFloat(bg[3]) > 0));
+  }
+  function shownBox(el) {
+    var r = el.getBoundingClientRect();
+    if (kindOf(el) !== "text" || ownLook(el)) return r;
+    var ink = null;
+    try { ink = inkRect(el); } catch (e) { ink = null; }
+    if (!ink) return r;
+    return { left: ink.left, top: ink.top, right: ink.right, bottom: ink.bottom, width: ink.right - ink.left, height: ink.bottom - ink.top };
+  }
+
   // How many page pixels one pixel of the part's own moves is (a page inside a scaled box).
   function localScale(el) {
     var p = el.parentElement;
@@ -732,8 +839,12 @@
     var a = selected.added ? findAdded(selected.added) : null;
     var ru = a ? null : rule(selected.sel);
     if (ru && node instanceof SVGElement) ru.svg = true;
+    // (a part of the HUD is scaled about its middle; the handles are on the box
+    //  shown, its letters for text, and the side opposite the handle stays put)
+    var b = a ? r : shownBox(node);
     drag = { x: e.clientX, y: e.clientY, hx: handle ? +handle.dataset.hx : null, hy: handle ? +handle.dataset.hy : null,
-             w: r.width, h: r.height, k: a ? 1 : localScale(node), moved: false,
+             w: b.width, h: b.height, k: a ? 1 : localScale(node), moved: false,
+             cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, bl: b.left, br: b.right, bt: b.top, bb: b.bottom,
              start: a ? { x: a.x, y: a.y, w: a.w, h: a.h } : { x: num(ru.x, 0), y: num(ru.y, 0), sx: num(ru.sx, 1), sy: num(ru.sy, 1) } };
   }
   function onMove(e) {
@@ -770,8 +881,9 @@
         ru.sx = Math.round(s.sx * W / drag.w * 1000) / 1000;
         ru.sy = Math.round(s.sy * H / drag.h * 1000) / 1000;
         // (scaling is about the middle, so the move keeps the far side where it was)
-        ru.x = Math.round((s.x + drag.hx * (W - drag.w) / 2 / drag.k) * 10) / 10;
-        ru.y = Math.round((s.y + drag.hy * (H - drag.h) / 2 / drag.k) * 10) / 10;
+        var farX = drag.hx > 0 ? drag.bl : drag.br, farY = drag.hy > 0 ? drag.bt : drag.bb;
+        ru.x = Math.round((s.x + (farX - drag.cx) * (1 - W / drag.w) / drag.k) * 10) / 10;
+        ru.y = Math.round((s.y + (farY - drag.cy) * (1 - H / drag.h) / drag.k) * 10) / 10;
       }
     }
     apply();

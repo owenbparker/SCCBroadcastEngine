@@ -118,6 +118,7 @@ html:is(:not([data-look]), [data-look="studio"]) .nav.on svg { color: #000; }
 .sel-box { position: absolute; outline: 1.5px solid var(--x-accent); transform-origin: 0 0; }
 .sel-box.multi { outline-style: dashed; }
 .sel-box.locked { outline-color: var(--x-muted); outline-style: dotted; }
+.sel-box.frame { outline: 1px dashed var(--x-accent); opacity: .55; }
 .sel-each { position: absolute; outline: 1px solid color-mix(in srgb, var(--x-accent) 70%, transparent); }
 .handle { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; background: #fff; border: 1.5px solid var(--x-accent); border-radius: 2px; pointer-events: auto; }
 .guide { position: absolute; background: #ff2d95; }
