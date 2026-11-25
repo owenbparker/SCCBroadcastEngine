@@ -217,5 +217,105 @@ class AppTests(unittest.TestCase):
         self.assertEqual((f["TIMEOUT"], f["TIMEOUT SIDE"], f["TIMEOUTS LEFT"], f["TECH PAUSE"]), ("", "", 2, ""))
 
 
+class TechPauseTests(unittest.TestCase):
+    """owen 2026-11-25: the game paused 5 s or more -> Technical pause
+    banner; the clock running again 2 s or more -> it goes."""
+
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy not installed")
+
+    def test_clock_face_only_for_m_ss(self):
+        from valhud.reader import Frame, clock_face
+        self.assertIsNotNone(clock_face(Frame(frame("no_timeout_tab.webp"))))            # 0:27
+        self.assertIsNotNone(clock_face(Frame(frame("active_defenders_tab_closed.webp"))))   # 0:37
+        # the end of a round: the clock stops on 16.55 for ~7 s (not a pause)
+        self.assertIsNone(clock_face(Frame(frame("round_end_clock_16.55.webp"))))
+
+    def faces(self):
+        import numpy as np
+        return [np.full((40, 90), v, dtype=np.int16) for v in (0, 50, 100, 150, 200, 250)]
+
+    def test_pause_after_five_seconds_and_back_after_two_running(self):
+        from valhud.reader import ClockWatch
+        f = self.faces()
+        w = ClockWatch()
+        t = 0.0
+        for i in range(3):        # running: a new face every second
+            self.assertFalse(w.see(f[i], t))
+            t += 1
+        last = f[2]
+        while t < 7:              # stopped (seen 4 times a second)
+            w.see(last, t)
+            t += 0.25
+        self.assertFalse(w.see(last, 6.5))
+        self.assertTrue(w.see(last, 7.1))   # 5 s since it last changed (2.0)
+        self.assertTrue(w.see(None, 8))     # (the spike icon, Tab...: stays paused)
+        self.assertTrue(w.see(last, 20))
+        self.assertTrue(w.see(f[3], 21))    # ticks again...
+        self.assertTrue(w.see(f[4], 22))
+        self.assertFalse(w.see(f[5], 23))   # ...for 2 s: over
+
+    def test_one_stray_change_doesnt_end_it(self):
+        from valhud.reader import ClockWatch
+        f = self.faces()
+        w = ClockWatch()
+        w.see(f[0], 0)
+        self.assertTrue(w.see(f[0], 5.5))
+        w.see(f[1], 10)                     # one change, then still again
+        self.assertTrue(w.see(f[1], 12))
+        self.assertTrue(w.see(f[2], 16))    # (too long after the last: starts counting again)
+        self.assertTrue(w.see(f[3], 17))
+        self.assertFalse(w.see(f[4], 18))
+
+    def test_a_timeout_isnt_a_tech_pause(self):
+        from valhud.reader import ClockWatch
+        f = self.faces()
+        w = ClockWatch()
+        w.see(f[0], 0)
+        for t in range(1, 60):
+            self.assertFalse(w.see(f[0], t, timeout=True))
+
+    def test_app_puts_the_banner_up_and_down(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp)
+            on = {"source": "screen", "match": {"attackers": "left", "timeout": None, "tech_pause": True}}
+            off = {"source": "screen", "match": {"attackers": "left", "timeout": None, "tech_pause": False}}
+            app.ingest(on)
+            self.assertTrue(app.config.get()["tech_pause"])
+            self.assertEqual(app.fields["TECH PAUSE"], "1")
+            app.ingest(off)
+            self.assertFalse(app.config.get()["tech_pause"])
+            # from the observer PC too
+            app.ingest({"source": "observer", "spectating": {"text": ""}, "timeout": None, "tech_pause": True})
+            self.assertTrue(app.config.get()["tech_pause"])
+            app.ingest({"source": "observer", "spectating": {"text": ""}, "timeout": None, "tech_pause": False})
+            self.assertFalse(app.config.get()["tech_pause"])
+
+    def test_app_leaves_one_put_up_by_hand_and_timeouts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, tech_pause=True)
+            app.ingest({"source": "screen", "match": {"attackers": "left", "timeout": None, "tech_pause": False}})
+            self.assertTrue(app.config.get()["tech_pause"])    # (pressed by hand: stays)
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, timeout_call="right")
+            app.ingest({"source": "screen", "match": {"attackers": "left", "timeout": None, "tech_pause": True}})
+            self.assertFalse(app.config.get()["tech_pause"])   # (a timeout's up: that's why it stopped)
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, auto_tech_pause=False)
+            app.ingest({"source": "screen", "match": {"attackers": "left", "timeout": None, "tech_pause": True}})
+            self.assertFalse(app.config.get()["tech_pause"])
+
+    def test_banner_comes_down_when_readings_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp)
+            app.ingest({"source": "screen", "match": {"attackers": "left", "timeout": None, "tech_pause": True}})
+            app._tech_seen_at -= 20
+            app.refresh()
+            self.assertFalse(app.config.get()["tech_pause"])
+
+
 if __name__ == "__main__":
     unittest.main()

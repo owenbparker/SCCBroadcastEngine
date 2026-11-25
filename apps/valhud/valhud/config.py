@@ -68,6 +68,9 @@ DEFAULTS = {
     # Tactical timeouts read off the screen (the game's TIMEOUT banner): one
     # used up and the calling team's timeout card shown, taken off when it ends.
     "auto_timeouts": True,
+    # The Technical pause banner when the game's clock stops for 5 s (down
+    # again once it's run for 2 s).
+    "auto_tech_pause": True,
     # Player names to show, per team, in slot order (overrides the feed).
     "player_names": {"left": ["", "", "", "", ""], "right": ["", "", "", "", ""]},
     # One player's in-game name a team, by team name (normalised): seen in
