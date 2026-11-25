@@ -178,8 +178,10 @@
   el("div l", top); el("div r", top);
   ui.top = {
     logoL: el("logo l", top, null, "img"), logoR: el("logo r", top, null, "img"),
-    triL: text("tung", top, 714, 18, 100, 22, "c", null, "tri"), subL: text("nar", top, 709, 45, 110, 10, "c", null, "sub"),
-    triR: text("tung", top, 1100, 18, 100, 22, "c", null, "tri"), subR: text("nar", top, 1095, 45, 110, 10, "c", null, "sub"),
+    // (owen, 2026-11-25: the full bar's team boxes 80px wider each, for
+    // longer names; the condensed bar is as it was)
+    triL: text("tung", top, 632, 18, 180, 22, "c", null, "tri"), subL: text("nar", top, 627, 45, 190, 10, "c", null, "sub"),
+    triR: text("tung", top, 1108, 18, 180, 22, "c", null, "tri"), subR: text("nar", top, 1103, 45, 190, 10, "c", null, "sub"),
     scoreL: text("nar", top, 860, 18, 60, 36, "c", null, "score"), scoreR: text("nar", top, 998, 18, 60, 36, "c", null, "score"),
     rnd: text("nar", top, 910, 11, 100, 10, "c", null, "rnd"),
     pipsL: el("pips v l", top), pipsR: el("pips v r", top)
@@ -268,13 +270,11 @@
   // The buy-phase board.
   ui.board = el("phase", stage); ui.board.id = "board";
   el("bar", ui.board);
-  ui.markL = el("mark", ui.board, { left: "651px" }, "img");
-  ui.markR = el("mark", ui.board, { left: "1095px" }, "img");
+  ui.markL = el("mark", ui.board, { left: "678px" }, "img");
+  ui.markR = el("mark", ui.board, { left: "1069px" }, "img");
   var ROW = 785, PITCH = 56;
-  // (owen, 2026-11-25: the name boxes wider for longer names; the credits,
-  // ability and gun boxes gave up the room)
-  var BOXES = { left: { creds: [16, 160], abil: [185, 130], gun: [324, 188], who: [521, 435] },
-                right: { creds: [1745, 160], abil: [1606, 130], gun: [1409, 188], who: [965, 435] } };
+  var BOXES = { left: { creds: [16, 164], abil: [189, 144], gun: [342, 224], who: [575, 381] },
+                right: { creds: [1741, 164], abil: [1588, 144], gun: [1355, 224], who: [965, 381] } };
   SIDES.forEach(function (side) {
     var S = side === "left" ? "L" : "R", B = BOXES[side], inner = S;   // (positions inside a box mirror too)
     for (var slot = 1; slot <= 5; slot++) {
@@ -288,16 +288,16 @@
       r.spent = text("rub", r.cbox, 11, 20, 70, 11, inner === "R" ? "r" : "", inner, "spent");
       r.creds = credText(r.cbox, 9, 18, 100, 16, inner === "R" ? "" : "r", inner === "R" ? "L" : "R", "creds", false);
       r.abox = box("abil");
-      r.abil = abilities(r.abox, [10, 50, 90], 7, inner);
+      r.abil = abilities(r.abox, [13, 57, 101], 7, inner);
       r.gbox = box("gun");
       r.shieldImg = place(el("shieldimg", r.gbox), 11, 13, inner);
       r.shield = shieldSvg(r.gbox); place(r.shield, 13, 15, inner);
-      r.gun = place(el("gun", r.gbox), 44, 11, inner);
-      r.ult = ultRing(r.gbox); place(r.ult, 138, 4.5, inner);
+      r.gun = place(el("gun", r.gbox), 54, 11, inner);
+      r.ult = ultRing(r.gbox); place(r.ult, 172, 4.5, inner);
       r.wbox = box("who");
       r.wbox.classList.add("who");
       r.agent = el("agent", r.wbox);
-      r.name = text("din", r.wbox, 85, 18, 240, 14, inner === "R" ? "r" : "", inner, "name");
+      r.name = text("din", r.wbox, 85, 18, 170, 14, inner === "R" ? "r" : "", inner, "name");
       r.kda = text("rub", r.wbox, 18, 18, 110, 14, inner === "R" ? "" : "r", inner === "R" ? "L" : "R", "kda");
       ui.rows[side].push(r);
     }
