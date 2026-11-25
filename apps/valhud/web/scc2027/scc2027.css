@@ -365,10 +365,11 @@ html.scc-2v2 .scc-duo.on .scc-duo-cam { box-shadow: inset 0 0 0 2px var(--gold);
 :is(#rwin, #rwbug, #tobug).out.wipe .flash { z-index: 9; animation: rwWipeOut .75s cubic-bezier(.6, 0, .3, 1) forwards; }
 :is(#rwin, #rwbug, #tobug).out.wipe :is(.bg, .crest, .word, .bar, .who) { opacity: 0; transition: opacity .1s linear .3s; }
 @keyframes rwWipeOut { 0% { transform: scaleX(0); opacity: 1; } 45% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(0); opacity: 1; } }
-/* "CEN Round Win" (owen 2026-11-25): St. Clair Saints crest, red maple leaf,
+/* "CEN Round Win" (owen 2026-11-25, from his CEN Round WIn.fig): St. Clair Saints crest, red maple leaf,
    red bar with white text; the winner's logo in the crest as SCC's does. */
 #rwbug.cen .bg { background-image: url("assets/roundwin-cen-bg.png"); }
 #rwbug.cen .crest { background-image: url("assets/roundwin-cen-logo.png"); }
+#rwbug.cen .bar, #rwbug.cen .who { left: 102px; }   /* (the fig's bar sits at 102, SCC's at 116) */
 #rwbug.cen .bar { background: linear-gradient(90deg, rgba(252, 0, 59, 0), #FC003B 20%, #FC003B 80%, rgba(252, 0, 59, 0)); }
 #rwbug.cen .who { color: #fff; }
 #rwbug.cen .who span + span::before { background: #fff; }
