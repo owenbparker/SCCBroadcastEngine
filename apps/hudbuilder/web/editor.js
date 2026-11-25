@@ -209,7 +209,52 @@ window.Editor = (function () {
   let lastSel = [null, null], settleId = 0;
   function settle() {
     cancelAnimationFrame(settleId);
-    settleId = requestAnimationFrame(() => { settleId = 0; if (hud) drawSelection(...lastSel); });
+    settleId = requestAnimationFrame(() => { settleId = 0; if (!hud) return; followText(); drawSelection(...lastSel); });
+  }
+  // Auto width / height text: its saved box follows its text (the runtime sizes
+  // it on air too), so the numbers, handles and snapping match what's drawn.
+  const r2 = v => Math.round(v * 100) / 100;
+  // (a whole number of pixels, a little wider than the text so it never wraps
+  //  when it's made Auto height; the text stays put: the extra is on the side
+  //  away from how it's aligned)
+  function wholeWidth(l, x, w) {
+    const W = Math.ceil(w + 0.01), extra = W - w;
+    return { x: r2(x - ({ center: extra / 2, right: extra }[l.align || "left"] || 0)), w: W };
+  }
+  function followText() {
+    if (!root) return;
+    let moved = false;
+    for (const l of hud.layers) {
+      if (l.type !== "text" || (l.sizing !== "autoW" && l.sizing !== "autoH") || l.scroll > 0) continue;
+      const f = GFX.textFrame(root, l);
+      if (!f || !f.box.w) continue;
+      if (l.sizing === "autoW") {
+        const b = wholeWidth(l, f.box.x, f.box.w);
+        if (Math.abs(b.x - l.x) > 0.5 || Math.abs(b.w - l.w) >= 1) { l.x = b.x; l.w = b.w; moved = true; }
+      }
+      if (Math.abs(f.box.h - l.h) >= 1 || f.box.h > l.h) { l.h = Math.ceil(f.box.h); moved = true; }
+    }
+    if (moved) { dirty = true; markSaved(false); clearTimeout(saveTimer); saveTimer = setTimeout(save, 500); }
+  }
+  // Figma's text resizing. Switching keeps the text exactly where it is: the box
+  // is fitted around it. (Auto: it no longer shrinks or squeezes to fit.)
+  function setSizing(l, v) {
+    snapshot();
+    const f = root && GFX.textFrame(root, l);
+    if (f && v) {
+      if (v === "autoW") Object.assign(l, wholeWidth(l, f.x, f.w));
+      l.y = r2(f.y); l.h = Math.ceil(f.h);
+      delete l.baseline;   // (its top is now where the letters' line starts)
+    }
+    if (v) l.sizing = v; else delete l.sizing;
+    changed();
+  }
+  // Changing an auto box's size by hand, like Figma: a new width makes Auto
+  // width text Auto height; a new height makes it a fixed size.
+  function textResized(l, how) {
+    if (l.type !== "text" || !l.sizing) return;
+    if (how === "w" && l.sizing === "autoW") l.sizing = "autoH";
+    else if (how !== "w") delete l.sizing;
   }
   if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", settle);
   function bounds(list) {
@@ -381,6 +426,7 @@ window.Editor = (function () {
     let moved = false;
     resizing = l.id;
     drag(ev => {
+      if (!moved) textResized(l, /^[ew]$/.test(hd) ? "w" : "both");
       moved = true;
       const [qx, qy] = toCanvas(ev.clientX, ev.clientY);
       const dx = qx - px, dy = qy - py;
@@ -1059,7 +1105,7 @@ window.Editor = (function () {
     const kids = [
       h("div", { class: "props-head" }, h("h3", {}, l.name), h("span", { class: "muted" }, typeName(l))),
       sect(null, bind(l, "name", "text", { label: "Name", after: () => renderLayers() }),
-        grid(bind(l, "x", "number", { label: "X" }), bind(l, "y", "number", { label: "Y" }), bind(l, "w", "number", { label: "Width", min: 1 }), bind(l, "h", "number", { label: "Height", min: 1 })),
+        grid(bind(l, "x", "number", { label: "X" }), bind(l, "y", "number", { label: "Y" }), bind(l, "w", "number", { label: "Width", min: 1, after: () => textResized(l, "w") }), bind(l, "h", "number", { label: "Height", min: 1, after: () => textResized(l, "h") })),
         grid(bind(l, "rotation", "number", { label: "Rotate °" }), opacityField(l),
           bind(l, "blend", "select", { label: "Blend", groups: BLEND_GROUPS.map(([g, os]) => [g, os.map(b => [b, BLEND_LABEL[b]])]), def: "normal", after: () => renderLayers() })),
         alignRow(list),
@@ -1161,7 +1207,12 @@ window.Editor = (function () {
       colourField(l, "color", "Colour"),
       grid(bind(l, "align", "select", { label: "Across", options: [["left", "Left"], ["center", "Centre"], ["right", "Right"]] }),
         bind(l, "valign", "select", { label: "Up / down", options: [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]], def: "top" }),
-        bind(l, "fit", "select", { label: "Too long", options: [["shrink", "Shrink"], ["squeeze", "Squeeze"], ["none", "Leave it"]], def: "shrink" })),
+        l.sizing === "autoW" ? h("label", {}, "Too long", h("select", { disabled: true, title: "Auto width: the box grows with the text" }, h("option", {}, "Box grows")))
+          : bind(l, "fit", "select", { label: "Too long", options: [["shrink", "Shrink"], ["squeeze", "Squeeze"], ["truncate", "Truncate (…)"], ["none", "Leave it"]], def: "shrink", rerender: true })),
+      grid(h("label", { title: "Like Figma: Auto width grows the box with the text, Auto height wraps it to the width and grows down, Fixed size keeps the box" }, "Resizing",
+          h("select", { onchange: e => setSizing(l, e.target.value) },
+            [["", "Fixed size"], ["autoW", "Auto width"], ["autoH", "Auto height"]].map(([v, t]) => h("option", { value: v, selected: (l.sizing || "") === v }, t)))),
+        l.fit === "truncate" && l.sizing !== "autoW" ? bind(l, "maxLines", "number", { label: "Max lines", min: 0, step: 1 }) : null),
       h("div", { class: "row-gap" }, bind(l, "caps", "check", { label: "All caps" }), bind(l, "italic", "check", { label: "Italic" }), bind(l, "shadow", "check", { label: "Shadow" })),
       grid(bind(l, "lineHeight", "number", { label: "Line height", step: 0.05, def: 1.15 }), bind(l, "scroll", "number", { label: "Ticker speed (0 = still)", min: 0, step: 10 })));
   }

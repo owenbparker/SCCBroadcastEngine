@@ -564,6 +564,7 @@
       });
       const span = el("span", "gfx-t");
       box.appendChild(span);
+      textLayout(box, span, layer);
       box._layer = layer;
       box._raw = value;
       setText(box, opts);
@@ -840,13 +841,67 @@
   function fit(box) {
     fitSize(box);
     baseline(box);
+    sizeToText(box);
   }
+  // --- text sizing: Figma's Auto width / Auto height / Fixed size, Truncate and Max lines ---
+  // (layer.sizing "autoW" | "autoH" | unset = fixed, as before; layer.fit "truncate" + layer.maxLines.
+  //  A layer without them draws exactly as it always did.)
+  function textLayout(box, span, layer) {
+    if (layer.scroll > 0) return;
+    const sizing = layer.sizing === "autoW" || layer.sizing === "autoH" ? layer.sizing : "";
+    const lines = Math.max(0, Math.round(+layer.maxLines || 0));
+    const cut = layer.fit === "truncate" && sizing !== "autoW";
+    const wrap = sizing === "autoH" || (cut && lines > 1);
+    if (wrap) Object.assign(box.style, { whiteSpace: "pre-wrap", overflowWrap: "break-word" });
+    if (wrap || cut) Object.assign(span.style, { maxWidth: "100%", minWidth: "0" });
+    if (cut && wrap && lines > 0) {
+      Object.assign(span.style, { display: "-webkit-box", webkitBoxOrient: "vertical", webkitLineClamp: String(lines), overflow: "hidden" });
+    } else if (cut && !wrap) {
+      Object.assign(span.style, { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" });
+    }
+  }
+  // Auto width / height: the layer's box follows its text, on air too (a longer
+  // name grows the box instead of shrinking). Auto width keeps the side it's
+  // aligned to (the middle when centred); both keep the top.
+  function sizeToText(box) {
+    const layer = box._layer, span = box.firstChild;
+    if (!layer || !span || layer.scroll > 0 || (layer.sizing !== "autoW" && layer.sizing !== "autoH")) return;
+    const L = box.closest(".gfx-L");
+    if (!L || !box.getClientRects().length) return;
+    const h = Math.max(0, span.offsetTop) + span.offsetHeight;
+    if (layer.sizing === "autoW") {
+      const w = span.offsetWidth;
+      const dx = { center: (layer.w - w) / 2, right: layer.w - w }[layer.align || "left"] || 0;
+      L.style.width = w + "px";
+      L.style.left = (layer.x + dx) + "px";
+    }
+    L.style.height = h + "px";
+  }
+  // Where a text layer's text is on the canvas (the editors use it to fit a box to its text).
+  GFX.textFrame = (root, layer) => {
+    const L = root && [...root.children].find(c => c.dataset.id === layer.id);
+    const box = L && L.querySelector(".gfx-text"), span = box && box.firstChild;
+    if (!span || !box.getClientRects().length) return null;
+    fit(box);   // (sized now, not when the page next lays out)
+    let x = 0, y = 0, w = span.offsetWidth, h = span.offsetHeight, n = span;
+    while (n && n !== L) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
+    if (n !== L) return null;
+    // (to a fraction of a pixel, from where it's drawn, when it isn't turned)
+    const lr = L.getBoundingClientRect(), sr = span.getBoundingClientRect(), k = lr.width / (L.offsetWidth || 1);
+    if (!layer.rotation && L.offsetWidth && k > 0 && isFinite(k) && !span.style.transform) {
+      x = (sr.left - lr.left) / k; y = (sr.top - lr.top) / k; w = sr.width / k; h = sr.height / k;
+    }
+    return { x: (parseFloat(L.style.left) || 0) + x, y: (parseFloat(L.style.top) || 0) + y, w, h,
+      box: { x: parseFloat(L.style.left) || 0, y: parseFloat(L.style.top) || 0, w: parseFloat(L.style.width) || 0, h: parseFloat(L.style.height) || 0 } };
+  };
+  // --- end text sizing ---
+
   function fitSize(box) {
     const layer = box._layer, span = box.firstChild;
     if (!layer || !span || layer.scroll > 0) return;
     span.style.transform = "";
     box.style.fontSize = layer.size + "px";
-    if (!layer.fit || layer.fit === "none") return;
+    if (!layer.fit || layer.fit === "none" || layer.fit === "truncate" || layer.sizing === "autoW" || layer.sizing === "autoH") return;
     const bw = box.clientWidth, bh = box.clientHeight;
     const sw = span.scrollWidth, sh = span.scrollHeight;
     if (!bw || !sw) return;
