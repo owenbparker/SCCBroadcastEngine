@@ -268,11 +268,13 @@
   // The buy-phase board.
   ui.board = el("phase", stage); ui.board.id = "board";
   el("bar", ui.board);
-  ui.markL = el("mark", ui.board, { left: "678px" }, "img");
-  ui.markR = el("mark", ui.board, { left: "1069px" }, "img");
+  ui.markL = el("mark", ui.board, { left: "651px" }, "img");
+  ui.markR = el("mark", ui.board, { left: "1095px" }, "img");
   var ROW = 785, PITCH = 56;
-  var BOXES = { left: { creds: [16, 164], abil: [189, 144], gun: [342, 224], who: [575, 381] },
-                right: { creds: [1741, 164], abil: [1588, 144], gun: [1355, 224], who: [965, 381] } };
+  // (owen, 2026-11-25: the name boxes wider for longer names; the credits,
+  // ability and gun boxes gave up the room)
+  var BOXES = { left: { creds: [16, 160], abil: [185, 130], gun: [324, 188], who: [521, 435] },
+                right: { creds: [1745, 160], abil: [1606, 130], gun: [1409, 188], who: [965, 435] } };
   SIDES.forEach(function (side) {
     var S = side === "left" ? "L" : "R", B = BOXES[side], inner = S;   // (positions inside a box mirror too)
     for (var slot = 1; slot <= 5; slot++) {
@@ -286,16 +288,16 @@
       r.spent = text("rub", r.cbox, 11, 20, 70, 11, inner === "R" ? "r" : "", inner, "spent");
       r.creds = credText(r.cbox, 9, 18, 100, 16, inner === "R" ? "" : "r", inner === "R" ? "L" : "R", "creds", false);
       r.abox = box("abil");
-      r.abil = abilities(r.abox, [13, 57, 101], 7, inner);
+      r.abil = abilities(r.abox, [10, 50, 90], 7, inner);
       r.gbox = box("gun");
       r.shieldImg = place(el("shieldimg", r.gbox), 11, 13, inner);
       r.shield = shieldSvg(r.gbox); place(r.shield, 13, 15, inner);
-      r.gun = place(el("gun", r.gbox), 54, 11, inner);
-      r.ult = ultRing(r.gbox); place(r.ult, 172, 4.5, inner);
+      r.gun = place(el("gun", r.gbox), 44, 11, inner);
+      r.ult = ultRing(r.gbox); place(r.ult, 138, 4.5, inner);
       r.wbox = box("who");
       r.wbox.classList.add("who");
       r.agent = el("agent", r.wbox);
-      r.name = text("din", r.wbox, 85, 18, 170, 14, inner === "R" ? "r" : "", inner, "name");
+      r.name = text("din", r.wbox, 85, 18, 240, 14, inner === "R" ? "r" : "", inner, "name");
       r.kda = text("rub", r.wbox, 18, 18, 110, 14, inner === "R" ? "" : "r", inner === "R" ? "L" : "R", "kda");
       ui.rows[side].push(r);
     }
@@ -392,11 +394,18 @@
   // timer's run out (0:00, by the last read of it), whatever the phase
   // reads say meanwhile; with no timer read, until the round has read as
   // under way for a few seconds running.
-  var buy = { on: false, endAt: 0, timer: null, otherSince: 0 };
+  // (owen, 2026-11-25: the board stayed up into the round, the phase still
+  // reading "buy" at 1:28. Once the round's own clock (over 1:00) has been
+  // read the round's under way: "buy" readings count again only from the
+  // next round, by the score, on.)
+  var buy = { on: false, endAt: 0, timer: null, otherSince: 0, running: null };
   function trackBuy(m, now) {
     var t = Number(m.timer) || 0, fresh = t !== buy.timer;
+    var rounds = (m.score.left || 0) + (m.score.right || 0);
     buy.timer = t;
-    if (m.phase === "buy") {
+    if (buy.running !== null && buy.running !== rounds) buy.running = null;   // (a new round)
+    if (fresh && t > 60 && m.phase !== "end") buy.running = rounds;
+    if (m.phase === "buy" && buy.running === null) {
       if (!buy.on) { buy.on = true; buy.endAt = 0; }
       buy.otherSince = 0;
       // (a read of the buy timer: 0:30 down to 0:00; the board goes at 0:00)
@@ -781,7 +790,7 @@
   var won = { key: "", until: 0 };
   // The timeout / technical pause banner (#tobug): up while Control's (or
   // the screen reader's) timeout or technical pause is on.
-  var tob = { key: "", timer: null };
+  var tob = { key: "", timer: null, secs: null, secsAt: 0 };
   function setBanner(s) {
     var cfg = s.config, m = s.game.match, kind = "", team = "";
     if (cfg.tech_pause) kind = "tech";
@@ -792,16 +801,26 @@
     if (BOARD_ONLY) kind = "";
     toggle(ui.banner, "on", false);   // (the old strip: replaced by the banner)
     var o = ui.tob, B = o.box;
-    var left = team ? Math.max(0, Number((cfg.timeouts || {})[team]) || 0) : 0;
     var live = m.timeout || {};
     var key = kind + "|" + team;
     if (kind) {
-      // the bar: who called it, their side and the timeouts they have left
+      // the bar: who called it and their side
       o.team.textContent = team ? upper(cfg[team].tricode || cfg[team].name) : "PLEASE STAND BY";
       o.side.textContent = team ? (kind === "attack" ? "ATTACK" : "DEFENSE") : "";
-      o.how.textContent = team ? left + (left === 1 ? " TIMEOUT LEFT" : " TIMEOUTS LEFT") : "";
+      // ...and the timeout's countdown, from the reader's readings of the
+      // game's bar (owen, 2026-11-25: in place of the timeouts left),
+      // ticking down between reads
+      var clock = "";
+      if (team && live.team === team) {
+        if (live.seconds != null) {
+          if (live.seconds !== tob.secs) { tob.secs = live.seconds; tob.secsAt = Date.now(); }
+          var t = Math.max(0, Math.ceil(tob.secs - (Date.now() - tob.secsAt) / 1000));
+          clock = Math.floor(t / 60) + ":" + ("0" + (t % 60)).slice(-2);
+        } else if (live.state === "starting") clock = "STARTING";
+      } else tob.secs = null;
+      if (o.how.textContent !== clock) o.how.textContent = clock;
       toggle(o.side, "hidden", !team);
-      toggle(o.how, "hidden", !team);
+      toggle(o.how, "hidden", !clock);
     }
     if (key === tob.key) return;
     tob.key = key;
