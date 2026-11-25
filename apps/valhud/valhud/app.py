@@ -423,6 +423,16 @@ class HudApp:
                 if self.mode == "live":
                     self.refresh()   # (a map read off the screen)
                 return {"ok": True}
+        if isinstance(update, dict) and update.get("source") == "observer" and "timeout" in update:
+            # The observer PC's timeout readings (its spectate loop): these
+            # are used over this PC's own reader's while they keep coming.
+            update = dict(update)
+            to = update.pop("timeout")
+            self._observer_timeout_at = time.time()
+            self._timeout_reading({k: v for k, v in to.items() if k != "attackers"} if isinstance(to, dict) else None,
+                                  to.get("attackers") if isinstance(to, dict) else None)
+            if not update.get("match") and not update.get("players") and "spectating" not in update:
+                return {"ok": True}
         if isinstance(update, dict) and isinstance(update.get("spectating"), dict):
             update = dict(update)
             sp = update.pop("spectating")
@@ -433,7 +443,9 @@ class HudApp:
         if isinstance(update, dict) and update.get("source") == "screen" and isinstance(update.get("match"), dict) \
                 and "timeout" in update["match"]:
             update = dict(update, match=dict(update["match"]))
-            self._timeout_reading(update["match"].pop("timeout"), update["match"].get("attackers"))
+            reading = update["match"].pop("timeout")
+            if time.time() - getattr(self, "_observer_timeout_at", 0.0) > self.OBSERVER_TIMEOUTS_FOR:
+                self._timeout_reading(reading, update["match"].get("attackers"))
         if isinstance(update, dict) and update.get("source") == "screen":
             if self.config.get().get("team_size") == 2:
                 update = game.two_a_side(update)
@@ -443,6 +455,10 @@ class HudApp:
         if self.mode == "live":
             self.refresh()
         return self.observed_name()
+
+    # The observer PC's timeout readings count over this PC's reader's for
+    # this long after the last one (then this PC's reader takes over again).
+    OBSERVER_TIMEOUTS_FOR = 10.0
 
     def _timeout_reading(self, reading, attackers):
         """A full read's timeout banner (None: not on that frame): a timeout

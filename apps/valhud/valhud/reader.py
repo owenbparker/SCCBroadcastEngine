@@ -532,12 +532,15 @@ def buy_phase(frame):
 
 
 # --- tactical timeouts --------------------------------------------------------
-# A timeout called in the match puts a banner across the middle of the screen
-# (seen in owen's recording of 2026-11-19, round 6, Lotus): "TIMEOUT STARTING
-# IN" for a few seconds, then "TIMEOUT ACTIVE" for the minute, with the
-# calling team's side above it ("ATTACKERS") and a countdown bar in that
-# side's colour (red: attackers) that shrinks from the right. Pale teal
-# letters, drawn under the Tab scoreboard when it's open.
+# A timeout called in the match puts a panel across the middle of the screen
+# (owen's recording of 2026-11-19, round 6, Lotus, and his screenshot of
+# 2026-11-25): "TIMEOUT STARTING IN" for a few seconds, then "TIMEOUT ACTIVE"
+# for the minute, with the calling side above it ("ATTACKERS"/"DEFENDERS")
+# and a red countdown bar under it that shrinks from the right (red for
+# either side). The panel is the caller's colour (teal: defenders). With the
+# Tab scoreboard closed the words are white on the panel; with it open the
+# scoreboard is drawn over it, so the words come through pale teal and the
+# board's rows are tinted by the panel's colour.
 TIMEOUT_BOX = (680, 445, 1240, 525)      # the big words (the templates' box)
 TIMEOUT_BAR = (666, 537, 1254, 543)      # the countdown bar's top edge (its middle has the digits): full width is the minute
 TIMEOUT_LABEL = (860, 396, 1060, 420)    # "ATTACKERS" / "DEFENDERS"
@@ -547,11 +550,30 @@ _timeout_ocr_at = [0.0]
 
 
 def _timeout_ink(img):
-    """The banner's pale teal letters."""
+    """The banner's letters: [pale teal (under the Tab scoreboard), white
+    (Tab closed)]."""
     np = _np()
     a = np.asarray(img.convert("RGB"), dtype=np.int16)
     r, g, b = a[..., 0], a[..., 1], a[..., 2]
-    return (g - r >= 18) & (b - r >= 14) & (r >= 105) & (g >= 140)
+    return [(g - r >= 18) & (b - r >= 14) & (r >= 105) & (g >= 140),
+            (a.min(axis=2) >= 200) & (a.max(axis=2) - a.min(axis=2) <= 30)]
+
+
+def timeout_panel(frame):
+    """Which side's colour the timeout panel is ("attackers" red,
+    "defenders" teal, None unsure): the panel above the words against the
+    screen just left of it, so the Tab scoreboard's own colours (drawn over
+    the panel) cancel out."""
+    np = _np()
+
+    def mean(x0, x1):
+        return np.asarray(frame.crop(x0, 395, x1, 445).convert("RGB"), dtype=np.float32).reshape(-1, 3).mean(axis=0)
+    d = mean(680, 720) - mean(600, 640)
+    if d[0] - d[1] > 15:
+        return "attackers"
+    if d[1] - d[0] > 15:
+        return "defenders"
+    return None
 
 
 def _timeout_templates():
@@ -581,8 +603,9 @@ def _shifted_iou(mask, ref, dy=3, dx=4):
 
 
 def timeout_bar(frame):
-    """(colour, width): the countdown bar's colour ("red" / "teal", None when
-    there's none) and how far it reaches from its left end, in 1080p px."""
+    """(colour, width): the countdown bar's colour ("red"; "teal" never seen,
+    None when there's none) and how far it reaches from its left end, in
+    1080p px. (Red whichever side called the timeout.)"""
     np = _np()
     a = np.asarray(frame.crop(*TIMEOUT_BAR).convert("RGB"), dtype=np.int16)
     r, g, b = a[..., 0], a[..., 1], a[..., 2]
@@ -609,20 +632,22 @@ def _timeout_words(frame, ocr):
 
 def read_timeout(frame, ocr=None):
     """A timeout on screen: {"state": "starting" / "active", "caller":
-    "attackers" / "defenders" / None, "seconds": left (active, from the bar)
-    or None}; None when there's no timeout banner."""
+    "attackers" / "defenders" / None (from the panel's colour, else its
+    label by text recognition), "seconds": left (active, from the bar) or None};
+    None when there's no timeout banner."""
     np = _np()
-    mask = _timeout_ink(frame.crop(*TIMEOUT_BOX))
     state = None
-    if mask.mean() > 0.08:   # (a frame without the banner has a few percent at most)
-        scores = {s: _shifted_iou(mask, ref) for s, ref in _timeout_templates().items() if ref.shape == mask.shape}
-        if scores:
-            best = max(scores, key=scores.get)
-            if scores[best] >= TIMEOUT_MATCH:
-                state = best
+    for mask in _timeout_ink(frame.crop(*TIMEOUT_BOX)):
+        if mask.mean() > 0.08:   # (a frame without the banner has a few percent at most)
+            scores = {s: _shifted_iou(mask, ref) for s, ref in _timeout_templates().items() if ref.shape == mask.shape}
+            if scores:
+                best = max(scores, key=scores.get)
+                if scores[best] >= TIMEOUT_MATCH:
+                    state = best
+                    break
     colour, width = timeout_bar(frame)
     if state is None and colour and width >= 20 and ocr is not None and time.time() - _timeout_ocr_at[0] > 2:
-        # The letters' colour is only known over the Tab scoreboard: with a
+        # Letters drawn some other way than seen so far: with a
         # countdown bar up, the words are read instead (every 2 s at most:
         # something red in the game where the bar goes would be read too).
         _timeout_ocr_at[0] = time.time()
@@ -631,8 +656,8 @@ def read_timeout(frame, ocr=None):
             state = "starting" if "START" in words else "active"
     if state is None:
         return None
-    caller = {"red": "attackers", "teal": "defenders"}.get(colour)
-    if ocr is not None:
+    caller = timeout_panel(frame)
+    if caller is None and ocr is not None:
         try:
             label = " ".join(w for w, _, _ in ocr.words(ink(frame.crop(*TIMEOUT_LABEL), 3, 120))).upper()
         except Exception:
@@ -1980,8 +2005,19 @@ class ScreenReader:
                         wait = self.SPECTATE_EVERY
                         text = spectated_text(frame, self.ocr)
                     reading = {"text": text, "agent": agent, "side": side}
+                    # A tactical timeout's banner, read here on the observer
+                    # PC (owen, 2026-11-25): the GFX PC goes by these over its
+                    # own reader's. Only with the match's top bar on screen
+                    # (who attacks says which team called it).
+                    attackers = attacking_side(frame)
+                    if attackers:
+                        to = read_timeout(frame, self.ocr)
+                        reading["timeout"] = dict(to, attackers=attackers) if to else None
                     if reading != last or time.time() - sent_at > 1:
-                        reply = self.send({"source": "observer", "spectating": reading}) or {}
+                        update = {"source": "observer", "spectating": {k: v for k, v in reading.items() if k != "timeout"}}
+                        if "timeout" in reading:
+                            update["timeout"] = reading["timeout"]
+                        reply = self.send(update) or {}
                         last, sent_at = reading, time.time()
                         who = reply.get("observed") if isinstance(reply, dict) else None
                         self.spectate_status = (f"Spectating {who}" if who else

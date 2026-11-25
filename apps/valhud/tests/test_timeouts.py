@@ -1,7 +1,9 @@
-"""Tactical timeouts read off the screen (2026-11-25). The fixtures are from
+"""Tactical timeouts read off the screen (2026-11-25). Most fixtures are from
 owen's Lotus recording of 2026-11-19 (round 6: the attackers called a
 timeout with the Tab scoreboard open): TIMEOUT STARTING IN, then TIMEOUT
-ACTIVE with a red countdown bar."""
+ACTIVE with a red countdown bar. active_defenders_tab_closed is owen's
+screenshot of 2026-11-25: white words on the defenders' teal panel, the bar
+red all the same."""
 
 import os
 import tempfile
@@ -51,6 +53,11 @@ class ReadTimeoutTests(unittest.TestCase):
         self.assertEqual(r["state"], "active")
         self.assertLessEqual(r["seconds"], 2)
 
+    def test_tab_closed_defenders(self):
+        r = self.read("active_defenders_tab_closed.webp")   # the bar says 0:52
+        self.assertEqual((r["state"], r["caller"]), ("active", "defenders"))
+        self.assertTrue(50 <= r["seconds"] <= 54, r)
+
     def test_no_timeout(self):
         self.assertIsNone(self.read("no_timeout_tab.webp"))
         from valhud.reader import Frame, read_timeout
@@ -59,13 +66,15 @@ class ReadTimeoutTests(unittest.TestCase):
             from PIL import Image
             self.assertIsNone(read_timeout(Frame(Image.open(os.path.join(HERE, "fixtures", *path)))), path)
 
-    def test_side_label_read_by_text_recognition_wins(self):
+    def test_side_label_read_by_text_recognition(self):
         from valhud.reader import Frame, read_timeout
 
         class Ocr:
             def words(self, image):
                 return [("DEFENDERS", 10, 10)]
-        r = read_timeout(Frame(frame("active_attackers_40s.webp")), Ocr())
+        from unittest import mock
+        with mock.patch("valhud.reader.timeout_panel", return_value=None):   # (panel colour unsure)
+            r = read_timeout(Frame(frame("active_attackers_40s.webp")), Ocr())
         self.assertEqual(r["caller"], "defenders")
 
     def test_read_frame_reports_it(self):
@@ -174,6 +183,32 @@ class AppTests(unittest.TestCase):
             cfg = app.config.get()
             self.assertEqual((cfg["timeout_call"], cfg["timeouts"]), ("", {"left": 2, "right": 2}))
             self.assertEqual(app.fields["TIMEOUT SIDE"], "RIGHT")   # (still in the data for graphics)
+
+    def test_observer_pcs_readings_win(self):
+        """owen 2026-11-25: read off the observer PC's extra info (its
+        spectate loop), not the main reader PC."""
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, timeouts={"left": 2, "right": 2})
+            obs = {"source": "observer", "spectating": {"text": "", "agent": None, "side": None},
+                   "timeout": dict(WatchTests.ACTIVE, caller="defenders", attackers="right")}
+            app.ingest(obs)
+            # this PC's reader sees nothing (another screen): not used while the observer PC reports
+            app.ingest(self.reading(None))
+            app.ingest(obs)
+            cfg = app.config.get()
+            self.assertEqual((cfg["timeout_call"], cfg["timeouts"]["left"]), ("left", 1))
+            # ...nor its timeout readings
+            for _ in range(3):
+                app.ingest(self.reading(dict(WatchTests.ACTIVE)))   # attackers (right) calling
+            self.assertEqual(app.config.get()["timeouts"]["right"], 2)
+            # the observer PC gone quiet: this PC's reader counts again
+            app._observer_timeout_at -= 60
+            app.timeouts.seen_at -= 60
+            app.ingest(self.reading(None))
+            self.assertEqual(app.config.get()["timeout_call"], "")
+            for _ in range(2):
+                app.ingest(self.reading(dict(WatchTests.ACTIVE)))
+            self.assertEqual(app.config.get()["timeout_call"], "right")
 
     def test_fields_without_a_timeout(self):
         state = game.empty_state()
