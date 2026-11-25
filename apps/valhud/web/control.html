@@ -219,6 +219,7 @@
       <button id="listen-left" title="SCC 2027: Listen In, the left team's five player cams with their names (LIVE COMMS)">Listen in: left team</button>
       <button id="listen-right" title="SCC 2027: Listen In, the right team's five player cams with their names (LIVE COMMS)">Listen in: right team</button>
     </div>
+    <label class="toggle" style="margin-top:12px" title="When the game shows its TIMEOUT banner (TIMEOUT STARTING IN / TIMEOUT ACTIVE), the screen reader puts the calling team's timeout up, takes one off their timeouts left, and takes the timeout down when it ends"><input type="checkbox" id="auto-timeouts"> Read timeouts off the screen (timeout up, one used, down when it ends)</label>
     <label class="toggle" style="margin-top:12px"><input type="checkbox" id="show-timeouts"> Timeout diamonds under the score</label>
   </section>
 
@@ -635,6 +636,7 @@ $("scan-names").onclick = async () => {
 $("tech-pause").onclick = () => post("/api/config", { tech_pause: !state.config.tech_pause, timeout_call: "" });
 $("show-scoreboard").onclick = () => post("/api/config", { show: { scoreboard: !state.config.show.scoreboard } });
 $("show-timeouts").onchange = e => post("/api/config", { show: { timeouts: e.target.checked } });
+$("auto-timeouts").onchange = e => post("/api/config", { auto_timeouts: e.target.checked });
 ["left", "right"].forEach(side => {
   $("listen-" + side).onclick = () => post("/api/config", { show: { listen_in: state.config.show.listen_in === side ? "" : side } });
 });
@@ -726,6 +728,7 @@ function apply(s) {
   $("tech-pause").classList.toggle("on", cfg.tech_pause);
   $("show-scoreboard").classList.toggle("on", cfg.show.scoreboard);
   $("show-timeouts").checked = cfg.show.timeouts !== false;
+  $("auto-timeouts").checked = cfg.auto_timeouts !== false;
   $("listen-left").classList.toggle("on", cfg.show.listen_in === "left");
   $("listen-right").classList.toggle("on", cfg.show.listen_in === "right");
   const design = cfg.hud_design === "default2026" ? "default2026" : "scc2027";

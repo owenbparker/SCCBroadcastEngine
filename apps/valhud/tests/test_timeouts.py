@@ -1,0 +1,186 @@
+"""Tactical timeouts read off the screen (2026-11-25). The fixtures are from
+owen's Lotus recording of 2026-11-19 (round 6: the attackers called a
+timeout with the Tab scoreboard open): TIMEOUT STARTING IN, then TIMEOUT
+ACTIVE with a red countdown bar."""
+
+import os
+import tempfile
+import unittest
+
+from valhud import game
+from valhud.config import Config
+from valhud.timeouts import TimeoutWatch
+
+HERE = os.path.dirname(__file__)
+
+
+def frame(name):
+    from PIL import Image
+    return Image.open(os.path.join(HERE, "fixtures", "timeout", name))
+
+
+def make_app(tmp, **cfg):
+    from valhud.app import HudApp
+    c = Config(os.path.join(tmp, "config.json"))
+    c.update(dict({"output_dir": os.path.join(tmp, "out")}, **cfg))
+    return HudApp(c)
+
+
+class ReadTimeoutTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy not installed")
+
+    def read(self, name):
+        from valhud.reader import Frame, read_timeout
+        return read_timeout(Frame(frame(name)))
+
+    def test_starting(self):
+        self.assertEqual(self.read("starting_attackers.webp"),
+                         {"state": "starting", "caller": "attackers", "seconds": None})
+
+    def test_active_with_seconds_from_the_bar(self):
+        r = self.read("active_attackers_40s.webp")   # the bar says 0:40
+        self.assertEqual((r["state"], r["caller"]), ("active", "attackers"))
+        self.assertTrue(37 <= r["seconds"] <= 42, r)
+
+    def test_last_seconds(self):
+        r = self.read("active_ending.webp")          # 0:00 / 0:01: the bar is all but gone
+        self.assertEqual(r["state"], "active")
+        self.assertLessEqual(r["seconds"], 2)
+
+    def test_no_timeout(self):
+        self.assertIsNone(self.read("no_timeout_tab.webp"))
+        from valhud.reader import Frame, read_timeout
+        for path in (("tab_scoreboard.png",), ("tab_scoreboard_rifles.png",), ("spectate", "card_gora46_cypher.webp"),
+                     ("agent_select", "locked_00.webp")):
+            from PIL import Image
+            self.assertIsNone(read_timeout(Frame(Image.open(os.path.join(HERE, "fixtures", *path)))), path)
+
+    def test_side_label_read_by_text_recognition_wins(self):
+        from valhud.reader import Frame, read_timeout
+
+        class Ocr:
+            def words(self, image):
+                return [("DEFENDERS", 10, 10)]
+        r = read_timeout(Frame(frame("active_attackers_40s.webp")), Ocr())
+        self.assertEqual(r["caller"], "defenders")
+
+    def test_read_frame_reports_it(self):
+        from valhud.reader import read_frame
+        self.assertEqual(read_frame(frame("starting_attackers.webp"))["match"]["timeout"]["state"], "starting")
+        self.assertIsNone(read_frame(frame("no_timeout_tab.webp"))["match"]["timeout"])
+
+
+class WatchTests(unittest.TestCase):
+    ACTIVE = {"state": "active", "caller": "attackers", "seconds": 50}
+
+    def test_starts_after_two_reads_on_the_calling_team(self):
+        w = TimeoutWatch()
+        self.assertIsNone(w.step(self.ACTIVE, "right", now=0))
+        self.assertEqual(w.step(self.ACTIVE, "right", now=1), ("start", "right"))
+        self.assertEqual(w.live(), {"state": "active", "team": "right", "seconds": 50})
+        w2 = TimeoutWatch()
+        w2.step(dict(self.ACTIVE, caller="defenders"), "right", now=0)
+        self.assertEqual(w2.step(dict(self.ACTIVE, caller="defenders"), "right", now=1), ("start", "left"))
+
+    def test_one_frame_is_not_a_timeout(self):
+        w = TimeoutWatch()
+        w.step(self.ACTIVE, "left", now=0)
+        self.assertIsNone(w.step(None, "left", now=1))
+        self.assertIsNone(w.step(self.ACTIVE, "left", now=2))
+        self.assertEqual(w.live(), {})
+
+    def test_a_missed_frame_doesnt_end_it(self):
+        w = TimeoutWatch()
+        w.step(self.ACTIVE, "left", now=0)
+        w.step(self.ACTIVE, "left", now=1)
+        self.assertIsNone(w.step(None, "left", now=2))
+        self.assertIsNone(w.step(self.ACTIVE, "left", now=3))
+        self.assertIsNone(w.step(None, "left", now=5))
+        self.assertEqual(w.step(None, "left", now=7.5), ("end", "left"))
+        self.assertEqual(w.live(), {})
+
+    def test_ends_by_the_clock_and_after_the_longest_timeout(self):
+        w = TimeoutWatch()
+        w.step(self.ACTIVE, "left", now=0)
+        w.step(self.ACTIVE, "left", now=1)
+        self.assertIsNone(w.check(now=4))
+        self.assertEqual(w.check(now=6), ("end", "left"))
+        w.step(self.ACTIVE, "left", now=10)
+        w.step(self.ACTIVE, "left", now=11)
+        self.assertEqual(w.step(self.ACTIVE, "left", now=120), ("end", "left"))
+        self.assertIsNone(w.step(self.ACTIVE, "left", now=121))   # (same banner: not a second timeout)
+        self.assertIsNone(w.step(self.ACTIVE, "left", now=122))
+
+    def test_caller_unknown_waits(self):
+        w = TimeoutWatch()
+        w.step({"state": "active", "caller": None, "seconds": 0}, "left", now=0)
+        self.assertIsNone(w.step({"state": "active", "caller": None, "seconds": 0}, "left", now=1))
+        self.assertEqual(w.step(self.ACTIVE, "left", now=2), ("start", "left"))
+
+
+class AppTests(unittest.TestCase):
+    def reading(self, timeout, attackers="right"):
+        return {"source": "screen", "match": {"attackers": attackers, "timeout": timeout}}
+
+    def test_timeout_card_and_one_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, left={"name": "Saints", "tricode": "SCC"}, right={"name": "Rutgers", "tricode": "RUT"},
+                           timeouts={"left": 2, "right": 2})
+            app.ingest(self.reading(dict(WatchTests.ACTIVE)))
+            app.ingest(self.reading(dict(WatchTests.ACTIVE)))
+            cfg = app.config.get()
+            self.assertEqual(cfg["timeout_call"], "right")
+            self.assertEqual(cfg["timeouts"], {"left": 2, "right": 1})
+            f = app.fields
+            self.assertEqual((f["TIMEOUT"], f["TIMEOUT SIDE"], f["TIMEOUT TEAM"], f["TIMEOUT TRI-CODE"]),
+                             ("ACTIVE", "RIGHT", "Rutgers", "RUT"))
+            self.assertEqual((f["TIMEOUT SECONDS"], f["TIMEOUT TIMER"], f["TIMEOUTS RIGHT"], f["TIMEOUTS LEFT"]),
+                             (50, "0:50", 1, 2))
+            # more frames of the same timeout: none more used
+            app.ingest(self.reading(dict(WatchTests.ACTIVE, seconds=30)))
+            self.assertEqual(app.config.get()["timeouts"]["right"], 1)
+            # over: the card comes down
+            app.timeouts.seen_at -= 10
+            app.ingest(self.reading(None))
+            cfg = app.config.get()
+            self.assertEqual((cfg["timeout_call"], cfg["timeouts"]["right"]), ("", 1))
+            self.assertEqual(app.fields["TIMEOUT"], "")
+
+    def test_card_put_up_by_hand_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, timeouts={"left": 2, "right": 1}, timeout_call="left")   # (pressed, one used)
+            for _ in range(2):
+                app.ingest(self.reading(dict(WatchTests.ACTIVE, caller="defenders")))   # attackers right: left called it
+            cfg = app.config.get()
+            self.assertEqual((cfg["timeout_call"], cfg["timeouts"]), ("left", {"left": 2, "right": 1}))
+
+    def test_none_left_stays_at_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, timeouts={"left": 0, "right": 0})
+            for _ in range(2):
+                app.ingest(self.reading(dict(WatchTests.ACTIVE)))
+            self.assertEqual(app.config.get()["timeouts"], {"left": 0, "right": 0})
+            self.assertEqual(app.config.get()["timeout_call"], "right")
+
+    def test_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_app(tmp, auto_timeouts=False, timeouts={"left": 2, "right": 2})
+            for _ in range(2):
+                app.ingest(self.reading(dict(WatchTests.ACTIVE)))
+            cfg = app.config.get()
+            self.assertEqual((cfg["timeout_call"], cfg["timeouts"]), ("", {"left": 2, "right": 2}))
+            self.assertEqual(app.fields["TIMEOUT SIDE"], "RIGHT")   # (still in the data for graphics)
+
+    def test_fields_without_a_timeout(self):
+        state = game.empty_state()
+        cfg = Config(os.path.join(tempfile.mkdtemp(), "c.json")).get()
+        f = game.fields(state, cfg)
+        self.assertEqual((f["TIMEOUT"], f["TIMEOUT SIDE"], f["TIMEOUTS LEFT"], f["TECH PAUSE"]), ("", "", 2, ""))
+
+
+if __name__ == "__main__":
+    unittest.main()

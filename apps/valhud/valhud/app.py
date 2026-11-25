@@ -32,6 +32,7 @@ from .reader import ScreenReader
 from .series import Series
 from .riotclient import RiotClient, map_from_id as riot_map_name
 from .source import LiveFeed
+from .timeouts import TimeoutWatch
 from .updater import Updater, clean_up_old_update
 
 mimetypes.add_type("font/otf", ".otf")
@@ -100,6 +101,7 @@ class HudApp:
         self.rosters = Rosters()     # players' names seen on each team (which side is which in agent select)
         self.autosides = AutoSides()  # one in-game name a team: the teams put on their sides by themselves
         self._attack_first = AttackFirst()
+        self.timeouts = TimeoutWatch()   # (tactical timeouts read off the screen)
         self.riot.start()
         self.map_art = mapbans.MapArt()
         self.series = Series(config, log)   # maps from Map Bans, won maps, the series score
@@ -428,6 +430,10 @@ class HudApp:
             if not update.get("match") and not update.get("players"):
                 self.refresh(fetch=False)
                 return self.observed_name()
+        if isinstance(update, dict) and update.get("source") == "screen" and isinstance(update.get("match"), dict) \
+                and "timeout" in update["match"]:
+            update = dict(update, match=dict(update["match"]))
+            self._timeout_reading(update["match"].pop("timeout"), update["match"].get("attackers"))
         if isinstance(update, dict) and update.get("source") == "screen":
             if self.config.get().get("team_size") == 2:
                 update = game.two_a_side(update)
@@ -437,6 +443,43 @@ class HudApp:
         if self.mode == "live":
             self.refresh()
         return self.observed_name()
+
+    def _timeout_reading(self, reading, attackers):
+        """A full read's timeout banner (None: not on that frame): a timeout
+        starting uses up one of the calling team's timeouts and puts its
+        timeout card up (as the Control page's "Timeout: <team>" button
+        does); when it's over the card comes down again. Config
+        "auto_timeouts" (Control > Broadcast) turns this off."""
+        if self.mode != "live":
+            return
+        self._timeout_event(self.timeouts.step(reading, attackers))
+
+    def _timeout_event(self, event):
+        if not event:
+            return
+        kind, team = event
+        cfg = self.config.get()
+        name = cfg[team].get("name") or f"{team} team"
+        if not cfg.get("auto_timeouts", True):
+            log(f"Timeout {'called by' if kind == 'start' else 'over for'} {name} (read off the screen; "
+                f"not put on the HUD: reading timeouts is off in Broadcast)")
+            return
+        if kind == "start":
+            change = {"timeout_call": team, "tech_pause": False}
+            if cfg.get("timeout_call") != team:   # (not already put up by hand)
+                left = int((cfg.get("timeouts") or {}).get(team, 0) or 0)
+                if left > 0:
+                    change["timeouts"] = {team: left - 1}
+            self.config.update(change)
+            self._auto_timeout = team
+            left = int((self.config.get().get("timeouts") or {}).get(team, 0) or 0)
+            log(f"Timeout called by {name} (read off the screen): {left or 'no'} timeout{'' if left == 1 else 's'} left",
+                "warn")
+        else:
+            if cfg.get("timeout_call") == team and getattr(self, "_auto_timeout", "") == team:
+                self.config.update({"timeout_call": ""})   # (one put up by hand stays until it's taken off)
+            self._auto_timeout = ""
+            log(f"Timeout over for {name}")
 
     def _check_attack_first(self, update):
         """Who attacks first, put right from the top bar (the attacking team
@@ -523,6 +566,10 @@ class HudApp:
             state["match"]["observed"] = (game.observed_by_agent(state, agent, side)
                                           or game.observed_player(state, text))
         self.series.round_kills(state)
+        if self.mode == "live" and fetch and self.timeouts.team:
+            self._timeout_event(self.timeouts.check())   # (over when the banner's gone and no reads come)
+            cfg = self.config.get()
+        state["match"]["timeout"] = self.timeouts.live()
         if fetch:
             # The series' maps follow Map Bans in the demo match too (owen,
             # 2026-11-19: the board's map cards showed the default maps).
@@ -858,6 +905,10 @@ class HudApp:
                               if isinstance(q, dict)],
             "attack_first": flip.get(cfg.get("attack_first"), "right"),
             "map_bans": {"team_a": flip.get((cfg.get("map_bans") or {}).get("team_a"), "right")}})
+        if self.timeouts.team:   # (a timeout running: still the same team's)
+            self.timeouts.team = flip[self.timeouts.team]
+        if getattr(self, "_auto_timeout", ""):
+            self._auto_timeout = flip[self._auto_timeout]
         log(f"Sides swapped: {cfg['right']['name'] or 'right team'} on the left")
         if engine:   # (connected: the GFX Engine's Global teams swap too, as the HUD follows them)
             self.engine.swap_global()
