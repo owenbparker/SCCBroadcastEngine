@@ -194,17 +194,26 @@
   // The round win graphic: owen's "Round Win Graphic SCC" fig (1573 x 467),
   // a #F9C229 flash, then the panel; the winning team in the yellow bar as
   // (team, side, how they won; owen 2026-11-19).
-  ui.rwin = el("", stage); ui.rwin.id = "rwin";
-  el("bg", ui.rwin); el("flash", ui.rwin);
-  // the crest: the round winner's logo (owen, 2026-11-19), the SCC crest
-  // when the team has none
-  ui.rwinCrest = el("crest", ui.rwin);
-  setText(text("nar", ui.rwin, 329, 192, 916, 138, "c", null, "word"), "ROUND WIN");
-  el("bar", ui.rwin);
-  var rwinWho = el("who", ui.rwin);
-  // the yellow bar: who, their side and how they won (no logo: it's up top)
-  ui.rwinTeam = el("team", rwinWho, null, "span"); ui.rwinSide = el("side", rwinWho, null, "span");
-  ui.rwinHow = el("how", rwinWho, null, "span");
+  // (#rwin is the HUD's own, which HUD Builder copies restyle; #rwbug is
+  // the one picked in Control > Round win bug, owen 2026-11-25, built the
+  // same way so a copy's edits to #rwin never reach it.)
+  function buildRwin(id) {
+    var box = el("", stage); box.id = id;
+    var o = { box: box };
+    el("bg", box); o.flash = el("flash", box);
+    // the crest: the round winner's logo (owen, 2026-11-19), the SCC crest
+    // when the team has none
+    o.crest = el("crest", box);
+    setText(text("nar", box, 329, 192, 916, 138, "c", null, "word"), "ROUND WIN");
+    el("bar", box);
+    var who = el("who", box);
+    // the yellow bar: who, their side and how they won (no logo: it's up top)
+    o.team = el("team", who, null, "span"); o.side = el("side", who, null, "span");
+    o.how = el("how", who, null, "span");
+    return o;
+  }
+  ui.rwinOwn = buildRwin("rwin");
+  ui.rwinBug = buildRwin("rwbug");
   ui.banner = el("", stage); ui.banner.id = "banner";
   el("bar", ui.banner);
   ui.bannerText = text("nar", ui.banner, 8, 0, null, null, "c", null, "txt");
@@ -739,7 +748,7 @@
   function editorShows(s, st) {
     var wantR = st === "rwin" || st === "everything", wantA = st === "ace" || st === "everything";
     if (wantR && !shownByEditor.rwin) showRoundWin(s, "left", true);
-    if (!wantR && shownByEditor.rwin) { clearTimeout(rwin.inner); ui.rwin.classList.remove("on", "text", "out"); }
+    if (!wantR && shownByEditor.rwin) hideRoundWin();
     shownByEditor.rwin = wantR;
     if (wantA && !shownByEditor.ace) {
       var o = s.game.match.observed || { team: "left", slot: 1 };
@@ -786,27 +795,68 @@
     if (!SET("rwin.on", true)) return;
     showRoundWin(s, side, false);
   }
+  // The round win bugs to pick from (Control > Round win bug): "own" is the
+  // HUD's own (SCC 2027, or a HUD Builder copy's restyled one), the others
+  // are drawn in #rwbug. in / out: the colour wipe at the start and the end
+  // ("" = none: the graphic just fades out, as it always has).
+  var BUGS = {
+    own: { cls: "", in: "", out: "" },
+    scc2027: { cls: "scc", in: "", out: "" },
+    cen: { cls: "cen", in: "#FC003B", out: "#FC003B" }
+  };
+  function hexOk(v) { return /^#?[0-9a-f]{6}$/i.test(v || "") ? (v.charAt(0) === "#" ? v : "#" + v) : ""; }
+  function rwinLook(cfg) {
+    var rw = cfg.round_win || {}, bug = BUGS[rw.bug] ? rw.bug : "own", b = BUGS[bug];
+    if (params.get("bug") && BUGS[params.get("bug")]) { bug = params.get("bug"); b = BUGS[bug]; }
+    return { bug: bug, cls: b.cls, in: hexOk(rw.intro) || b.in, out: hexOk(rw.outro) || b.out };
+  }
+  function wipe(c) {
+    return "linear-gradient(90deg, transparent, " + c + " 20%, " + c + " 79.8%, transparent)";
+  }
+  function hideRoundWin() {
+    clearTimeout(rwin.timer); clearTimeout(rwin.inner); clearTimeout(rwin.out);
+    [ui.rwinOwn, ui.rwinBug].forEach(function (o) { o.box.classList.remove("on", "text", "out", "wipe"); });
+  }
   function showRoundWin(s, side, hold) {
-    var m = s.game.match, cfg = s.config;
-    ui.rwinSide.textContent = m.attackers === side ? "ATTACK" : "DEFENSE";
+    var m = s.game.match, cfg = s.config, look = rwinLook(cfg);
+    hideRoundWin();
+    var o = look.bug === "own" ? ui.rwinOwn : ui.rwinBug;
+    if (o === ui.rwinBug) o.box.className = look.cls;
+    o.side.textContent = m.attackers === side ? "ATTACK" : "DEFENSE";
     var logo = cfg[side].logo ? url(cfg[side].logo) : "";
-    ui.rwinCrest.style.backgroundImage = logo ? 'url("' + logo + '")' : "";
-    ui.rwinTeam.textContent = upper(cfg[side].tricode || cfg[side].name);
+    o.crest.style.backgroundImage = logo ? 'url("' + logo + '")' : "";
+    o.team.textContent = upper(cfg[side].tricode || cfg[side].name);
     // how: this round's entry in the round history (or the last round won)
     var rounds = m.rounds || [], last = rounds[rounds.length - 1];
     var how = m.win_type || (last && last.winner === side ? last.win_type : "");
-    ui.rwinHow.textContent = WIN_WORDS[how] || "";
-    toggle(ui.rwinHow, "hidden", !WIN_WORDS[how]);
-    var R = ui.rwin;
-    clearTimeout(rwin.timer); clearTimeout(rwin.inner); clearTimeout(rwin.out);
-    R.classList.remove("on", "text", "out");
+    o.how.textContent = WIN_WORDS[how] || "";
+    toggle(o.how, "hidden", !WIN_WORDS[how]);
+    // the intro colour (inline and important: over a copy's own edits too)
+    if (look.in) o.flash.style.setProperty("background-image", wipe(look.in), "important");
+    else o.flash.style.removeProperty("background-image");
+    var R = o.box;
     void R.offsetWidth;
     R.classList.add("on");
     rwin.inner = setTimeout(function () { R.classList.add("text"); }, 750);
     if (hold) return;
     var rwMs = SET("rwin.seconds", 4.7) * 1000;
-    rwin.out = setTimeout(function () { R.classList.add("out"); }, rwMs);
-    rwin.timer = setTimeout(function () { R.classList.remove("on", "text", "out"); }, rwMs + 400);
+    rwin.out = setTimeout(function () {
+      // the outro: a colour wipe over the graphic that then closes up, or
+      // (no outro colour) a fade
+      if (look.out) {
+        o.flash.style.setProperty("background-image", wipe(look.out), "important");
+        R.classList.add("wipe");
+      }
+      R.classList.add("out");
+    }, rwMs);
+    rwin.timer = setTimeout(hideRoundWin, rwMs + (look.out ? 800 : 400));
+  }
+  // Control's "Test" button: plays the picked bug once (left team).
+  var rwTest = null;
+  function checkRwinTest(s) {
+    var t = (s.config.round_win || {}).test || 0;
+    if (rwTest !== null && t !== rwTest && !BOARD_ONLY) showRoundWin(s, "left", false);
+    rwTest = t;
   }
 
   // ------------------------------------------------------------- listen
@@ -882,6 +932,7 @@
     setBomb(bombShown && !BOARD_ONLY);
     setBanner(s);
     checkRoundWin(s);
+    checkRwinTest(s);
 
     // Maps, event, sponsors.
     var ev = cfg.event_text || [cfg.event, cfg.stage].filter(Boolean).join(" | ");

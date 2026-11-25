@@ -82,6 +82,12 @@ DEFAULTS = {
     # owen's Figma files, 2026-11-18) or "default2026" (the HUD as it was:
     # the templates in web/hud and web/scoreboard).
     "hud_design": "scc2027",
+    # SCC 2027 (and its HUD Builder copies): the round win bug (Control >
+    # Round win bug, owen 2026-11-25): "own" (the HUD's own look), "scc2027"
+    # or "cen"; intro / outro: the colour wipe in and out as #RRGGBB ("" =
+    # the bug's own: none on the way out for SCC 2027, a plain fade);
+    # test: bumped by the Test button to play it once.
+    "round_win": {"bug": "own", "intro": "", "outro": "", "test": 0},
     # SCC 2027: the text in the top right strip ("" = the GFX Engine's
     # event and stage, e.g. "AURORA SERIES | PLAYOFFS").
     "event_text": "",
