@@ -1,0 +1,10 @@
+{
+ "id": "sakura-val-2026-11-25-topblend",
+ "base": "val-scc2027",
+ "copy_name": "sakura",
+ "about": "Sakura top bar halves: maroon fading to dark toward the middle, as in owen's Sak Condensed .fig (Rectangle 835/832)",
+ "rules": {
+  "#top > div:nth-of-type(3) > div:nth-of-type(1)": {"bg": "#4A1F36", "img": "sakura-top-l.svg", "imgKind": "bg"},
+  "#top > div:nth-of-type(4) > div:nth-of-type(1)": {"bg": "#4A1F36", "img": "sakura-top-r.svg", "imgKind": "bg"}
+ }
+}

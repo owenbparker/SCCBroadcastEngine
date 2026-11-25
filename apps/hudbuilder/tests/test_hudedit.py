@@ -83,11 +83,14 @@ class HudEditStore(unittest.TestCase):
         cur = hudedit.load(d, key)
         hudedit.save(d, key, {"rules": {"#event": {"x": 5, "bg": "#000"}, "#keep": {"op": 0.5}}}, cur["rev"])
         done = hudedit.apply_presets(d)
-        self.assertEqual(done, [("sakura-val-2026-11-24", sak["id"])])
+        self.assertEqual(done, [("sakura-val-2026-11-24", sak["id"]), ("sakura-val-2026-11-25-topblend", sak["id"])])
         rules = hudedit.load(d, key)["rules"]
         self.assertEqual(rules["#event"], {"x": 5.0, "bg": "#4A1F36"})       # its own change kept, colour set
         self.assertEqual(rules["#keep"], {"op": 0.5})
         self.assertEqual(rules["#rwin > div:nth-of-type(6)"], {"color": "#FFF7FA"})
+        top = rules["#top > div:nth-of-type(3) > div:nth-of-type(1)"]     # blended, as in the .fig
+        self.assertEqual((top["bg"], top["imgKind"]), ("#4A1F36", "bg"))
+        self.assertTrue(top["img"].endswith(".svg"))
         pic = rules["#board > div:nth-of-type(1)"]["img"]
         self.assertTrue(os.path.isfile(os.path.join(hudedit.folder(d), "assets", pic)))
         self.assertTrue(pic.endswith(".svg"))
