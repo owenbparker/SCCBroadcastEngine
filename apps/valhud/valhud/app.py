@@ -431,6 +431,8 @@ class HudApp:
             self._observer_timeout_at = time.time()
             self._timeout_reading({k: v for k, v in to.items() if k != "attackers"} if isinstance(to, dict) else None,
                                   to.get("attackers") if isinstance(to, dict) else None)
+            if "tech_pause" in update:
+                self._tech_pause_reading(update.pop("tech_pause"))
             if not update.get("match") and not update.get("players") and "spectating" not in update:
                 return {"ok": True}
         if isinstance(update, dict) and isinstance(update.get("spectating"), dict):
@@ -444,8 +446,11 @@ class HudApp:
                 and "timeout" in update["match"]:
             update = dict(update, match=dict(update["match"]))
             reading = update["match"].pop("timeout")
+            paused = update["match"].pop("tech_pause", None)
             if time.time() - getattr(self, "_observer_timeout_at", 0.0) > self.OBSERVER_TIMEOUTS_FOR:
                 self._timeout_reading(reading, update["match"].get("attackers"))
+                if paused is not None:
+                    self._tech_pause_reading(paused)
         if isinstance(update, dict) and update.get("source") == "screen":
             if self.config.get().get("team_size") == 2:
                 update = game.two_a_side(update)
@@ -470,6 +475,33 @@ class HudApp:
             return
         self._timeout_event(self.timeouts.step(reading, attackers))
 
+    def _tech_pause_reading(self, paused, now=None):
+        """The reader's "the game's clock has stopped" (5 s stopped -> True,
+        running 2 s -> False; reader.ClockWatch): the Technical pause banner
+        goes up and comes down with it (owen, 2026-11-25). Not while a
+        tactical timeout is up (that stops the clock too); one put up by hand
+        is left alone. Config "auto_tech_pause" turns this off."""
+        if self.mode != "live":
+            return
+        now = time.time() if now is None else now
+        self._tech_seen_at = now
+        cfg = self.config.get()
+        mine = getattr(self, "_auto_tech", False)
+        if paused and not mine and not cfg.get("tech_pause"):
+            if not cfg.get("auto_tech_pause", True) or cfg.get("timeout_call") or self.timeouts.team:
+                return
+            self.config.update({"tech_pause": True})
+            self._auto_tech = True
+            log("Technical pause: the game's clock has stopped for 5 seconds (read off the screen)", "warn")
+        elif not paused and mine:
+            self._end_auto_tech("the game's clock is running again")
+
+    def _end_auto_tech(self, why):
+        self._auto_tech = False
+        if self.config.get().get("tech_pause"):
+            self.config.update({"tech_pause": False})
+            log(f"Technical pause over: {why}")
+
     def _timeout_event(self, event):
         if not event:
             return
@@ -481,6 +513,7 @@ class HudApp:
                 f"not put on the HUD: reading timeouts is off in Broadcast)")
             return
         if kind == "start":
+            self._auto_tech = False
             change = {"timeout_call": team, "tech_pause": False}
             if cfg.get("timeout_call") != team:   # (not already put up by hand)
                 left = int((cfg.get("timeouts") or {}).get(team, 0) or 0)
@@ -582,6 +615,10 @@ class HudApp:
             state["match"]["observed"] = (game.observed_by_agent(state, agent, side)
                                           or game.observed_player(state, text))
         self.series.round_kills(state)
+        if self.mode == "live" and fetch and getattr(self, "_auto_tech", False) \
+                and time.time() - getattr(self, "_tech_seen_at", 0.0) > 15:
+            self._end_auto_tech("no clock readings for 15 seconds")
+            cfg = self.config.get()
         if self.mode == "live" and fetch and self.timeouts.team:
             self._timeout_event(self.timeouts.check())   # (over when the banner's gone and no reads come)
             cfg = self.config.get()

@@ -673,6 +673,76 @@ def read_timeout(frame, ocr=None):
     return {"state": state, "caller": caller, "seconds": seconds}
 
 
+# --- technical pauses ---------------------------------------------------------
+# owen (2026-11-25): the game paused for 5 s or more -> the technical pause
+# banner; the clock running again for 2 s or more -> it goes. Paused = the
+# top bar's clock (m:ss) not changing. Its other looks don't count: at the
+# end of a round it stops on seconds.hundredths ("16.55") for ~7 s, the last
+# 10 s of a round count down that way too, and once the spike's planted the
+# spike icon is there instead. A tactical timeout stops the clock as well
+# (its banner is on screen: not a technical pause).
+CLOCK_BOX = (915, 28, 1005, 68)
+
+
+def clock_face(frame):
+    """The top bar's clock as a picture (to compare with the next frame's)
+    when it shows m:ss, else None."""
+    np = _np()
+    a = np.asarray(frame.crop(*CLOCK_BOX).convert("L"))
+    ink = a > 170
+    cols = ink.any(axis=0)
+    x, w, colon = 0, len(cols), False
+    while x < w:
+        if cols[x]:
+            start = x
+            while x < w and cols[x]:
+                x += 1
+            rows = np.nonzero(ink[:, start:x].any(axis=1))[0]
+            if x - start <= 5 and len(rows):
+                if rows[0] > 20:
+                    return None   # a full stop low down: seconds.hundredths
+                colon = True      # two dots, the top one high up: m:ss
+        x += 1
+    return a.astype(np.int16) if colon else None
+
+
+class ClockWatch:
+    """Is the game paused? (see clock_face) PAUSE_AFTER seconds of the same
+    m:ss clock -> paused; then the clock changing for RUN_FOR seconds (it
+    ticks at least twice) -> not. Anything but an m:ss clock leaves it as
+    it was (a pause carries on through Tab, a cut or a missed frame)."""
+    PAUSE_AFTER = 5.0
+    RUN_FOR = 2.0
+
+    def __init__(self):
+        self.paused = False
+        self._face, self._changed_at, self._running_from = None, 0.0, None
+
+    def see(self, face, now=None, timeout=False):
+        now = time.time() if now is None else now
+        if timeout:   # (a tactical timeout's banner: the clock stops for that)
+            self.paused, self._face, self._running_from = False, None, None
+            return False
+        if face is None:
+            self._face = None
+            return self.paused
+        if self._face is None or self._face.shape != face.shape:
+            self._face, self._changed_at = face, now
+            return self.paused
+        changed = float(_np().abs(face - self._face).mean()) >= 3
+        if changed:
+            self._face = face
+            if self.paused:
+                if self._running_from is None or now - self._changed_at > 2.6:
+                    self._running_from = now   # (first tick, or ticks too far apart to be running)
+                elif now - self._running_from >= self.RUN_FOR:
+                    self.paused, self._running_from = False, None
+            self._changed_at = now
+        elif not self.paused and now - self._changed_at >= self.PAUSE_AFTER:
+            self.paused, self._running_from = True, None
+        return self.paused
+
+
 def scoreboard_open(frame):
     """Is the Tab scoreboard on screen? Two blocks of coloured rows (five a
     team, or two in a 2v2): usually teal above red, but both teal (or both
@@ -1914,6 +1984,8 @@ class ScreenReader:
         self._bank_saved = time.time()
         self._shadow_differs = 0.0
         self.health = ReadingHealth()
+        self.clock = ClockWatch()           # the game paused (technical pause), main loop
+        self.spectate_clock = ClockWatch()  # ...and the observer PC's spectate loop
         self.available, self.reason = self._check()
 
     def _check(self):
@@ -2013,10 +2085,13 @@ class ScreenReader:
                     if attackers:
                         to = read_timeout(frame, self.ocr)
                         reading["timeout"] = dict(to, attackers=attackers) if to else None
+                        reading["tech_pause"] = self.spectate_clock.see(clock_face(frame), timeout=bool(to))
                     if reading != last or time.time() - sent_at > 1:
-                        update = {"source": "observer", "spectating": {k: v for k, v in reading.items() if k != "timeout"}}
-                        if "timeout" in reading:
-                            update["timeout"] = reading["timeout"]
+                        update = {"source": "observer", "spectating": {k: v for k, v in reading.items()
+                                                                       if k not in ("timeout", "tech_pause")}}
+                        for k in ("timeout", "tech_pause"):
+                            if k in reading:
+                                update[k] = reading[k]
                         reply = self.send(update) or {}
                         last, sent_at = reading, time.time()
                         who = reply.get("observed") if isinstance(reply, dict) else None
@@ -2435,6 +2510,9 @@ class ScreenReader:
                     self.health.frame("match")
                     self._held_now = []
                     update = read_frame(image, self.ocr, self.agents, self.bank)
+                    if "timeout" in update["match"]:   # (the top bar's on screen: its clock too)
+                        update["match"]["tech_pause"] = self.clock.see(clock_face(Frame(image)), shot_at,
+                                                                       bool(update["match"]["timeout"]))
                     if time.time() - self._bank_saved > 60:
                         self._bank_saved = time.time()
                         self.bank.save()
