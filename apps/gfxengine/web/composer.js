@@ -542,7 +542,52 @@
   let lastGuides = null, settleId = 0;
   function settle() {
     cancelAnimationFrame(settleId);
-    settleId = requestAnimationFrame(() => { settleId = 0; if (comp) drawSelection(lastGuides); });
+    settleId = requestAnimationFrame(() => { settleId = 0; if (!comp) return; followText(); drawSelection(lastGuides); });
+  }
+  // Auto width / height text: its saved box follows its text (the runtime sizes
+  // it on air too), so the numbers, handles and snapping match what's drawn.
+  const r2 = v => Math.round(v * 100) / 100;
+  // (a whole number of pixels, a little wider than the text so it never wraps
+  //  when it's made Auto height; the text stays put: the extra is on the side
+  //  away from how it's aligned)
+  function wholeWidth(l, x, w) {
+    const W = Math.ceil(w + 0.01), extra = W - w;
+    return { x: r2(x - ({ center: extra / 2, right: extra }[l.align || "left"] || 0)), w: W };
+  }
+  function followText() {
+    if (!root) return;
+    let moved = false;
+    for (const l of comp.layers) {
+      if (l.type !== "text" || (l.sizing !== "autoW" && l.sizing !== "autoH") || l.scroll > 0) continue;
+      const f = GFX.textFrame(root, l);
+      if (!f || !f.box.w) continue;
+      if (l.sizing === "autoW") {
+        const b = wholeWidth(l, f.box.x, f.box.w);
+        if (Math.abs(b.x - l.x) > 0.5 || Math.abs(b.w - l.w) >= 1) { l.x = b.x; l.w = b.w; moved = true; }
+      }
+      if (Math.abs(f.box.h - l.h) >= 1 || f.box.h > l.h) { l.h = Math.ceil(f.box.h); moved = true; }
+    }
+    if (moved) { pending = true; saveSoon(); syncPropsGeometry(); }
+  }
+  // Figma's text resizing. Switching keeps the text exactly where it is: the box
+  // is fitted around it. (Auto: it no longer shrinks or squeezes to fit.)
+  function setSizing(l, v) {
+    snapshot();
+    const f = root && GFX.textFrame(root, l);
+    if (f && v) {
+      if (v === "autoW") Object.assign(l, wholeWidth(l, f.x, f.w));
+      l.y = r2(f.y); l.h = Math.ceil(f.h);
+      delete l.baseline;   // (its top is now where the letters' line starts)
+    }
+    if (v) l.sizing = v; else delete l.sizing;
+    changed({ props: true });
+  }
+  // Changing an auto box's size by hand, like Figma: a new width makes Auto
+  // width text Auto height; a new height makes it a fixed size.
+  function textResized(l, how) {
+    if (l.type !== "text" || !l.sizing) return;
+    if (how === "w" && l.sizing === "autoW") l.sizing = "autoH";
+    else if (how !== "w") delete l.sizing;
   }
   if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", settle);
 
@@ -693,7 +738,7 @@
       const qx = (ev.clientX - r.left - offX) / scale, qy = (ev.clientY - r.top - offY) / scale;
       let dx = qx - start.px, dy = qy - start.py;
       if (!moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
-      if (!moved) { snapshot(); moved = true; }
+      if (!moved) { snapshot(); moved = true; if (handle) textResized(l, /^[ew]$/.test(handle) ? "w" : "both"); }
       let guides = [];
       if (!handle) {
         if (ev.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
@@ -995,6 +1040,7 @@
     return extra.label && kind !== "check" ? h("label", {}, extra.label, input) : kind === "check" ? input : input;
   }
   const lab = (text, ...kids) => h("label", {}, text, ...kids);
+  const rerenders = input => { input.addEventListener("change", () => renderProps()); return input; };
 
   function syncPropsGeometry() {
     const l = layerById(selected);
@@ -1044,7 +1090,13 @@
         h("div", { class: "grid3" },
           lab("Align", bind(l, "align", "select", { options: [["left", "Left"], ["center", "Centre"], ["right", "Right"]] })),
           lab("Vertical", bind(l, "valign", "select", { options: [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]] })),
-          lab("Too long", bind(l, "fit", "select", { options: [["shrink", "Shrink"], ["squeeze", "Squeeze"], ["none", "Overflow"]] }))),
+          l.sizing === "autoW" ? lab("Too long", h("select", { disabled: true, title: "Auto width: the box grows with the text" }, h("option", {}, "Box grows"))) :
+            lab("Too long", rerenders(bind(l, "fit", "select", { options: [["shrink", "Shrink"], ["squeeze", "Squeeze"], ["truncate", "Truncate (…)"], ["none", "Overflow"]] })))),
+        h("div", { class: "grid3" },
+          lab("Resizing", h("select", { "data-k": "sizing", title: "Like Figma: Auto width grows the box with the text, Auto height wraps it to the width and grows down, Fixed size keeps the box",
+            onchange: e => setSizing(l, e.target.value) },
+            [["", "Fixed size"], ["autoW", "Auto width"], ["autoH", "Auto height"]].map(([v, t]) => h("option", { value: v, selected: (l.sizing || "") === v }, t)))),
+          l.fit === "truncate" && l.sizing !== "autoW" ? lab("Max lines", bind(l, "maxLines", "number", { min: 0, step: 1 })) : null),
         h("div", { class: "grid3" },
           lab("Tracking", bind(l, "tracking", "number", { step: 10 })),
           lab("Line height", bind(l, "lineHeight", "number", { step: 0.05, min: 0.5 })),
@@ -1236,8 +1288,8 @@
   }
   function layoutSection(l) {
     const ratio = l.w / Math.max(1, l.h);
-    const setW = v => { v = Math.max(1, v); if (keepRatio) l.h = Math.max(1, Math.round(v / ratio)); l.w = v; };
-    const setH = v => { v = Math.max(1, v); if (keepRatio) l.w = Math.max(1, Math.round(v * ratio)); l.h = v; };
+    const setW = v => { v = Math.max(1, v); textResized(l, keepRatio ? "both" : "w"); if (keepRatio) l.h = Math.max(1, Math.round(v / ratio)); l.w = v; };
+    const setH = v => { v = Math.max(1, v); textResized(l, "h"); if (keepRatio) l.w = Math.max(1, Math.round(v * ratio)); l.h = v; };
     return h("div", { class: "sect design" }, h("h3", {}, "Layout"),
       h("div", { class: "muted small sub" }, "Dimensions"),
       h("div", { class: "rot-row" }, num(l, "w", { k: "W", min: 1, set: setW }), num(l, "h", { k: "H", min: 1, set: setH }),

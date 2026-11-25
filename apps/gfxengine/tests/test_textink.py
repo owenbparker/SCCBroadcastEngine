@@ -39,5 +39,22 @@ class TextInkTest(unittest.TestCase):
             self.assertNotIn("TextInk", read(app, "web", "runtime.js"))
 
 
+class TextSizingTest(unittest.TestCase):
+    """Figma's Auto width / Auto height / Truncate: the same in both runtimes, and opt-in."""
+
+    def sizing(self, app):
+        text = read(app, "web", "runtime.js")
+        a = text.index("  // --- text sizing:")
+        return text[a:text.index("  // --- end text sizing ---", a)]
+
+    def test_same_in_both_runtimes(self):
+        self.assertEqual(self.sizing("gfxengine"), self.sizing("hudbuilder"))
+
+    def test_only_layers_that_ask_for_it(self):
+        block = self.sizing("gfxengine")
+        self.assertIn('(layer.sizing !== "autoW" && layer.sizing !== "autoH")) return;', block)
+        self.assertIn('layer.fit === "truncate"', block)
+
+
 if __name__ == "__main__":
     unittest.main()
