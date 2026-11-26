@@ -180,7 +180,7 @@ class ServerTests(unittest.TestCase):
                 self.assertNotIn("Gerrit 2026", page("/overlay-classic"))
                 post("/api/config", {"design": "classic"})
                 self.assertNotIn("Gerrit 2026", page("/overlay"))
-                # NEW GERRIT: its page, fonts and replay stinger (upload, cut, preview, remove).
+                # NEW GERRIT: its page, fonts, replay cams and goal/replay preview.
                 for path in ("/overlay-newgerrit", "/fonts/Rubik-600.woff2", "/fonts/Rubik-700.woff2",
                              "/fonts/Rubik-600-italic.woff2", "/designs/newgerrit/sponsor-bg.jpg"):
                     with urllib.request.urlopen(base + path, timeout=5) as r:
@@ -195,41 +195,17 @@ class ServerTests(unittest.TestCase):
                 self.assertFalse(app.config.get()["show"]["replay_cams"])
                 self.assertTrue(app.config.get()["show"]["players"])
                 post("/api/config", {"show": {"replay_cams": True}})
-                import rlhud.config as config_mod
-                import rlhud.replaystinger as rs_mod
-                old_dirs = (config_mod.STINGER_DIR, rs_mod.STINGER_DIR)
-                config_mod.STINGER_DIR = rs_mod.STINGER_DIR = os.path.join(tmp, "stingers")
-                try:
-                    # By default: the engine's "Replay stinger", else the built-in SCC one (no engine here).
-                    st = app.overlay_state()["config"]["replay_stinger"]
-                    self.assertEqual((st["from"], st["src"], st["cut"]), ("builtin", "builtin-stinger/SCC_Replay.webm", 653))
-                    with urllib.request.urlopen(base + "/builtin-stinger/SCC_Replay.webm", timeout=5) as r:
-                        self.assertEqual(r.status, 200)
-                    def upload(name, blob):
-                        req = urllib.request.Request(base + "/api/stinger/upload?name=" + urllib.parse.quote(name), blob,
-                                                     {"Content-Type": "application/octet-stream"})
-                        return json.loads(urllib.request.urlopen(req, timeout=5).read())
+                # No replay stinger: the replay graphics slide in and out, and nothing serves one.
+                self.assertNotIn("replay_stinger", app.overlay_state()["config"])
+                self.assertNotIn("<video", page("/overlay-newgerrit"))
+                for gone in ("/builtin-stinger/SCC_Replay.webm", "/stingers/x.webm"):
                     with self.assertRaises(urllib.error.HTTPError):
-                        upload("x.gif", b"GIF89a")
-                    # Your own (an optional override).
-                    upload("SCC Replay!.webm", b"\x1aE\xdf\xa3 not really a webm")
-                    st = app.overlay_state()["config"]["replay_stinger"]
-                    self.assertEqual((st["from"], st["src"]), ("upload", "stingers/SCC Replay.webm"))
-                    with urllib.request.urlopen(base + "/stingers/SCC%20Replay.webm", timeout=5) as r:
-                        self.assertEqual(r.read()[:4], b"\x1aE\xdf\xa3")
-                    post("/api/config", {"replay_stinger": {"cut": 600}})
-                    self.assertEqual(app.overlay_state()["config"]["replay_stinger"]["cut"], 600)
-                    post("/api/stinger/preview", {"team": 1})
-                    self.assertEqual(app.overlay_state()["preview"]["team"], 1)
-                    post("/api/stinger/remove", {})   # (back to the engine's / the built-in one)
-                    self.assertEqual(app.overlay_state()["config"]["replay_stinger"]["from"], "builtin")
-                    # The engine's: its transition named "Replay stinger".
-                    self.assertEqual(rs_mod.pick_replay([{"type": "stinger", "name": "SCC stinger", "src": "a.webm"},
-                                                         {"type": "stinger", "name": "Replay stinger", "src": "b.webm"}])["src"], "b.webm")
-                    self.assertEqual(rs_mod.pick_replay([{"type": "stinger", "name": "My replay", "src": "c.webm"}])["src"], "c.webm")
-                    self.assertIsNone(rs_mod.pick_replay([{"type": "fade", "name": "Replay stinger"}]))
-                finally:
-                    config_mod.STINGER_DIR, rs_mod.STINGER_DIR = old_dirs
+                        urllib.request.urlopen(base + gone, timeout=5)
+                # Preview a goal and its replay (and the old address, for existing Companion buttons).
+                post("/api/replay/preview", {"team": 1})
+                self.assertEqual(app.overlay_state()["preview"]["team"], 1)
+                post("/api/stinger/preview", {"team": 0})
+                self.assertEqual(app.overlay_state()["preview"]["team"], 0)
                 post("/api/config", {"design": "classic"})
                 # An observer PC sends the game.
                 post("/api/ingest", {"messages": [["UpdateState", UPDATE["Data"]]]})

@@ -16,11 +16,10 @@
   Around a goal (the replay):
     - a goal is scored: three player cams a side fly in at once, and the
       scoring team's plate on the top bar turns into GOAL;
-    - the game's replay starts: the replay stinger (the GFX Engine's "Replay
-      stinger", or one uploaded in the control panel) plays, and under it the HUD's lower parts go and the replay
-      lower third (scorer, speed, assist) flies in; the clock shows REPLAY;
-    - the replay ends: the cams and the lower third leave (no stinger), and
-      the HUD's lower parts come back.
+    - the game's replay starts: the HUD's lower parts slide away, then the
+      replay lower third (scorer, speed, assist) slides in; the clock shows REPLAY;
+    - the replay ends: the cams and the lower third slide out, then the HUD's
+      lower parts slide back.
   Fed by /api/stream.
 -->
 <style>
@@ -42,8 +41,6 @@
   html.fit body { transform-origin: 0 0; }
   .abs, .abs * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  /* Under the stinger: things go and come at once. */
-  body.cut *, body.cut *::before, body.cut *::after { transition: none !important; }
   /* The design's soft white edge on coloured boxes. */
   .rim { box-shadow: inset 0 0 0 4px rgba(255, 255, 255, .22); }
 
@@ -232,10 +229,6 @@
   #lower:not(.on) .bar { transition: transform .35s var(--back); }
   #lower:not(.on) .line { transition: transform .35s var(--back); }
   #lower:not(.on) .it { transition: opacity .2s; }
-
-  /* === the replay stinger ================================================== */
-  #stinger { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; z-index: 50; opacity: 0; pointer-events: none; }
-  #stinger.on { opacity: 1; }
 </style>
 <!-- HUD Builder > Game HUDs: the changes saved for this design, applied over the page -->
 <script src="/hudedit.js" data-design="rl-newgerrit"></script>
@@ -290,8 +283,6 @@
     <div class="it c"><img class="ai" src="designs/gerrit2026/assist.png" alt=""><span class="t assister"></span></div>
   </div>
 </div>
-
-<video id="stinger" playsinline preload="auto"></video>
 
 <script>
 (function () {
@@ -611,48 +602,21 @@
   // mode: "hud" | "goal" (cams in, GOAL on the bug) | "replay" (lower third, REPLAY)
   const view = { mode: "hud", goalSide: null, cams: false, lower: false, hudAway: true, away: true, backAt: 0 };
   let sim = null;            // the control panel's preview: {goal, replay} times
-  let stingerSrc = "", cutTimer = null, replayLive = false;
-  const stinger = $("#stinger");
-  function stingerCfg() { return S.config.replay_stinger || {}; }
-  function loadStinger() {
-    const st = stingerCfg(), src = st.on !== false && st.src ? st.src : "";
-    if (src !== stingerSrc) { stingerSrc = src; if (src) { stinger.src = src; stinger.load(); } else stinger.removeAttribute("src"); }
-  }
-  stinger.addEventListener("ended", () => stinger.classList.remove("on"));
-  stinger.addEventListener("error", () => { stinger.classList.remove("on"); if (!replayLive && view.mode === "replay") goLive(); });
+  let lowerTimer = null, replayLive = false;
   // Control's "Player cams during the replay" (on unless turned off).
   function replayCams() { return ((S.config || {}).show || {}).replay_cams !== false; }
-  function goLive() {
-    // (under the stinger: the HUD's lower parts cut away, the lower third flies in,
-    //  and the cams go too when they're turned off for replays)
-    clearTimeout(cutTimer);
-    replayLive = true;
-    if (!replayCams()) view.cams = false;
-    document.body.classList.add("cut");
-    view.hudAway = true; view.mode = "replay";
-    paint();
-    void document.body.offsetWidth;
-    document.body.classList.remove("cut");
-    view.lower = true;
-    paint();
-  }
   function startReplay() {
-    view.mode = "replay"; view.cams = true; replayLive = false;
-    if (stingerSrc && stinger.readyState >= 1) {
-      const st = stingerCfg(), dur = (stinger.duration || 1) * 1000;
-      const cut = Number.isFinite(+st.cut) && st.cut !== null && st.cut !== "" ? Math.max(0, +st.cut) : dur / 2;
-      stinger.currentTime = 0;
-      stinger.muted = st.audio === false;
-      stinger.volume = Math.max(0, Math.min(1, st.volume == null ? 1 : +st.volume));
-      stinger.classList.add("on");
-      const p = stinger.play();
-      const go = () => { cutTimer = setTimeout(goLive, Math.min(cut, dur)); };
-      if (p && p.then) p.then(go).catch(() => { stinger.muted = true; stinger.play().then(go).catch(() => { stinger.classList.remove("on"); goLive(); }); });
-      else go();
-    } else goLive();
+    // The HUD's lower parts slide away (and the cams, when they're off for replays),
+    // then the replay lower third slides in: the end of the replay, in reverse.
+    clearTimeout(lowerTimer);
+    view.mode = "replay"; replayLive = true;
+    view.cams = replayCams();
+    view.hudAway = true;
+    paint();
+    lowerTimer = setTimeout(() => { if (view.mode === "replay") { view.lower = true; paint(); } }, 450);
   }
   function endReplay() {
-    clearTimeout(cutTimer);
+    clearTimeout(lowerTimer);
     replayLive = false;
     view.mode = "hud"; view.cams = false; view.lower = false;
     // (the HUD comes back once the cams and lower third are on their way out)
@@ -704,7 +668,6 @@
     S = s;
     window.rlHud = s;   // (for checking the overlay)
     syncPeers();
-    loadStinger();
     // The control panel's "Preview goal and replay": a made-up goal for the scoring side picked there.
     const pv = s.preview || null;
     if (firstPreview === null) firstPreview = pv ? pv.at : 0;

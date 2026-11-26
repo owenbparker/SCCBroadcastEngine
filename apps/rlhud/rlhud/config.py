@@ -18,7 +18,6 @@ DATA_DIR = (os.path.join(os.environ["SCCBE_DATA"], "rlhud") if os.environ.get("S
 WEB_DIR = os.path.join(RESOURCE_DIR, "web")
 LOGO_DIR = os.path.join(DATA_DIR, "logos")         # uploaded team logos (served as logos/...)
 SPONSOR_DIR = os.path.join(DATA_DIR, "sponsors")   # uploaded sponsor logos (served as sponsors/...)
-STINGER_DIR = os.path.join(DATA_DIR, "stingers")   # the uploaded replay stinger (served as stingers/...)
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 
 DEFAULTS = {
@@ -61,16 +60,10 @@ DEFAULTS = {
     # The built-in design at /overlay: "classic" (after the RLCS 2026 broadcast),
     # "gerrit2026" (Gerrit 2026: three player cams a side and the last goal
     # along the bottom) or "newgerrit" (NEW GERRIT: the HUD, and around a goal
-    # the cams, the replay stinger and the replay lower third). A picked
+    # the cams and the replay lower third, sliding in and out). A picked
     # built-in design other than classic wins over the GFX Engine overlay.
     # NEW GERRIT is the default (owen, 2026-11-16); a design already picked stays.
     "design": "newgerrit",
-    # NEW GERRIT's replay stinger, played as the game's replay starts. By
-    # default the connected GFX Engine's "Replay stinger" (else the built-in
-    # SCC one); "src" is your own instead (uploaded, an optional override),
-    # and "cut" when it covers the picture (ms; None = halfway), where the HUD
-    # swaps to the replay graphics. See rlhud/replaystinger.py.
-    "replay_stinger": {"src": "", "name": "", "cut": None, "on": True},
     # The SCC GFX Engine this HUD sends its game and series to (see rlhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},
 }
@@ -122,9 +115,7 @@ def web_file(rel):
     (sponsors/...), else the web folder. Paths that climb out are refused."""
     rel = rel.replace("\\", "/").lstrip("/")
     base = WEB_DIR
-    builtin = os.path.join(os.path.dirname(RESOURCE_DIR), "gfxengine", "starter", "assets", "stingers")
-    for prefix, folder in (("logos/", LOGO_DIR), ("sponsors/", SPONSOR_DIR), ("stingers/", STINGER_DIR),
-                           ("builtin-stinger/", builtin)):
+    for prefix, folder in (("logos/", LOGO_DIR), ("sponsors/", SPONSOR_DIR)):
         if rel.startswith(prefix):
             base, rel = folder, rel[len(prefix):]
     path = os.path.normpath(os.path.join(base, rel))

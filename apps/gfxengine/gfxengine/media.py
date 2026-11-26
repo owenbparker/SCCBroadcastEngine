@@ -189,8 +189,15 @@ def load_meta(assets_dir):
         return {}
 
 
+_META_LOCK = threading.Lock()
+
+
 def save_meta(assets_dir, meta):
-    tmp = meta_path(assets_dir) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=1)
-    os.replace(tmp, meta_path(assets_dir))
+    # Request threads add entries while others save: write a copy (dict() is atomic),
+    # one save at a time, so neither "dictionary changed size" nor a torn .tmp can happen.
+    snapshot = dict(meta)
+    with _META_LOCK:
+        tmp = meta_path(assets_dir) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, indent=1)
+        os.replace(tmp, meta_path(assets_dir))

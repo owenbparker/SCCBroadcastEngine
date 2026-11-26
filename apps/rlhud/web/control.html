@@ -185,24 +185,14 @@
     <select id="design">
       <option value="classic">RLCS 2026 (built in)</option>
       <option value="gerrit2026">Gerrit 2026: three player cams a side, last goal along the bottom</option>
-      <option value="newgerrit">NEW GERRIT: the HUD, with cams, replay stinger and replay lower third around goals</option>
+      <option value="newgerrit">NEW GERRIT: the HUD, with cams and a replay lower third around goals</option>
       <option value="engine">The graphic from GFX Engine</option>
     </select>
     <p class="note">Each one is also at its own address: <code>/overlay-classic</code>, <code>/overlay-gerrit2026</code>, <code>/overlay-newgerrit</code>.</p>
     <div id="ng-box" hidden>
       <h2 style="margin-top:16px">NEW GERRIT replay</h2>
-      <p class="note" style="margin-top:0">A goal: the player cams fly in down both sides. The game's replay starts: the replay stinger plays, and under it the HUD's lower parts go and the replay lower third comes in. The replay ends: the cams and lower third leave, then the HUD comes back.</p>
-      <div class="note" id="ng-stinger"></div>
-      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
-        <button id="ng-load">Use my own stinger instead…</button>
-        <button id="ng-remove">Back to the GFX Engine's</button>
-      </div>
-      <input type="file" id="ng-file" accept="video/*,.mov,.webm,.mp4" hidden>
-      <div id="ng-cut-box">
-        <label>Swap to the replay graphics at (ms into the stinger; empty = halfway)</label>
-        <input id="ng-cut" type="number" min="0" step="10" style="max-width:160px">
-      </div>
-      <label style="margin-top:10px;display:flex;gap:8px;align-items:center"><input type="checkbox" data-show="replay_cams"> Player cams during the replay (off: they still fly in on the goal, and leave under the stinger)</label>
+      <p class="note" style="margin-top:0">A goal: the player cams fly in down both sides. The game's replay starts: the HUD's lower parts slide away and the replay lower third slides in. The replay ends: the cams and lower third slide out, then the HUD slides back.</p>
+      <label style="margin-top:10px;display:flex;gap:8px;align-items:center"><input type="checkbox" data-show="replay_cams"> Player cams during the replay (off: they still fly in on the goal, and slide out as the replay starts)</label>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
         <button id="ng-preview0">Preview a blue goal and replay</button>
         <button id="ng-preview1">Preview an orange goal and replay</button>
@@ -426,7 +416,7 @@ function apply(s) {
   $("https-box").hidden = !app.https_url;
   if (app.https_url) $("url-https").textContent = app.https_url + "/overlay";
   renderLook(app.look || {}, cfg);
-  renderNewGerrit(cfg, s.stinger);
+  $("ng-box").hidden = cfg.design !== "newgerrit";
   renderCams(s.cams || {}, cfg, g);
   if (document.activeElement !== $("network")) $("network").checked = app.network;
   const ow = app.overlay_window;
@@ -482,39 +472,9 @@ $("design").onchange = async e => {
     : v === "classic" ? { design: "classic", look: { use: false } } : { design: v });
 };
 $("look-check").onclick = () => post("/api/look/check", {});
-// NEW GERRIT's replay stinger.
-function renderNewGerrit(cfg, info) {
-  $("ng-box").hidden = cfg.design !== "newgerrit";
-  info = info || {};
-  const own = info.from === "upload", el = $("ng-stinger");
-  const swap = info.cut != null ? ` It swaps to the replay graphics at ${info.cut} ms.` : "";
-  const says = {
-    upload: "Your own replay stinger plays: ",
-    engine: "The GFX Engine's replay stinger plays: ",
-    builtin: info.engine_connected ? "The GFX Engine has no \"Replay stinger\", so the built-in SCC one plays: "
-                                   : "The built-in SCC replay stinger plays (connect the GFX Engine to use its \"Replay stinger\"): ",
-  }[info.from];
-  el.textContent = says ? says : "No replay stinger: the replay graphics come in without one.";
-  if (says) { const b = document.createElement("b"); b.textContent = info.name || info.src; el.append(b, "." + swap); }
-  if (info.converting) el.append(document.createElement("br"), `Converting ${info.converting} so the overlay can play it…`);
-  if (info.error) { const s = document.createElement("span"); s.style.color = "var(--bad,#ff5a5a)"; s.textContent = info.error; el.append(document.createElement("br"), s); }
-  $("ng-remove").hidden = !own;
-  $("ng-cut-box").hidden = !own;
-  setIfIdle($("ng-cut"), (cfg.replay_stinger || {}).cut == null ? "" : cfg.replay_stinger.cut);
-}
-$("ng-load").onclick = () => $("ng-file").click();
-$("ng-file").onchange = async e => {
-  const f = e.target.files[0]; e.target.value = "";
-  if (!f) return;
-  $("ng-stinger").textContent = `Sending ${f.name}…`;
-  const r = await fetch("/api/stinger/upload?name=" + encodeURIComponent(f.name), { method: "POST", body: f });
-  const data = await r.json().catch(() => ({ error: "The HUD didn't answer" }));
-  if (data.error) alert(data.error); else apply(data);
-};
-$("ng-remove").onclick = () => post("/api/stinger/remove", {});
-$("ng-cut").onchange = e => config({ replay_stinger: { cut: e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0) } });
-$("ng-preview0").onclick = () => post("/api/stinger/preview", { team: 0 });
-$("ng-preview1").onclick = () => post("/api/stinger/preview", { team: 1 });
+// NEW GERRIT: preview a made-up goal and its replay on the overlay.
+$("ng-preview0").onclick = () => post("/api/replay/preview", { team: 0 });
+$("ng-preview1").onclick = () => post("/api/replay/preview", { team: 1 });
 $("look-remove").onclick = () => { if (confirm("Remove the GFX Engine overlay? The built-in one shows until the engine sends it again.")) post("/api/look/remove", {}); };
 $("look-load").onclick = () => $("look-file").click();
 $("look-file").onchange = async e => {

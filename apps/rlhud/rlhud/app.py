@@ -17,7 +17,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import appearance, look, statsapi, startpick
 from .cams import CamHub, cam_links
 from .config import DATA_DIR, LOGO_DIR, SPONSOR_DIR, WEB_DIR, web_file
-from .replaystinger import ReplayStinger
 from hudbuilder import embed as hud_builder
 from hudbuilder import hudedit   # (HUD Builder > Game HUDs: changes saved over this HUD's pages)
 from .demo import DemoMatch
@@ -67,8 +66,6 @@ class HudApp:
         self.cams = CamHub()   # player webcams (SCC Player Cam, Rocket League mode)
         # The overlay made in the GFX Engine's Composer ("Add to a HUD").
         self.look = look.LookSync(DATA_DIR, self.engine, self.changed)
-        # NEW GERRIT's replay stinger: your own, else the engine's "Replay stinger", else the built-in one.
-        self.stinger = ReplayStinger(self.config, self.engine, self.changed)
         if demo:
             self.set_demo(True)
 
@@ -183,7 +180,7 @@ class HudApp:
 
     def snapshot(self):
         game = self.state.snapshot()
-        return {"game": game, "config": self.config.get(), "app": self.info(), "logos": logos(), "stinger": self.stinger.info(),
+        return {"game": game, "config": self.config.get(), "app": self.info(), "logos": logos(),
                 "cams": dict(self.cams_state(game), connected=self.cams.all_cams(self.cam_players(game)))}
 
     def overlay_state(self):
@@ -191,7 +188,7 @@ class HudApp:
         keep = ("left", "right", "best_of", "event", "stage", "scorebug", "names", "sponsors", "sponsor_seconds", "show", "design")
         game = self.state.snapshot()
         cams = self.cams_state(game)
-        return {"game": game, "config": dict({k: cfg[k] for k in keep}, replay_stinger=self.stinger.current()),
+        return {"game": game, "config": {k: cfg[k] for k in keep},
                 # (the GFX Engine overlay's data, and who has a cam)
                 "fields": self._engine_snapshot(here=True)["fields"], "cams": cams,
                 "target_cam": self.target_cam(game, cams), "now": time.time(), "demo": bool(self.demo),
@@ -645,16 +642,6 @@ def make_handler(app):
             # Observer PCs send the game here over the network.
             if not local and not (path == "/api/ingest" and app.config.get().get("allow_network")):
                 return self._json({"error": "settings can only be changed on the HUD's own PC"}, 403)
-            if path == "/api/stinger/upload":
-                # NEW GERRIT's replay stinger, your own: the file itself (?name=...), MOV / WebM / MP4.
-                try:
-                    name = (parse_qs(urlparse(self.path).query).get("name") or ["stinger"])[0]
-                    reply = app.stinger.save_upload(name, self.rfile, int(self.headers.get("Content-Length") or 0))
-                    self.close_connection = True
-                    return self._json(dict(app.snapshot(), upload=reply))
-                except (ValueError, OSError) as e:
-                    self.close_connection = True
-                    return self._json({"error": str(e)}, 400)
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
                 if path == "/api/ingest":
@@ -701,9 +688,9 @@ def make_handler(app):
                     sponsor = save_upload(SPONSOR_DIR, "sponsors/", body.get("name"), body.get("data"))
                     app.config.update({"sponsors": app.config.get()["sponsors"] + [sponsor]})
                     app.changed()
-                elif path == "/api/stinger/remove":
-                    app.stinger.use_engine()
-                elif path == "/api/stinger/preview":
+                elif path in ("/api/replay/preview", "/api/stinger/preview"):
+                    # NEW GERRIT: a made-up goal and replay on the overlay. (/api/stinger/preview is the
+                    # old address, still used by existing Companion buttons.)
                     app.preview = {"at": time.time(), "team": 1 if body.get("team") == 1 else 0}
                     app.changed()
                 elif path == "/api/look/check":

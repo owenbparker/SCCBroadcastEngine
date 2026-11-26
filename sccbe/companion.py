@@ -142,8 +142,9 @@ GAMES = {
           for k, label in (("players", "player boxes"), ("sponsors", "sponsors"), ("target", "spectated player"),
                            ("boost", "boost meter"), ("events", "events feed"), ("replay_cams", "cams in replays"))],
         Ctl("cams", "Webcams on the HUD", **_cfg("cams.on")),
-        Ctl("stinger_left", "Replay stinger: play it (left team)", "command", do=_post("/api/stinger/preview", {"team": 0})),
-        Ctl("stinger_right", "Replay stinger: play it (right team)", "command", do=_post("/api/stinger/preview", {"team": 1})),
+        # (ids kept from when this played the replay stinger, so existing buttons keep working)
+        Ctl("stinger_left", "Goal and replay: preview it (left team)", "command", do=_post("/api/replay/preview", {"team": 0})),
+        Ctl("stinger_right", "Goal and replay: preview it (right team)", "command", do=_post("/api/replay/preview", {"team": 1})),
     ],
     "smash": [
         Ctl("demo", "Demo match", read=lambda st: bool(_get(st, "app.demo")),
