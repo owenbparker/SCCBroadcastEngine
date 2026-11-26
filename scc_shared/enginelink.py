@@ -173,13 +173,13 @@ def _listen(seconds):
 
 def scan(port=PORT):
     """Every engine this PC can find: on this PC, announcing itself, or
-    answering on port anywhere on this PC's networks (each /24)."""
+    answering on port anywhere on this PC's networks (each /24) or the other
+    networks and PCs saved in Settings > Network."""
     listening = concurrent.futures.ThreadPoolExecutor(1).submit(_listen, 3.5)
+    from . import netpeers
     mine = own_addresses()
-    candidates = ["127.0.0.1"]
-    for a in mine:
-        net = ipaddress.IPv4Network(a + "/24", strict=False)
-        candidates += [str(h) for h in net.hosts()]
+    # (this PC, its networks, then Settings > Network's other networks and PCs: other VLANs)
+    candidates = ["127.0.0.1"] + mine + netpeers.candidates(mine)
 
     def is_open(ip):
         try:

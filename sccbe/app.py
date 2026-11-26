@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from . import parts as P
 from .config import APP_DIR, DATA_DIR, FROZEN, ROLES, Settings, control_pc_url, web_file
 from .log import log, lines
-from . import rosnet
+from . import network, rosnet
 from .ros import EXT, RunOfShow, clean_template, export_doc, graphic_rows, read_doc
 from .companion import Companion
 from .updater import Updater, clean_up_old_update
@@ -99,6 +99,13 @@ class Shell:
 
     # --- parts ---------------------------------------------------------------
 
+    def _start_part(self, part):
+        try:
+            network.open_once(self.settings, part)   # (a game HUD: other PCs can reach it, the first time)
+        except Exception as e:
+            log(f"Network: {e}", "warn")
+        part.start(self.windows, self._separate())
+
     def start_parts(self):
         """Start every part switched on in Settings (in the background)."""
         if not self.settings.get()["setup_done"]:
@@ -106,7 +113,7 @@ class Shell:
         on = self.settings.get()["parts"]
         for part in self.parts:
             if on.get(part.key):
-                part.start(self.windows, self._separate())
+                self._start_part(part)
 
     def set_part(self, key, on):
         part = P.BY_KEY.get(key)
@@ -114,7 +121,7 @@ class Shell:
             raise ValueError(f"No part called {key}")
         self.settings.update({"parts": {key: bool(on)}})
         if on:
-            part.start(self.windows, self._separate())
+            self._start_part(part)
         else:
             threading.Thread(target=part.stop, daemon=True).start()
 
@@ -125,7 +132,7 @@ class Shell:
 
         def go():
             part.stop()
-            part.start(self.windows, self._separate())
+            self._start_part(part)
         threading.Thread(target=go, daemon=True).start()
 
     def import_old(self, folder=""):
@@ -139,7 +146,7 @@ class Shell:
             return migrate.run(DATA_DIR, [folder] if folder else (), again=True)
         finally:
             for p in on:
-                p.start(self.windows, self._separate())
+                self._start_part(p)
 
     def restart_games(self):
         """The game HUDs that are running, started again (in or out of this
@@ -166,7 +173,7 @@ class Shell:
         self.settings.update(changes)
         for part in self.parts:
             if want.get(part.key):
-                part.start(self.windows, self._separate())
+                self._start_part(part)
             elif part.status != "off":
                 threading.Thread(target=part.stop, daemon=True).start()
 
@@ -499,6 +506,10 @@ def make_handler(shell):
                 hints.append(shell.settings.get().get("control_pc") or "")
                 return self._json({"pcs": rosnet.find([h for h in hints if h]), "self": rosnet.pc_name(),
                                    "addresses": rosnet.own_addresses()})
+            if path == "/api/network":
+                return self._json(network.status(shell))
+            if path == "/api/network/firewall":
+                return self._json(network.firewall_status())
             if path == "/api/engine/workspaces":
                 try:
                     return self._json(shell.engine_call("/api/workspaces"))
@@ -616,6 +627,21 @@ def make_handler(shell):
                         raise ValueError(f"No graphic called {body.get('name')} in this workspace")
                     shell.engine_call("/api/cue", {"id": comp["id"], "on": True})
                     return self._json({"ok": True, "graphic": comp})
+                if path.startswith("/api/network/"):
+                    if path == "/api/network/other":
+                        if body.get("add") is not None:
+                            network.add_other(shell.settings, body["add"])
+                        if body.get("remove") is not None:
+                            network.remove_other(shell.settings, str(body["remove"]))
+                    elif path == "/api/network/check":
+                        return self._json(network.check(str(body.get("host") or "")))
+                    elif path == "/api/network/share":
+                        network.share(str(body.get("key") or ""), bool(body.get("on")))
+                    elif path == "/api/network/firewall":
+                        return self._json(network.firewall_fix())
+                    else:
+                        return self._json({"error": "not found"}, 404)
+                    return self._json(network.status(shell))
                 if path == "/api/setup":
                     shell.setup(body)
                 elif path == "/api/part":

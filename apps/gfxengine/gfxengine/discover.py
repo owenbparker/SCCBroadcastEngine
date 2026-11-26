@@ -17,6 +17,8 @@ import urllib.request
 
 from .config import DISCOVERY_PORT
 
+from scc_shared import netpeers
+
 APP = "scc-gfx-engine"
 
 
@@ -82,6 +84,28 @@ class Beacon:
                     s.sendto(msg, ("255.255.255.255", DISCOVERY_PORT))
             except OSError:
                 pass
+            # Broadcasts stop at the router: the PCs on other VLANs saved in
+            # Settings > Network are told straight (every 15 s is plenty).
+            self._ticks = getattr(self, "_ticks", 0) + 1
+            if self._ticks % 5 == 1:
+                self._tell_saved(msg)
+
+    def _tell_saved(self, msg):
+        try:
+            pcs = netpeers.single_pcs()
+        except Exception:
+            return
+        if not pcs:
+            return
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                for ip in pcs:
+                    try:
+                        s.sendto(msg, (ip, DISCOVERY_PORT))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
 
     def _listen(self):
         try:
@@ -119,10 +143,8 @@ def scan(port, timeout=0.35, only=""):
     """Engines answering on port on this PC's networks (each /24), or on the
     one network only (this PC's address on it)."""
     mine = set(own_addresses())
-    candidates = []
-    for a in sorted({only} if only else mine):
-        net = ipaddress.IPv4Network(a + "/24", strict=False)
-        candidates += [str(h) for h in net.hosts() if str(h) not in mine]
+    # (this PC's networks, then Settings > Network's other networks and PCs: other VLANs)
+    candidates = netpeers.candidates(sorted({only} if only else mine), skip=mine)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     found = []
 

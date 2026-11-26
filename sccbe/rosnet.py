@@ -20,6 +20,8 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+from scc_shared import netpeers
+
 from .log import log
 from .ros import read_doc
 from .version import VERSION
@@ -90,11 +92,10 @@ def find(hints=(), scan=True):
         if host and host not in mine and host not in hosts:
             hosts.append(host)
     if scan:
-        for a in sorted(set(own_addresses())):
-            for ip in ipaddress.IPv4Network(a + "/24", strict=False).hosts():
-                ip = str(ip)
-                if ip not in mine and ip not in hosts:
-                    hosts.append(ip)
+        # (this PC's networks, then Settings > Network's other networks and PCs: other VLANs)
+        for ip in netpeers.candidates(own_addresses(), skip=mine):
+            if ip not in hosts:
+                hosts.append(ip)
 
     def is_open(host):
         try:
@@ -133,7 +134,7 @@ def send(to, doc, mode, timeout=6):
     except (urllib.error.URLError, OSError) as e:
         host = urlparse(base).hostname
         raise ValueError(f"Can't reach an SCC Broadcast Engine at {host} ({getattr(e, 'reason', e)}). "
-                         "Is it open on that PC, and on the same network?")
+                         "Is it open on that PC? On another network (VLAN), Settings > Network > Check another PC says what's in the way.")
 
 
 def make_handler(ros):

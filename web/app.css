@@ -362,3 +362,12 @@ body.winmoving, body.winmoving * { user-select: none; }
 .remote [data-go="home"], .remote [data-go="stream"], .remote [data-menu="games"],
 .remote #chip-settings, .remote #chip-update,
 .remote #menu-build a[href="#builder"], .remote #menu-system a[href="#settings"] { display: none !important; }
+
+/* Settings > Network */
+.net-h { font-size: 14px; font-weight: 600; margin: 18px 0 6px; }
+.net-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.net-row:last-child { border-bottom: 0; }
+.net-row .nm { flex: 1; min-width: 0; } .net-row .nm b { font-weight: 600; } .net-row .nm span { display: block; color: var(--mut); font-size: 12px; }
+.net-row button { padding: 5px 10px; font-size: 12px; }
+.net-sum { margin: 12px 0 6px; font-size: 13px; line-height: 1.5; }
+.net-sum.ok { color: var(--green); } .net-sum.bad { color: #ff9f0a; }
