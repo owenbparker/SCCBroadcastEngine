@@ -322,6 +322,11 @@ class StatsTests(unittest.TestCase):
                          ("photos/owen.png", "", ""))
         pics = dict(stats.rows(stats.read("valorant", f), True, {})[1:])
         self.assertEqual((pics["Left player 1 headshot"], pics["Left player 1 champion"]), ("", "agents/Jett.png"))
+        # Stats saved with no agent picture (by v1.0.249 and older) get it when shown.
+        old = stats.read("valorant", f)
+        old["left"]["players"][0]["icon"] = ""
+        pics = dict(stats.rows(old, False, {})[1:])
+        self.assertEqual((pics["Left player 1 champion"], pics["MVP champion"]), ("agents/Jett.png", "agents/Jett.png"))
         lol = stats.read("lol", {"P1 NAME": "A", "P1 KDA": "3/1/7", "KILLS LEFT": 3})
         self.assertEqual((lol["left"]["players"][0]["stats"], lol["left"]["score"]), ([3, 1, 7], 3))
         rl = dict(stats.rows(stats.read("rl", {"left_p1_name": "B", "left_p1_goals": 2}), False)[1:])
@@ -390,6 +395,30 @@ class StatsTests(unittest.TestCase):
         gone = dict(stats.rows(stats.read("valorant", f), True, {}, "right 4", look)[1:])
         self.assertEqual(gone["MVP"], "Sammy")                        # (picked one not in the game: the top one)
         self.assertEqual(dict(stats.rows(None, False)[1:])["MVP headshot shown"], "1")
+
+    def test_agent_pictures_in_installed_app(self):
+        """The built app keeps the packages in _internal/ and the engine's web
+        files in _internal/apps/gfxengine/web: agent pictures are found there
+        (they came out empty on every post-game graphic, owen 2026-11-26)."""
+        import subprocess
+        import sys
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        tmp = tempfile.mkdtemp()
+        try:
+            internal = os.path.join(tmp, "_internal")
+            shutil.copytree(os.path.join(here, "gfxengine"), os.path.join(internal, "gfxengine"),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            agents = os.path.join(internal, "apps", "gfxengine", "web", "agents")
+            os.makedirs(agents)
+            shutil.copy(os.path.join(here, "web", "agents", "Jett.png"), agents)
+            os.makedirs(os.path.join(internal, "web"))   # (the app's own web/, no agents)
+            code = ("import sys; sys.frozen = True; sys._MEIPASS = sys.argv[1]; sys.path.insert(0, sys.argv[1]); "
+                    "from gfxengine import stats; print(stats._agent_icon('Jett'))")
+            out = subprocess.run([sys.executable, "-c", code, internal], capture_output=True, text=True, cwd=tmp,
+                                 env=dict(os.environ, PYTHONPATH="", SCCBE_DATA=tmp))
+            self.assertEqual(out.stdout.strip(), "agents/Jett.png", out.stderr)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_champion_or_headshot(self):
         from gfxengine import stats
