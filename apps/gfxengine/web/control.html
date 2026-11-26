@@ -123,16 +123,24 @@
       </div>
     </section>
     <section class="panel g-accent">
-      <div class="panel-head"><h3>Primary colour</h3><span class="muted small">The gold highlights in every graphic</span></div>
+      <div class="panel-head"><h3>Graphics colours</h3><span class="muted small">Every graphic, on air too</span></div>
       <div class="pad">
+        <div class="accent-label"><b>Primary colour</b><span class="muted small">The gold highlights: bars, underlines, dividers, frames, gold text</span></div>
         <div class="accent-row">
           <input type="color" id="g-accent-pick" title="Pick the graphics' primary colour">
           <input type="text" id="g-accent-hex" maxlength="7" spellcheck="false" placeholder="#ffc52a" title="The colour as #rrggbb">
           <button class="small ghost" id="g-accent-reset" title="Back to the SCC gold the graphics were made with">Reset to gold</button>
         </div>
         <div class="accent-swatches" id="g-accent-swatches"></div>
+        <div class="accent-label"><b>Secondary colour</b><span class="muted small">The dark panels and boxes behind the text, the ticker, the sponsor box</span></div>
+        <div class="accent-row">
+          <input type="color" id="g-accent2-pick" title="Pick the graphics' secondary colour">
+          <input type="text" id="g-accent2-hex" maxlength="7" spellcheck="false" placeholder="#000b05" title="The colour as #rrggbb">
+          <button class="small ghost" id="g-accent2-reset" title="Back to the dark green the graphics were made with">Reset to dark green</button>
+        </div>
+        <div class="accent-swatches" id="g-accent2-swatches"></div>
         <div class="accent-preview" id="g-accent-preview"><i></i><b>PLAYOFFS | ROUND 1</b><i class="thin"></i></div>
-        <p class="muted small">The bars, underlines, dividers, frames and gold text of the full-page boards (and the other graphics, PSD imports too) change to it, on air too. To keep one picture's gold, untick "Follows the primary colour" on it in Composer.</p>
+        <p class="muted small">PSD-imported graphics follow too. Pictures from the data (logos, headshots, agents, sponsors) never change. To keep one picture as designed, untick "Follows the graphics colours" on it in Composer.</p>
       </div>
     </section>
     <section class="panel g-ticker">

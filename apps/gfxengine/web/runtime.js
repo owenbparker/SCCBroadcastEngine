@@ -468,17 +468,24 @@
     tinted.set(key, p);
     return p;
   }
-  // --- the graphics' primary colour (Global's "Primary colour") -------------
+  // --- the graphics' primary and secondary colours (Global's) ---------------
   // The gold highlights the SCC graphics were made with (bars, underlines,
-  // dividers, frames) are drawn in it instead: each pixel or colour that's the
-  // design's gold (a lighter or darker one too) takes the colour's hue, with
-  // its light and dark kept in step; everything else stays as it is. The same
-  // sums as globalcfg.accent_colour. A layer with accent: false keeps its gold.
+  // dividers, frames) are drawn in the primary colour instead, and their dark
+  // green panels and boxes (behind the text, the ticker, the sponsor box...)
+  // in the secondary: each pixel or colour that's the design's gold (or dark
+  // green; a lighter or darker one too) takes the colour's hue, with its light
+  // and dark kept in step; everything else stays as it is. The same sums as
+  // globalcfg.accent_colour. A layer with accent: false keeps the design's.
   const ACCENT_GOLD = "#ffc52a", GOLD_HSL = rgbHsl(255, 197, 42);
+  const PANEL_GREEN = "#000b05", PANEL_HSL = rgbHsl(0, 11, 5);
+  // -> "primary,secondary" (each "" when it's the design's), or "" for neither
   GFX.accent = function () {
-    const c = String(GFX.lookup((ctx.tables && ctx.tables.Global) || [], "Primary colour") || "").trim().toLowerCase();
-    return hexRgb(c) && c !== ACCENT_GOLD ? c : "";
+    const g = k => String(GFX.lookup((ctx.tables && ctx.tables.Global) || [], k) || "").trim().toLowerCase();
+    const p = g("Primary colour"), s = g("Secondary colour");
+    const a = hexRgb(p) && p !== ACCENT_GOLD ? p : "", b = hexRgb(s) && s !== PANEL_GREEN ? s : "";
+    return a || b ? a + "," + b : "";
   };
+  const fade = (v, full, zero) => full === zero ? (v <= full ? 1 : 0) : Math.max(0, Math.min(1, (v - zero) / (full - zero)));
   function goldWeight(h, s, l) {
     const dh = Math.abs(h - 44);
     const wh = dh <= 9 ? 1 : Math.max(0, 1 - (dh - 9) / 8);
@@ -486,18 +493,33 @@
     const wl = l >= 0.2 && l <= 0.85 ? 1 : Math.max(0, l < 0.2 ? 1 - (0.2 - l) / 0.1 : 1 - (l - 0.85) / 0.1);
     return wh * ws * wl;
   }
-  function accentMaker(colour) {
+  function panelWeight(h, s, l, r, g, b) {
+    if (g - r < 3 || g < b) return 0;   // (a black or grey isn't green)
+    const dh = Math.abs(h - 152);
+    return (dh <= 30 ? 1 : Math.max(0, 1 - (dh - 30) / 15)) * fade(s, 0.35, 0.2) * fade(l, 0.2, 0.28);
+  }
+  function oneMaker(colour, ref, weight) {
     const rgb = hexRgb(colour);
     if (!rgb) return null;
-    const [th, ts, tl] = rgbHsl(...rgb), [, gs, gl] = GOLD_HSL;
-    // -> the new [r, g, b], or null for a colour that isn't gold
+    const [th, ts, tl] = rgbHsl(...rgb), [, gs, gl] = ref;
     return (r, g, b) => {
-      const [h, s0, l] = rgbHsl(r, g, b), s = Math.min(1, s0), w = goldWeight(h, s, l);
+      const [h, s0, l] = rgbHsl(r, g, b), s = Math.min(1, s0), w = weight(h, s, l, r, g, b);
       if (!w) return null;
       const nl = l <= gl ? l * tl / gl : tl + (l - gl) * (1 - tl) / (1 - gl);
       const out = hslRgb(th, ts * Math.min(1, s / gs), nl);
       return [r * (1 - w) + out[0] * w, g * (1 - w) + out[1] * w, b * (1 - w) + out[2] * w];
     };
+  }
+  const makers = new Map();
+  function accentMaker(spec) {
+    if (makers.has(spec)) return makers.get(spec);
+    // (a lone colour is the primary)
+    const [p, sc] = String(spec || "").split(",");
+    const fs = [hexRgb(p) && oneMaker(p, GOLD_HSL, goldWeight), hexRgb(sc || "") && oneMaker(sc, PANEL_HSL, panelWeight)].filter(Boolean);
+    // -> the new [r, g, b], or null for a colour that's neither
+    const f = fs.length ? (r, g, b) => { for (const one of fs) { const out = one(r, g, b); if (out) return out; } return null; } : null;
+    makers.set(spec, f);
+    return f;
   }
   // A colour ("#rrggbb", else as it is) with its gold the primary colour's.
   GFX.accentHex = function (c, accent) {
@@ -528,7 +550,7 @@
   const accentPic = (layer, value) => layer.type === "image" && layer.accent !== false && !layer.tint && !layer.recolor
     && !!value && value === layer.src && !hasTokens(value);
   // The layer's own colours in it (a copy; the layer itself isn't changed).
-  const ACCENT_KEYS = ["color", "fill", "fill2", "stroke", "divider", "gold", "line", "champ"];
+  const ACCENT_KEYS = ["color", "fill", "fill2", "stroke", "divider", "gold", "line", "champ", "dark"];
   function accentLayer(layer, accent) {
     const out = Object.assign({}, layer);
     for (const k of ACCENT_KEYS) if (typeof out[k] === "string" && hexRgb(out[k])) out[k] = GFX.accentHex(out[k], accent);

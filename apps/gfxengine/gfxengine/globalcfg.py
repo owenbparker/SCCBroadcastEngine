@@ -65,6 +65,9 @@ DEFAULT = {
     # dividers, frames, gold text) of every graphic are drawn in it instead
     # (the gold as designed until it's changed). Set in Global.
     "accent": "#ffc52a",
+    # ...and their secondary colour: the dark green panels and boxes (behind
+    # the text, the ticker, the sponsor box...) in it instead.
+    "accent2": "#000b05",
     # The graphics whose own output (/output?comp=id) is switched on: it always
     # shows its graphic, on Program or not (the rest show nothing, to save the PC).
     "outputs_on": [],
@@ -218,6 +221,7 @@ def clean(g):
     text = g.get("text") if isinstance(g.get("text"), dict) else {}
     out["text"] = {k: colour(text.get(k), DEFAULT["text"][k]) for k in ("primary", "secondary")}
     out["accent"] = colour(g.get("accent"), DEFAULT["accent"]).lower()
+    out["accent2"] = colour(g.get("accent2"), DEFAULT["accent2"]).lower()
     clock = dict(DEFAULT["clock"], **(g.get("clock") or {}))
     until = str(clock.get("until") or "").strip()
     out["clock"] = {"mode": clock.get("mode") if clock.get("mode") in CLOCK_LABELS else "time",
@@ -339,7 +343,7 @@ def rows(g):
             ["Caster text", c["text"]], ["Text primary", g["text"]["primary"]],
             # (gold text follows the primary colour; a secondary set to another colour stays)
             ["Text secondary", accent_colour(g["text"]["secondary"], g["accent"])],
-            ["Primary colour", g["accent"]]]
+            ["Primary colour", g["accent"]], ["Secondary colour", g["accent2"]]]
     for i in range(4):
         out += [[f"Caster {i + 1} shown", "1" if i < c["count"] else ""], [f"Caster {i + 1} move", moves[i] if i < c["count"] else ""]]
     out += [[k, v] for k, v in g["custom"]]

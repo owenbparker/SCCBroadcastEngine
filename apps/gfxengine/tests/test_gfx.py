@@ -620,6 +620,8 @@ class PackTests(unittest.TestCase):
         # (as designed until it's changed)
         self.assertEqual((rows["Primary colour"], rows["Text secondary"]), ("#ffc52a", "#ffc52a"))
         self.assertEqual(globalcfg.clean({"accent": "nope"})["accent"], "#ffc52a")
+        self.assertEqual((globalcfg.clean({})["accent2"], dict(globalcfg.rows({})[1:])["Secondary colour"]), ("#000b05", "#000b05"))
+        self.assertEqual(globalcfg.clean({"accent2": "#06142E"})["accent2"], "#06142e")
         g = globalcfg.clean({"accent": "#2A7FFF"})
         rows = dict(globalcfg.rows(g)[1:])
         self.assertEqual((rows["Primary colour"], rows["Text secondary"]), ("#2a7fff", "#2a7fff"))
