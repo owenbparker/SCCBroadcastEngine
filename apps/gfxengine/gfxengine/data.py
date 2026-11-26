@@ -14,6 +14,7 @@ two-column "label | value" sheet).
      "sheet": "" (Excel sheet / Google Sheet tab), "refresh": seconds}
 """
 
+import copy
 import csv
 import io
 import json
@@ -164,9 +165,9 @@ class Sources:
             return dict(self.tables.get(sid, {}))
 
     def refresh(self, sid=None):
-        for s in self.ws.get()["sources"]:
+        for s in self.ws.snapshot()["sources"]:   # (read only: not a copy of the whole workspace)
             if sid is None or s["id"] == sid:
-                self._read(s)
+                self._read(copy.deepcopy(s))
 
     def _read(self, source):
         try:
@@ -209,11 +210,13 @@ class Sources:
     def _loop(self):
         while not self._stop.wait(0.5):
             now = time.time()
-            for s in self.ws.get()["sources"]:
+            # (the workspace's snapshot, read only: a copy of the whole
+            # workspace twice a second held the rest of the app up)
+            for s in self.ws.snapshot()["sources"]:
                 every = max(1.0, float(s.get("refresh") or 5))
                 if now >= self._next.get(s["id"], 0):
                     self._next[s["id"]] = now + every
-                    threading.Thread(target=self._read, args=(s,), daemon=True).start()
+                    threading.Thread(target=self._read, args=(copy.deepcopy(s),), daemon=True).start()
 
     def forget(self, sid):
         with self.lock:

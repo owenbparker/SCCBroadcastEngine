@@ -226,22 +226,55 @@ def _icon_bank(agents, s):
     return bank
 
 
-_ref_banks = {}
+_refs_by_shape = {}
 
 
-def _ref_bank(ref):
+def _refs_banks(agents, kind):
+    """The real portraits of these agents, by size: {(h, w): (templates(),
+    the agent's index for each)}. Kept."""
     np = _np()
-    bank = _ref_banks.get(id(ref))
-    if bank is None:
-        h, w = ref.shape[:2]
-        bank = _ref_banks[id(ref)] = templates(ref.reshape(1, -1, 3), np.ones((1, h * w)))
-    return bank
+    key = (tuple(agents), kind)
+    banks = _refs_by_shape.get(key)
+    if banks is None:
+        found = {}
+        for i, agent in enumerate(agents):
+            for ref in _agent_refs(agent, kind):
+                found.setdefault(ref.shape[:2], []).append((i, ref))
+        banks = {}
+        for (h, w), refs in found.items():
+            banks[(h, w)] = (templates(np.stack([r.reshape(-1, 3) for _, r in refs]), np.ones((len(refs), h * w))),
+                             np.array([i for i, _ in refs]))
+        if len(_refs_by_shape) > 64:
+            _refs_by_shape.clear()
+        _refs_by_shape[key] = banks
+    return banks
+
+
+_identified = {}   # the last portraits read: (the crop's pixels, what was asked) -> the answer
 
 
 def identify_agent(crop, sizes, slack=3, agents=None, kind=None):
     """[(score, agent), ...] best first, for a portrait crop whose top-left is
     roughly where the icon starts (within `slack` px). kind ("top"/"row")
-    also compares against real portraits from web/reader_refs."""
+    also compares against real portraits from web/reader_refs.
+
+    The same pixels asked about again (a portrait that hasn't changed since
+    the last read, the usual case) give the answer worked out then."""
+    np = _np()
+    raw = np.asarray(crop)
+    agents = list(agents or game.AGENTS)
+    key = (raw.shape, str(raw.dtype), raw.tobytes(), tuple(sizes), slack, tuple(agents), kind)
+    done = _identified.get(key)
+    if done is not None:
+        return list(done)
+    out = _identify_agent(raw, sizes, slack, agents, kind)
+    if len(_identified) >= 256:
+        _identified.clear()
+    _identified[key] = tuple(out)
+    return list(out)
+
+
+def _identify_agent(crop, sizes, slack, agents, kind):
     np = _np()
     slide = np.lib.stride_tricks.sliding_window_view
     c = np.asarray(crop, dtype=np.float64)
@@ -249,16 +282,15 @@ def identify_agent(crop, sizes, slack=3, agents=None, kind=None):
         c = np.repeat(c[..., None], 3, axis=2)
     c = c[..., :3]
     H, W = c.shape[:2]
-    agents = list(agents or game.AGENTS)
     best = np.full(len(agents), -1.0)
-    for i, agent in enumerate(agents):
-        for ref in _agent_refs(agent, kind):
-            h, w = ref.shape[:2]
-            if H < h or W < w:
-                continue
-            v = slide(c, (h, w, 3))[:, :, 0].reshape(-1, h * w, 3)
-            score, _ = ncc_many(v, np.ones(v.shape[:2]), _ref_bank(ref))
-            best[i] = max(best[i], float(score.max()))
+    # Every real portrait of one size at once (one matrix product per size,
+    # not one per portrait).
+    for (h, w), (bank, owner) in _refs_banks(agents, kind).items():
+        if H < h or W < w:
+            continue
+        v = slide(c, (h, w, 3))[:, :, 0].reshape(-1, h * w, 3)
+        score, _ = ncc_many(v, np.ones(v.shape[:2]), bank)
+        np.maximum.at(best, owner, score.max(axis=1))
     for s in sizes:
         # The crop padded with nothing round it, so a window can hang off its
         # edges (only the pixels on the crop count, as before).
@@ -332,10 +364,18 @@ def _pixels(img):
     return img.get_flattened_data() if hasattr(img, "get_flattened_data") else img.getdata()
 
 
+def _rgb16(img):
+    """The picture's pixels as an (n, 3) array (signed, so sums and
+    differences don't wrap): the per-pixel tests below, all at once."""
+    np = _np()
+    return np.asarray(img.convert("RGB") if img.mode != "RGB" else img, dtype=np.int16).reshape(-1, 3)
+
+
 def _bright(img, level=185):
     """Fraction of pixels that are near-white."""
-    data = _pixels(img)
-    return sum(1 for p in data if min(p) >= level) / max(1, len(data))
+    np = _np()
+    a = np.asarray(img.convert("RGB") if img.mode != "RGB" else img).reshape(-1, 3)
+    return int((a.min(axis=1) >= level).sum()) / max(1, len(a))
 
 
 def _bar_pixel(p):
@@ -350,8 +390,13 @@ def health_bar(frame, side, slot):
     # White when healthy, red when low: any bright or red pixel is bar (the
     # bar's frame is a dull grey, never either). At a few HP the bar is a
     # pixel or so of red, so one column is enough: a dead player has no bar.
-    cols = [any(_bar_pixel(strip.getpixel((cx, cy))) for cy in range(strip.height)) for cx in range(strip.width)]
-    lit = sum(cols)
+    # (_bar_pixel for every pixel at once: pixel by pixel was most of the
+    # fast loop's time, ten times a second)
+    np = _np()
+    a = np.asarray(strip.convert("RGB") if strip.mode != "RGB" else strip, dtype=np.int16)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    bar = (a.max(axis=2) >= 170) | ((r >= 90) & (r - g >= 40) & (r - b >= 30))
+    lit = int(bar.any(axis=0).sum())
     if lit < 1:
         return False, 0
     if lit >= strip.width - 2:
@@ -366,9 +411,10 @@ def carries_spike(frame, side, slot):
 
 def spike_planted(frame):
     """The timer turns into a red spike icon once it's planted."""
-    data = _pixels(frame.crop(*SPIKE_ICON))
-    red = sum(1 for r, g, b in data if r > 150 and r > g + 70 and r > b + 70)
-    return red / max(1, len(data)) > 0.12
+    a = _rgb16(frame.crop(*SPIKE_ICON))
+    r, g, b = a[:, 0], a[:, 1], a[:, 2]
+    red = int(((r > 150) & (r > g + 70) & (r > b + 70)).sum())
+    return red / max(1, len(a)) > 0.12
 
 
 def top_portrait(frame, side, slot):
@@ -526,9 +572,9 @@ BUY_BANNER = (812, 140, 1110, 162)   # the grey box behind "ROUND n //////" abov
 
 def buy_phase(frame):
     """Is the BUY PHASE banner up? Spectators see it for the whole buy phase."""
-    data = _pixels(frame.crop(*BUY_BANNER))
-    grey = sum(1 for p in data if 35 <= p[0] <= 110 and max(p) - min(p) < 14)
-    return grey / max(1, len(data)) > 0.7
+    a = _rgb16(frame.crop(*BUY_BANNER))
+    grey = int(((a[:, 0] >= 35) & (a[:, 0] <= 110) & (a.max(axis=1) - a.min(axis=1) < 14)).sum())
+    return grey / max(1, len(a)) > 0.7
 
 
 # --- tactical timeouts --------------------------------------------------------
@@ -753,10 +799,14 @@ def scoreboard_open(frame):
     team, or two in a 2v2): usually teal above red, but both teal (or both
     red) at times, e.g. at half time. Which layout it is goes on the frame
     (frame.board) for the cells below."""
+    np = _np()
+
     def coloured(y0, rows):
-        data = _pixels(frame.crop(820, y0, 930, y0 + rows * ROW_H))
-        hit = sum(1 for p in data if (p[1] > p[0] + 25 and p[1] > 60) or (p[0] > p[1] + 25 and p[0] > 60))
-        return hit / max(1, len(data))
+        # (every pixel at once: the same test as pixel by pixel)
+        a = np.asarray(frame.crop(820, y0, 930, y0 + rows * ROW_H).convert("RGB"), dtype=np.int16).reshape(-1, 3)
+        r, g = a[:, 0], a[:, 1]
+        hit = int((((g > r + 25) & (g > 60)) | ((r > g + 25) & (r > 60))).sum())
+        return hit / max(1, len(a))
     for board in (BOARDS[5], BOARDS[2]):
         if all(coloured(board["top"][side], board["rows"]) > 0.6 for side in ("left", "right")):
             frame.board = board
@@ -875,9 +925,37 @@ class WindowsOcr:
         if engine is None:
             raise RuntimeError("Windows text recognition isn't installed for any of your languages")
         self.engine = engine
+        self._local = threading.local()
+        self._memo, self._memo_lock = {}, threading.Lock()
+
+    def _loop(self):
+        """This thread's event loop, kept (asyncio.run made and tore down a
+        new one for every piece of text read, several each read)."""
+        loop = getattr(self._local, "loop", None)
+        if loop is None or loop.is_closed():
+            loop = self._local.loop = asyncio.new_event_loop()
+        return loop
+
+    MEMO = 48   # the last pieces of text read, by their pixels
 
     def words(self, image):
-        """[(text, x_centre, y_centre), ...] in the image's pixels."""
+        """[(text, x_centre, y_centre), ...] in the image's pixels. The same
+        pixels read again (the Tab scoreboard's names and numbers, open for
+        several reads running and mostly unchanged) give the text read then:
+        the recognition gives the same text for the same picture."""
+        key = (image.mode, image.size, image.tobytes())
+        with self._memo_lock:
+            done = self._memo.get(key)
+        if done is not None:
+            return list(done)
+        out = self._words(image)
+        with self._memo_lock:
+            if len(self._memo) >= self.MEMO:
+                self._memo.pop(next(iter(self._memo)))
+            self._memo[key] = tuple(out)
+        return out
+
+    def _words(self, image):
         from winrt.windows.graphics.imaging import BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap
         from winrt.windows.storage.streams import DataWriter
         rgba = image.convert("RGBA")
@@ -893,7 +971,7 @@ class WindowsOcr:
         async def run():
             return await self.engine.recognize_async(bitmap)
 
-        result = asyncio.run(run())
+        result = self._loop().run_until_complete(run())
         out = []
         for line in result.lines:
             for word in line.words:

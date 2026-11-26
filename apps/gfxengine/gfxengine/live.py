@@ -68,13 +68,13 @@ class Live:
             fn()
 
     def _ids(self):
-        return {c["id"] for c in self.ws.get()["compositions"]}
+        return {c["id"] for c in self.ws.snapshot()["compositions"]}
 
     def _transition(self, tid):
         """The transition to play, by id (default: the project's default)."""
-        project = self.ws.get()
+        project = self.ws.snapshot()   # (read only)
         tid = tid or project.get("default_transition")
-        t = next((t for t in project["transitions"] if t["id"] == tid), None)
+        t = next((copy.deepcopy(t) for t in project["transitions"] if t["id"] == tid), None)
         if not t and tid == "cut":
             t = {"id": "cut", "name": "Cut", "type": "cut"}
         if not t:
@@ -89,7 +89,7 @@ class Live:
     def _with(self, on, new):
         """on, plus the graphics in new: each board or lower third in new
         replaces the one of its kind in on."""
-        kinds = {c["id"]: c.get("kind") or "overlay" for c in self.ws.get()["compositions"]}
+        kinds = {c["id"]: c.get("kind") or "overlay" for c in self.ws.snapshot()["compositions"]}
         out = list(on)
         for cid in new:
             kind = kinds.get(cid)
@@ -101,7 +101,7 @@ class Live:
 
     def _order(self, ids):
         """ids in the project's order (which is also their stacking order)."""
-        order = [c["id"] for c in self.ws.get()["compositions"]]
+        order = [c["id"] for c in self.ws.snapshot()["compositions"]]
         return [i for i in order if i in ids]
 
     # --- Preview -------------------------------------------------------
