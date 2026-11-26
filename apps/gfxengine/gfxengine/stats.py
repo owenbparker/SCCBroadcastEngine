@@ -20,6 +20,8 @@ import re
 import threading
 import time
 
+from .config import WEB_DIR
+
 SIDES = ("left", "right")
 # Each game's own numbers for every player (League: CS, vision, gold...), and
 # which of them the stats pages show: the Team stats columns ("Stat 1"... 3)
@@ -66,12 +68,20 @@ def _lol(f):
 
 
 # VALORANT agents with an icon in web/agents (named as the VALORANT HUD names them).
-AGENTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "agents")
+# (WEB_DIR, not a path from this file: in the installed app this file isn't
+# next to web/, so every agent picture came out empty - owen, 2026-11-26)
+AGENTS_DIR = os.path.join(WEB_DIR, "agents")
 
 
 def _agent_icon(agent):
     agent = str(agent or "").strip()
     return f"agents/{agent}.png" if agent and os.path.isfile(os.path.join(AGENTS_DIR, agent + ".png")) else ""
+
+
+def _icon(game, p):
+    """A player's champion / agent picture. (VALORANT stats saved with no
+    picture - by a build that couldn't find web/agents - get theirs here.)"""
+    return p.get("icon") or (_agent_icon(p.get("character")) if game == "valorant" else "")
 
 
 def acs_estimate(k, a, rounds):
@@ -260,7 +270,7 @@ def rows(stats, live, names=None, pick="auto", lookup=None, pictures=None):
             # (a player with no headshot in the roster shows their champion /
             # agent instead of an empty box)
             champ = team_pics.get(side) == "champion" or not r.get("photo")
-            out += [[f"{k} headshot", "" if champ else r.get("photo", "")], [f"{k} champion", p.get("icon", "") if champ and p["name"] else ""]]
+            out += [[f"{k} headshot", "" if champ else r.get("photo", "")], [f"{k} champion", _icon(game, p) if champ and p["name"] else ""]]
             # Best: most of stat 1 (kills, goals), then stat 3, then fewest stat 2.
             # (the first Player stats row when it's a number, like ACS)
             first = v.get(lay["rows"][0])
@@ -274,7 +284,7 @@ def rows(stats, live, names=None, pick="auto", lookup=None, pictures=None):
         _, side, p = best
         r = (lookup(side, p["name"]) if lookup else None) or {}
         v = _values(game, p)
-        champ = (champion_art(p.get("icon", "")) or p.get("icon", "")) \
+        champ = (champion_art(_icon(game, p)) or _icon(game, p)) \
             if player_pics.get(side) == "champion" or not r.get("photo") else ""
         out += [["MVP", p["name"]], ["MVP team", names.get(side, side.title())], ["MVP character", p["character"]],
                 ["MVP picked", "manual" if picked else "auto"], ["MVP side", side],
