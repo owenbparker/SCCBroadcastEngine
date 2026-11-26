@@ -80,6 +80,32 @@ def link_colours(comp):
     return changed
 
 
+# Team stats: each side's bars and lines under its name and its stats header
+# in that team's colour (Global's Left / Right colour), not the gold / white,
+# and the line between the scores always white.
+TEAM_BARS = {
+    "assets/Team stats/Rectangle 4.png": "{{Global!Left color}}",
+    "assets/Team stats/Rectangle 5 copy.png": "{{Global!Left color}}",
+    "assets/Team stats/Rectangle 3 copy 10.png": "{{Global!Left color}}",
+    "assets/Team stats/Rectangle 4 copy.png": "{{Global!Right color}}",
+    "assets/Team stats/Rectangle 5 copy 2.png": "{{Global!Right color}}",
+    "assets/Team stats/Rectangle 3 copy 11.png": "{{Global!Right color}}",
+    # (the line between the two scores: always white)
+    "assets/Team stats/Line 1.png": "#ffffff",
+}
+
+
+def link_team_bars(comp):
+    """The Team stats bars follow the teams' colours. Returns True if anything changed."""
+    changed = False
+    for l in comp.get("layers") or []:
+        to = TEAM_BARS.get(l.get("src") or "")
+        if to and l.get("type") == "image" and not l.get("recolor") and not l.get("tint"):
+            l["recolor"] = to
+            changed = True
+    return changed
+
+
 def upgrade(ws, starter):
     """Brings the workspace's untouched SCC graphics up to date. Returns their names."""
     project = _read(starter) if starter else {}
@@ -165,6 +191,13 @@ def upgrade(ws, starter):
         if not ws.data.get("colours_linked"):
             ws.data["colours_linked"] = 1
             done += [c["name"] for c in ws.data["compositions"] if link_colours(c) and c["name"] not in done]
+            ws.changed()
+    # The Team stats bars in the teams' colours: once for each workspace (a
+    # bar set back by hand afterwards stays).
+    with ws.lock:
+        if not ws.data.get("team_bars_linked"):
+            ws.data["team_bars_linked"] = 1
+            done += [c["name"] for c in ws.data["compositions"] if link_team_bars(c) and c["name"] not in done]
             ws.changed()
     if done:
         log(f"Brought {len(done)} SCC graphic(s) up to date (or took out the ones the pack no longer has)")

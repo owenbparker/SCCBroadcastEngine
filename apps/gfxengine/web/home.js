@@ -429,27 +429,35 @@ App.on(s => {
     $("#g-loop-tint").style.background = L.color;
     $("#g-loop-default").hidden = !g.bgloop.src;
   }
-  // The graphics' primary colour (the gold highlights).
-  const GOLD = "#ffc52a";
-  const ACCENT_SWATCHES = [GOLD, "#ffffff", "#e0181b", "#ff6a13", "#2fa85a", "#00c2ff", "#2a5bff", "#7a3cff", "#ff3d9a"];
+  // The graphics' primary colour (the gold highlights) and secondary (the dark panels).
+  const GOLD = "#ffc52a", GREEN = "#000b05";
+  const ACCENTS = {
+    accent: { el: "g-accent", design: GOLD, swatches: [GOLD, "#ffffff", "#e0181b", "#ff6a13", "#2fa85a", "#00c2ff", "#2a5bff", "#7a3cff", "#ff3d9a"] },
+    accent2: { el: "g-accent2", design: GREEN, swatches: [GREEN, "#000000", "#0b0d12", "#020a1f", "#06142e", "#1a0406", "#2a0508", "#120624", "#1c1c1c"] },
+  };
   function renderAccent() {
-    const c = /^#[0-9a-f]{6}$/i.test(g.accent || "") ? g.accent.toLowerCase() : GOLD;
-    if (document.activeElement !== $("#g-accent-pick")) $("#g-accent-pick").value = c;
-    if (document.activeElement !== $("#g-accent-hex")) $("#g-accent-hex").value = c;
-    $("#g-accent-reset").hidden = c === GOLD;
-    $("#g-accent-preview").style.setProperty("--accent-c", c);
-    const sw = $("#g-accent-swatches");
-    if (!sw.childElementCount) sw.replaceChildren(...ACCENT_SWATCHES.map(x => h("span", { class: "sw", role: "button", tabindex: 0, "data-c": x, onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); accentChange(x); } }, title: x === GOLD ? "SCC gold (as designed)" : x,
-      style: { background: x }, onclick: () => accentChange(x) })));
-    sw.querySelectorAll(".sw").forEach(b => b.classList.toggle("on", b.dataset.c === c));
+    for (const [key, A] of Object.entries(ACCENTS)) {
+      const c = /^#[0-9a-f]{6}$/i.test(g[key] || "") ? g[key].toLowerCase() : A.design;
+      if (document.activeElement !== $(`#${A.el}-pick`)) $(`#${A.el}-pick`).value = c;
+      if (document.activeElement !== $(`#${A.el}-hex`)) $(`#${A.el}-hex`).value = c;
+      $(`#${A.el}-reset`).hidden = c === A.design;
+      $("#g-accent-preview").style.setProperty(key === "accent" ? "--accent-c" : "--accent2-c", c);
+      const sw = $(`#${A.el}-swatches`);
+      if (!sw.childElementCount) sw.replaceChildren(...A.swatches.map(x => h("span", { class: "sw", role: "button", tabindex: 0, "data-c": x,
+        onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); accentChange(key, x); } },
+        title: x === A.design ? "As designed" : x, style: { background: x }, onclick: () => accentChange(key, x) })));
+      sw.querySelectorAll(".sw").forEach(b => b.classList.toggle("on", b.dataset.c === c));
+    }
   }
   // (sent at most every 0.25 s while the picker is dragged; each graphic's
   // pictures are redrawn in the new colour)
-  const accentChange = c => { if (!/^#[0-9a-f]{6}$/i.test(c)) return; g.accent = c.toLowerCase(); change({ accent: g.accent }); renderAccent(); };
-  $("#g-accent-pick").addEventListener("input", e => accentChange(e.target.value));
-  $("#g-accent-hex").addEventListener("input", e => { let v = e.target.value.trim(); if (/^[0-9a-f]{6}$/i.test(v)) v = "#" + v; accentChange(v); });
-  $("#g-accent-hex").addEventListener("blur", () => renderAccent());
-  $("#g-accent-reset").addEventListener("click", () => accentChange(GOLD));
+  const accentChange = (key, c) => { if (!/^#[0-9a-f]{6}$/i.test(c)) return; g[key] = c.toLowerCase(); change({ [key]: g[key] }); renderAccent(); };
+  for (const [key, A] of Object.entries(ACCENTS)) {
+    $(`#${A.el}-pick`).addEventListener("input", e => accentChange(key, e.target.value));
+    $(`#${A.el}-hex`).addEventListener("input", e => { let v = e.target.value.trim(); if (/^[0-9a-f]{6}$/i.test(v)) v = "#" + v; accentChange(key, v); });
+    $(`#${A.el}-hex`).addEventListener("blur", () => renderAccent());
+    $(`#${A.el}-reset`).addEventListener("click", () => accentChange(key, A.design));
+  }
 
   const loopChange = changes => { Object.assign(g.bgloop, changes); change({ bgloop: changes }); renderLoop(); };
   $("#g-loop-on").addEventListener("change", e => loopChange({ on: e.target.checked }));

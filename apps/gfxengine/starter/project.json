@@ -4310,7 +4310,8 @@
      },
      "src": "assets/Team stats/Rectangle 4.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "{{Global!Left color}}"
     },
     {
      "id": "l92918ab7",
@@ -4339,7 +4340,8 @@
      },
      "src": "assets/Team stats/Rectangle 4 copy.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "{{Global!Right color}}"
     },
     {
      "id": "l0cd91597",
@@ -6172,7 +6174,8 @@
      },
      "src": "assets/Team stats/Rectangle 5 copy.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "{{Global!Left color}}"
     },
     {
      "id": "lbcba699e",
@@ -6201,7 +6204,8 @@
      },
      "src": "assets/Team stats/Rectangle 5 copy 2.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "{{Global!Right color}}"
     },
     {
      "id": "lad990a7e",
@@ -6230,7 +6234,8 @@
      },
      "src": "assets/Team stats/Rectangle 3 copy 10.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "{{Global!Left color}}"
     },
     {
      "id": "lb656ef2f",
@@ -6259,7 +6264,8 @@
      },
      "src": "assets/Team stats/Rectangle 3 copy 11.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "{{Global!Right color}}"
     },
     {
      "id": "lc4a65df2",
@@ -6448,7 +6454,8 @@
      },
      "src": "assets/Team stats/Line 1.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "#ffffff"
     },
     {
      "id": "l1d5bc2ec",
@@ -43552,7 +43559,9 @@
    "d7266d2c9d25a42e",
    "ff552eb95deae327",
    "97ba20a68c5f5dfa",
-   "27ae3a2a6626a278"
+   "27ae3a2a6626a278",
+   "c4b7beb227ae60b6",
+   "259d9b29f5951469"
   ],
   "Title screen": [
    "a617db4af2bfcbff",

@@ -620,6 +620,8 @@ class PackTests(unittest.TestCase):
         # (as designed until it's changed)
         self.assertEqual((rows["Primary colour"], rows["Text secondary"]), ("#ffc52a", "#ffc52a"))
         self.assertEqual(globalcfg.clean({"accent": "nope"})["accent"], "#ffc52a")
+        self.assertEqual((globalcfg.clean({})["accent2"], dict(globalcfg.rows({})[1:])["Secondary colour"]), ("#000b05", "#000b05"))
+        self.assertEqual(globalcfg.clean({"accent2": "#06142E"})["accent2"], "#06142e")
         g = globalcfg.clean({"accent": "#2A7FFF"})
         rows = dict(globalcfg.rows(g)[1:])
         self.assertEqual((rows["Primary colour"], rows["Text secondary"]), ("#2a7fff", "#2a7fff"))
@@ -635,6 +637,30 @@ class PackTests(unittest.TestCase):
         r, gg, b = (int(dark[i:i + 2], 16) for i in (1, 3, 5))
         self.assertTrue(b > r and b < 0x2a7fff & 255 or b <= 255)
         self.assertTrue(b > gg > r)
+
+    def test_team_stats_bars_take_the_team_colours(self):
+        from gfxengine import pack
+        tmp = tempfile.mkdtemp()
+        try:
+            ws = Workspace(os.path.join(tmp, "ws"))
+            comp = blank_comp("Team stats")
+            left = dict(blank_layer("image"), src="assets/Team stats/Rectangle 4.png")
+            right = dict(blank_layer("image"), src="assets/Team stats/Rectangle 5 copy 2.png")
+            mid = dict(blank_layer("image"), src="assets/Team stats/Line 1.png")
+            other = dict(blank_layer("image"), src="assets/Team stats/Layer 1.png")
+            comp["layers"] = [left, right, mid, other]
+            ws.data["compositions"] = [comp]
+            ws.data["colours_linked"] = 1
+            self.assertEqual(pack.upgrade(ws, None), ["Team stats"])
+            ls = ws.data["compositions"][0]["layers"]
+            self.assertEqual([l.get("recolor") for l in ls], ["{{Global!Left color}}", "{{Global!Right color}}", "#ffffff", None])
+            # (once: one set back by hand stays)
+            del ls[0]["recolor"]
+            self.assertEqual(pack.upgrade(ws, None), [])
+            self.assertNotIn("recolor", ws.data["compositions"][0]["layers"][0])
+            ws.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_starter_is_linked(self):
         with open(os.path.join(ROOT, "starter", "project.json"), encoding="utf-8") as f:
