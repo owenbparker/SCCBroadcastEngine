@@ -115,7 +115,9 @@ def entries():
     if not path:
         return []
     try:
-        mtime = os.path.getmtime(path)
+        st = os.stat(path)
+        # (size too: two saves within one tick of Windows' clock keep the same time)
+        mtime = (st.st_mtime_ns, st.st_size)
     except OSError:
         return []
     with _lock:
