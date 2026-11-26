@@ -718,9 +718,14 @@ class ClockWatch:
         self.paused = False
         self._face, self._changed_at, self._running_from = None, 0.0, None
 
-    def see(self, face, now=None, timeout=False):
+    def see(self, face, now=None, timeout=False, buy=True):
         now = time.time() if now is None else now
-        if timeout:   # (a tactical timeout's banner: the clock stops for that)
+        # (a tactical timeout's banner: the clock stops for that. Not the buy
+        # phase: technical pauses only happen before the round (owen,
+        # 2026-11-25), and in the round the clock goes for the spike. Two
+        # reads without the BUY PHASE banner running: one can be crossed.)
+        self._not_buy = 0 if buy else getattr(self, "_not_buy", 0) + 1
+        if timeout or self._not_buy >= 2:
             self.paused, self._face, self._running_from = False, None, None
             return False
         if face is None:
@@ -2085,7 +2090,7 @@ class ScreenReader:
                     if attackers:
                         to = read_timeout(frame, self.ocr)
                         reading["timeout"] = dict(to, attackers=attackers) if to else None
-                        reading["tech_pause"] = self.spectate_clock.see(clock_face(frame), timeout=bool(to))
+                        reading["tech_pause"] = self.spectate_clock.see(clock_face(frame), timeout=bool(to), buy=buy_phase(frame))
                     if reading != last or time.time() - sent_at > 1:
                         update = {"source": "observer", "spectating": {k: v for k, v in reading.items()
                                                                        if k not in ("timeout", "tech_pause")}}
@@ -2512,7 +2517,8 @@ class ScreenReader:
                     update = read_frame(image, self.ocr, self.agents, self.bank)
                     if "timeout" in update["match"]:   # (the top bar's on screen: its clock too)
                         update["match"]["tech_pause"] = self.clock.see(clock_face(Frame(image)), shot_at,
-                                                                       bool(update["match"]["timeout"]))
+                                                                       bool(update["match"]["timeout"]),
+                                                                       buy_phase(Frame(image)))
                     if time.time() - self._bank_saved > 60:
                         self._bank_saved = time.time()
                         self.bank.save()

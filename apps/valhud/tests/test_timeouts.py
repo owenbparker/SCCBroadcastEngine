@@ -278,6 +278,23 @@ class TechPauseTests(unittest.TestCase):
         for t in range(1, 60):
             self.assertFalse(w.see(f[0], t, timeout=True))
 
+    def test_only_in_the_buy_phase(self):
+        # owen 2026-11-25: tech pauses only happen before the round; in the
+        # round the clock goes for the spike (the banner came up after plants)
+        from valhud.reader import ClockWatch
+        f = self.faces()
+        w = ClockWatch()
+        for t in range(0, 30):
+            self.assertFalse(w.see(f[0], t, buy=False))
+        # paused in the buy phase, then the round starts: over
+        w = ClockWatch()
+        w.see(f[0], 0)
+        self.assertTrue(w.see(f[0], 6))
+        self.assertTrue(w.see(f[0], 7, buy=False))    # (one read without the banner: crossed)
+        self.assertTrue(w.see(f[0], 8))
+        w.see(f[1], 9, buy=False)
+        self.assertFalse(w.see(f[1], 10, buy=False))
+
     def test_app_puts_the_banner_up_and_down(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = make_app(tmp)
