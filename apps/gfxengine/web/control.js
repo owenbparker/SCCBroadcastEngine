@@ -575,7 +575,7 @@ $("#update-back").addEventListener("click", e => {
         h("label", { class: "swatch" }, "Secondary colour",
           h("input", { type: "color", "data-k": "text-secondary", title: "The lines picked out: the stage, LOCAL TIME...", oninput: e => set({ secondary: e.target.value }) })),
         h("button", { class: "ghost small", title: "White and gold, as the graphics were made", onclick: () => set({ primary: "#ffffff", secondary: "#ffc52a" }) }, "Reset")),
-      h("div", { class: "resolved" }, "Every graphic's text follows these: primary is most of it, secondary the lines picked out in gold. In Composer, a text layer can follow either."));
+      h("div", { class: "resolved" }, "Every graphic's text follows these: primary is most of it, secondary the lines picked out in gold (a gold secondary takes Global's primary colour, like the bars and lines). In Composer, a text layer can follow either."));
     markSize(el, s);
     return el;
   }

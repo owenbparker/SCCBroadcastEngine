@@ -429,6 +429,28 @@ App.on(s => {
     $("#g-loop-tint").style.background = L.color;
     $("#g-loop-default").hidden = !g.bgloop.src;
   }
+  // The graphics' primary colour (the gold highlights).
+  const GOLD = "#ffc52a";
+  const ACCENT_SWATCHES = [GOLD, "#ffffff", "#e0181b", "#ff6a13", "#2fa85a", "#00c2ff", "#2a5bff", "#7a3cff", "#ff3d9a"];
+  function renderAccent() {
+    const c = /^#[0-9a-f]{6}$/i.test(g.accent || "") ? g.accent.toLowerCase() : GOLD;
+    if (document.activeElement !== $("#g-accent-pick")) $("#g-accent-pick").value = c;
+    if (document.activeElement !== $("#g-accent-hex")) $("#g-accent-hex").value = c;
+    $("#g-accent-reset").hidden = c === GOLD;
+    $("#g-accent-preview").style.setProperty("--accent-c", c);
+    const sw = $("#g-accent-swatches");
+    if (!sw.childElementCount) sw.replaceChildren(...ACCENT_SWATCHES.map(x => h("span", { class: "sw", role: "button", tabindex: 0, "data-c": x, onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); accentChange(x); } }, title: x === GOLD ? "SCC gold (as designed)" : x,
+      style: { background: x }, onclick: () => accentChange(x) })));
+    sw.querySelectorAll(".sw").forEach(b => b.classList.toggle("on", b.dataset.c === c));
+  }
+  // (sent at most every 0.25 s while the picker is dragged; each graphic's
+  // pictures are redrawn in the new colour)
+  const accentChange = c => { if (!/^#[0-9a-f]{6}$/i.test(c)) return; g.accent = c.toLowerCase(); change({ accent: g.accent }); renderAccent(); };
+  $("#g-accent-pick").addEventListener("input", e => accentChange(e.target.value));
+  $("#g-accent-hex").addEventListener("input", e => { let v = e.target.value.trim(); if (/^[0-9a-f]{6}$/i.test(v)) v = "#" + v; accentChange(v); });
+  $("#g-accent-hex").addEventListener("blur", () => renderAccent());
+  $("#g-accent-reset").addEventListener("click", () => accentChange(GOLD));
+
   const loopChange = changes => { Object.assign(g.bgloop, changes); change({ bgloop: changes }); renderLoop(); };
   $("#g-loop-on").addEventListener("change", e => loopChange({ on: e.target.checked }));
   $("#g-loop-color").addEventListener("input", e => loopChange({ color: e.target.value }));
@@ -516,6 +538,7 @@ App.on(s => {
     renderBrand();
     renderSponsors(force);
     renderLoop();
+    renderAccent();
     renderStats(s);
   }
 
