@@ -200,7 +200,7 @@ def check(host):
                 "summary": f"Couldn't find a PC called {host}. Try its address (e.g. 10.230.2.15) instead: "
                            "names often don't work across VLANs."}
     with concurrent.futures.ThreadPoolExecutor(len(PORTS)) as pool:
-        answers = list(pool.map(lambda p: netpeers.probe(ip, p[0], timeout=2.5), PORTS))
+        answers = list(pool.map(lambda p: netpeers.probe(ip, p[0], timeout=4.5), PORTS))
     results = []
     for (port, what, key), a in zip(PORTS, answers):
         name = _hello(ip, port) if a["state"] == "open" and port in (8771, 8782) else ""

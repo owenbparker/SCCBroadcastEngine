@@ -126,7 +126,7 @@ class ProbeTests(unittest.TestCase):
             s.bind(("127.0.0.1", 0))
             s.listen()
             self.assertEqual(netpeers.probe("127.0.0.1", s.getsockname()[1])["state"], "open")
-        self.assertEqual(netpeers.probe("127.0.0.1", free_port())["state"], "refused")
+        self.assertEqual(netpeers.probe("127.0.0.1", free_port(), timeout=6)["state"], "refused")   # (Windows: ~2 s to refuse)
 
     def test_unknown_name(self):
         self.assertEqual(netpeers.probe("no-such-pc.invalid", 80, timeout=0.5)["state"], "noname")
