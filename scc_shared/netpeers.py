@@ -201,7 +201,7 @@ def candidates(own=None, skip=()):
     return out
 
 
-def probe(host, port, timeout=2.0):
+def probe(host, port, timeout=4.0):
     """Can this PC open a connection to host:port? {"state", "ms", "detail"}:
 
     open     something answers there
@@ -210,6 +210,9 @@ def probe(host, port, timeout=2.0):
     timeout  no answer at all: a firewall (Windows or the network's) or a
              router between the VLANs drops it, or the PC is off
     noname   the name couldn't be looked up
+
+    (Windows tries a refused connection again for about 2 s before saying so,
+    so the timeout has to be longer than that to tell refused from blocked.)
     """
     ip = resolve(host) if host else None
     if not ip:
