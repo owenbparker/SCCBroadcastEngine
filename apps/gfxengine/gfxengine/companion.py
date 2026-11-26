@@ -57,12 +57,12 @@ STATES = {
 
 
 def _names(ws):
-    return {c["id"]: c["name"] for c in ws.get()["compositions"]}
+    return {c["id"]: c["name"] for c in ws.snapshot()["compositions"]}
 
 
 def find(ws, key):
     """A graphic's id, from its id or its name."""
-    comps = ws.get()["compositions"]
+    comps = ws.snapshot()["compositions"]
     key = str(key or "").strip()
     for c in comps:
         if c["id"] == key:
@@ -74,7 +74,7 @@ def find(ws, key):
 
 
 def state(engine):
-    project = engine.ws.get()
+    project = engine.ws.snapshot()   # (read only)
     live = engine.live.get()
     g = engine.global_config()
     pvw, pgm = live["preview"]["on"], live["program"]["on"]

@@ -326,6 +326,21 @@
     // A page of a game HUD (its agent select, its overlay...), live.
     if (t === "web") {
       if (!value) return opts.showHidden ? el("div", "gfx-media", { background: "repeating-linear-gradient(45deg,#2b2f36 0 12px,#22252b 12px 24px)", outline: "2px dashed #5b6270", outlineOffset: "-2px" }) : el("div");
+      if (opts.still) {
+        // A thumbnail: a still card, not the live page. Each live HUD page
+        // runs its own scripts and asks its HUD for the match several times
+        // a second, so a page per thumbnail (in Control and the Composer,
+        // on every PC that has them open) slowed the whole engine down.
+        const card = el("div", "gfx-media", { background: "linear-gradient(135deg,#1f2733,#10141b)", outline: "6px solid #3a4556",
+          outlineOffset: "-6px", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
+          gap: "24px", color: "#c9d3e0", fontFamily: "Inter, sans-serif", textAlign: "center", overflow: "hidden" });
+        const label = el("div", "", { fontSize: "150px", fontWeight: "700", letterSpacing: "4px" });
+        label.textContent = "LIVE PAGE";
+        const name = el("div", "", { fontSize: "90px", opacity: "0.75", padding: "0 80px" });
+        name.textContent = layer.name || "";
+        card.append(label, name);
+        return card;
+      }
       const f = el("iframe", "gfx-media", { border: "0", background: "transparent", pointerEvents: "none" });
       f.setAttribute("allowtransparency", "true");
       f.setAttribute("scrolling", "no");

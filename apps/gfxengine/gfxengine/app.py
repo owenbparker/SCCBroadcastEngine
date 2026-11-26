@@ -174,6 +174,8 @@ class Engine:
         self._cond = threading.Condition()
         self._parts_lock = threading.Lock()
         self._parts = None      # (version, made at, {key: JSON}): the state, made once for every output
+        self._json_memo = {}    # key -> (the object, its JSON): parts that didn't change aren't made again
+        self._pcache = (None, {})   # (the project snapshot, what's worked out from it): see _from_project
         self._fonts_cache = (None, 0, [])
         self._ffmpeg_cache = (0, False)
         threading.Thread(target=self._trim_photos, daemon=True).start()
@@ -253,8 +255,25 @@ class Engine:
             if version is None or self.version == version:
                 self._cond.wait(timeout)
 
+    def _from_project(self, name, make):
+        """make(project), worked out once for each version of the project
+        (the snapshot is the same object until the project changes). Read
+        only: callers that change it copy it first."""
+        project = self.ws.snapshot()
+        cache = self._pcache
+        if cache[0] is not project:
+            cache = self._pcache = (project, {})
+        if name not in cache[1]:
+            cache[1][name] = make(project)
+        return cache[1][name]
+
+    def _clean_global(self):
+        return self._from_project("global", lambda p: globalcfg.clean(copy.deepcopy(p.get("global"))))
+
     def global_config(self):
-        return globalcfg.clean(copy.deepcopy(self.ws.snapshot().get("global")))
+        # (worked out once per project change: each data change asked for it
+        # several times, each a deep copy and a clean of the whole of Global)
+        return copy.deepcopy(self._clean_global())
 
     def hud_global(self):
         """Global as the game HUDs take it: with each side's roster (name,
@@ -337,9 +356,9 @@ class Engine:
                           "picture": bool(project.get("picture"))},
             "rev": self.ws.rev, "assets_rev": self.assets_rev,
             "project": project, "live": self.live.get(), "data": self.data_snapshot(),
-            "global": globalcfg.clean(project.get("global")),
-            "tournaments": tournaments.summary(tournaments.clean(copy.deepcopy(project.get("tournaments")),
-                                                                 globalcfg.clean(project.get("global")))),
+            "global": self._clean_global(),
+            "tournaments": self._from_project("tournaments", lambda p: tournaments.summary(
+                tournaments.clean(copy.deepcopy(p.get("tournaments")), globalcfg.clean(p.get("global"))))),
             "teams": self.teams.list(),
             "games": list(GAMES.values()),   # (the games there are HUDs for)
             "camera_looks": s.get("camera_looks") or [],
@@ -384,8 +403,24 @@ class Engine:
                 data = dict(state["data"])
                 data.pop("now", None)
                 state["data"] = data
-                p = self._parts = (version, time.monotonic(), {k: json.dumps(v) for k, v in state.items()})
+                p = self._parts = (version, time.monotonic(), {k: self._json(k, v) for k, v in state.items()})
             return p[2]
+
+    # (parts whose object is never changed in place: a new one when they change)
+    KEPT_PARTS = ("project", "global", "tournaments", "fonts")
+
+    def _json(self, key, value):
+        """JSON text of one part of the state: the same object as last time
+        (the project, Global, the fonts... until they change) gives the text
+        made then. The project alone is hundreds of KB, and was written out
+        again for every HUD update."""
+        memo = self._json_memo.get(key)
+        if memo and memo[0] is value:
+            return memo[1]
+        text = json.dumps(value)
+        if key in self.KEPT_PARTS:
+            self._json_memo[key] = (value, text)
+        return text
 
     def state_json(self, parts=None, keys=None):
         """The state (or just `keys` of it) as JSON text."""

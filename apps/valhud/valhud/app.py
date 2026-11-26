@@ -848,6 +848,21 @@ class HudApp:
                 "lan_url": f"http://{lan}:{port}" if lan else None, "data_dir": DATA_DIR,
                 "https_port": self.server.https_port if self.server and self.server.httpsd else None}
 
+    # Every HUD page on air (and each output and monitor showing one, on
+    # every PC) asks for the state four times a second: it's made at most
+    # once in this long, for all of them (a change from Control clears it).
+    STATE_EVERY = 0.1
+    _state_cache = None
+
+    def state_json(self):
+        cache, now = self._state_cache, time.monotonic()
+        key = (self.updated_at, self.role, self.mode)
+        if cache and 0 <= now - cache[0] < self.STATE_EVERY and cache[1] == key:
+            return cache[2]
+        text = json.dumps(self.snapshot()).encode("utf-8")
+        self._state_cache = (now, key, text)
+        return text
+
     def snapshot(self):
         with self._lock:
             players = list(self.state["players"])
@@ -1224,7 +1239,7 @@ def make_handler(app):
             elif path in ("/control", "/start", "/observer"):
                 self._static(path[1:] + ".html")
             elif path == "/api/state":
-                self._send(json.dumps(app.snapshot()))
+                self._send(app.state_json())
             elif path == "/api/engine":
                 self._send(json.dumps(app.engine.status()))
             elif path == "/api/log":
@@ -1270,6 +1285,12 @@ def make_handler(app):
             self.end_headers()
 
         def do_POST(self):
+            try:
+                self._do_post()
+            finally:
+                app._state_cache = None   # (the next look at the state sees the change)
+
+        def _do_post(self):
             # Other PCs may read the HUD (when allowed), but only this PC can
             # change it.
             url = urlparse(self.path)

@@ -510,7 +510,21 @@ function readmap(elementMap){
 		document.querySelector(".LogoMap > div").innerText="Abyss";
 	}
 }
-const readchangepath = setInterval(function(){readpjpath();refreshmap();}, 10);
+// SCC: every 50 ms (was 10), and the map only looked at again when the map
+// cards or the map tile changed: reading innerText and setting the tile a
+// hundred times a second kept the page relaying itself out, in every output.
+var lastMapSig = "";
+function refreshmapIfChanged(){
+	var tile = document.querySelector(".LogoMap"), label = document.querySelector(".LogoMap > div");
+	var sig = [".Map1", ".Map2", ".Map3"].map(function (s) { var e = document.querySelector(s); return e ? e.childElementCount + ":" + e.textContent : ""; }).join("|")
+		+ "|" + (tile ? tile.style.backgroundImage : "") + "|" + (label ? label.textContent : "");
+	if (sig === lastMapSig) return;
+	refreshmap();
+	sig = [".Map1", ".Map2", ".Map3"].map(function (s) { var e = document.querySelector(s); return e ? e.childElementCount + ":" + e.textContent : ""; }).join("|")
+		+ "|" + (tile ? tile.style.backgroundImage : "") + "|" + (label ? label.textContent : "");
+	lastMapSig = sig;
+}
+const readchangepath = setInterval(function(){readpjpath();refreshmapIfChanged();}, 50);
 const backgroundImage = document.querySelector('body');
 
 //-------------------------------------------------------------------------------
