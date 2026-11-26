@@ -645,12 +645,13 @@ class PackTests(unittest.TestCase):
             left = dict(blank_layer("image"), src="assets/Team stats/Rectangle 4.png")
             right = dict(blank_layer("image"), src="assets/Team stats/Rectangle 5 copy 2.png")
             mid = dict(blank_layer("image"), src="assets/Team stats/Line 1.png")
-            comp["layers"] = [left, right, mid]
+            other = dict(blank_layer("image"), src="assets/Team stats/Layer 1.png")
+            comp["layers"] = [left, right, mid, other]
             ws.data["compositions"] = [comp]
             ws.data["colours_linked"] = 1
             self.assertEqual(pack.upgrade(ws, None), ["Team stats"])
             ls = ws.data["compositions"][0]["layers"]
-            self.assertEqual([l.get("recolor") for l in ls], ["{{Global!Left color}}", "{{Global!Right color}}", None])
+            self.assertEqual([l.get("recolor") for l in ls], ["{{Global!Left color}}", "{{Global!Right color}}", "#ffffff", None])
             # (once: one set back by hand stays)
             del ls[0]["recolor"]
             self.assertEqual(pack.upgrade(ws, None), [])

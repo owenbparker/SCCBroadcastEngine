@@ -81,7 +81,8 @@ def link_colours(comp):
 
 
 # Team stats: each side's bars and lines under its name and its stats header
-# in that team's colour (Global's Left / Right colour), not the gold / white.
+# in that team's colour (Global's Left / Right colour), not the gold / white,
+# and the line between the scores always white.
 TEAM_BARS = {
     "assets/Team stats/Rectangle 4.png": "{{Global!Left color}}",
     "assets/Team stats/Rectangle 5 copy.png": "{{Global!Left color}}",
@@ -89,6 +90,8 @@ TEAM_BARS = {
     "assets/Team stats/Rectangle 4 copy.png": "{{Global!Right color}}",
     "assets/Team stats/Rectangle 5 copy 2.png": "{{Global!Right color}}",
     "assets/Team stats/Rectangle 3 copy 11.png": "{{Global!Right color}}",
+    # (the line between the two scores: always white)
+    "assets/Team stats/Line 1.png": "#ffffff",
 }
 
 

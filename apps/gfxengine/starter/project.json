@@ -6454,7 +6454,8 @@
      },
      "src": "assets/Team stats/Line 1.png",
      "fit": "fill",
-     "loop": true
+     "loop": true,
+     "recolor": "#ffffff"
     },
     {
      "id": "l1d5bc2ec",
@@ -43559,7 +43560,8 @@
    "ff552eb95deae327",
    "97ba20a68c5f5dfa",
    "27ae3a2a6626a278",
-   "c4b7beb227ae60b6"
+   "c4b7beb227ae60b6",
+   "259d9b29f5951469"
   ],
   "Title screen": [
    "a617db4af2bfcbff",
