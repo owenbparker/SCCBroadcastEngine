@@ -178,7 +178,8 @@ async function findHud() {
   }
   const typed = prompt("No PC running the HUD was found on the network.\n\n" +
     "Enter the GFX PC's address (shown on the GFX PC under Outputs > From another PC). " +
-    "On the GFX PC, \"Let other PCs on the network read the HUD\" must be ticked.", $("url").value.trim() || "http://");
+    "On the GFX PC, \"Let other PCs on the network read the HUD\" must be ticked. " +
+    "GFX PC on another network (VLAN)? Add its network in Settings > Network and it's found from then on.", $("url").value.trim() || "http://");
   if (typed && typed.trim() && typed.trim() !== "http://") useHud(typed.trim());
   else check();
 }

@@ -58,6 +58,12 @@ DEFAULTS = {
     "background": "solid",
     "solid_colour": "#0c0c0e",
     "name": "",   # shown on Home ("Good evening, <name>.")
+    # Settings > Network: other networks (VLANs) and PCs every part looks
+    # through when it finds PCs ("10.230.2.0/24", "10.230.2.15", "HUD-PC-3"),
+    # see scc_shared/netpeers.py.
+    "other_networks": [],
+    # The game HUDs already opened to the network once (sccbe/network.py Opener).
+    "network_opened": [],
 }
 
 _lock = threading.Lock()

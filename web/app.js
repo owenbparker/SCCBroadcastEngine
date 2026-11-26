@@ -148,7 +148,13 @@ function render() {
   Ros.show("builder", head === "ros");
   if (head === "ros") return showView("ros");
   if (head === "home") return showView("home");
-  if (head === "settings") { showView("settings"); if (sub === "updates") $("#updates").scrollIntoView({ block: "center" }); return; }
+  if (head === "settings") {
+    showView("settings");
+    if (Net) Net.load();
+    if (sub === "updates") $("#updates").scrollIntoView({ block: "center" });
+    if (sub === "network") $("#network").scrollIntoView({ block: "start" });
+    return;
+  }
   if (head === "engine") return showEngine(sub || "control");
   const p = part(head);
   if (!p) return showView("home");
@@ -599,6 +605,7 @@ function renderSettings() {
   $("#f-app").textContent = S.app.app_dir;
   $("#f-data").textContent = S.app.data_dir;
   renderImported();
+  if (Net && route.startsWith("settings")) Net.load();
 }
 
 $("#parts-list").addEventListener("click", e => {
@@ -725,3 +732,77 @@ route = location.hash.slice(1) || "home";
 if (REMOTE && !REMOTE_ROUTES.test(route)) show();
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 2000);
+
+// --- Settings > Network --------------------------------------------------------
+
+var Net = (() => {   // (var: show() can run before this line)
+  let N = null, loading = false, last = 0;
+  const STATE = { open: ["g", "Answers"], refused: ["y", "Nothing listening"], timeout: ["r", "No answer (blocked)"], noname: ["r", "Name not found"] };
+  async function load(force) {
+    if (REMOTE || loading || (!force && Date.now() - last < 4000)) return;
+    loading = true;
+    try { N = await api("/api/network"); last = Date.now(); render(); } catch (e) { /* closing */ }
+    loading = false;
+  }
+  async function act(path, body) {
+    try { N = await api(path, body); last = Date.now(); render(); return true; } catch (e) { alertBox(e.message); return false; }
+  }
+  function render() {
+    if (!N) return;
+    $("#net-me").textContent = `${N.hostname} · ${N.addresses.join(", ") || "no network"}`;
+    $("#net-others").innerHTML = N.other_networks.length
+      ? N.other_networks.map(e => `<div class="net-row"><div class="nm"><b class="mono">${esc(e)}</b><span>${e.includes("/") ? "A whole network (VLAN)" : "One PC"}</span></div>
+          <button data-net-remove="${esc(e)}">Remove</button></div>`).join("")
+      : `<p class="mut small">None yet.</p>`;
+    $("#net-suggest").textContent = N.suggest.length ? `On the PCs on other networks, add this PC's network here: ${N.suggest.join(", ")}` : "";
+    $("#net-parts").innerHTML = N.parts.filter(p => p.running).map(p => {
+      const how = p.open ? "Other PCs can connect" : p.can_share ? "This PC only (other PCs get “refused to connect”)" : "This PC only";
+      return `<div class="net-row"><span class="dot ${p.open ? "g" : "y"}"></span><div class="nm"><b>${esc(p.title)}</b><span>Port ${p.port} · ${how}</span></div>
+        ${p.can_share ? `<button data-net-share="${p.key}" data-on="${p.open ? 0 : 1}">${p.open ? "This PC only" : "Let other PCs connect"}</button>` : ""}</div>`;
+    }).join("") || `<p class="mut small">Nothing running.</p>`;
+    $("#net-fw-row").hidden = !N.windows;
+    $("#net-ports").textContent = `If PCs still can't reach each other, the network between the VLANs is blocking it. IT needs to allow ${N.ports_text}.`;
+  }
+  function renderCheck(r) {
+    const cls = r.verdict === "ok" && r.results.every(x => x.state === "open") ? "ok" : r.verdict === "ok" ? "" : "bad";
+    $("#net-result").innerHTML = `<p class="net-sum ${cls}">${esc(r.summary)}</p>` + r.results.map(x => {
+      const [c, w] = STATE[x.state] || ["", x.state];
+      return `<div class="net-row"><span class="dot ${c}"></span><div class="nm"><b>${x.port}</b> ${esc(x.what)}<span>${w}${x.ms != null ? ` · ${x.ms} ms` : ""}${x.name ? ` · ${esc(x.name)}` : ""}</span></div></div>`;
+    }).join("") + (r.ip && !r.same_network && !N.other_networks.some(e => e === r.host || (e.includes("/") && sameNet(e, r.ip)))
+      ? `<div class="row"><button data-net-addnet="${esc(r.ip.split(".").slice(0, 3).join(".") + ".0/24")}">Look on ${esc(r.ip.split(".").slice(0, 3).join(".") + ".x")} from now on</button></div>` : "");
+  }
+  const sameNet = (net, ip) => net.endsWith("/24") && net.split(".").slice(0, 3).join(".") === ip.split(".").slice(0, 3).join(".");
+  async function fw(fix) {
+    const box = $("#net-fw");
+    box.textContent = fix ? "Windows asks for administrator rights: press Yes…" : "Checking Windows Firewall…";
+    try {
+      const f = await api("/api/network/firewall", fix ? {} : undefined);
+      box.innerHTML = `<span class="dot ${f.verdict === "ok" ? "g" : f.verdict === "source" ? "" : "r"}"></span> ${esc(f.text || "")}` +
+        (f.profiles && f.profiles.length ? ` <span class="mut">(this PC's network: ${f.profiles.map(p => esc(p.category)).join(", ")})</span>` : "");
+      load(true);
+    } catch (e) { box.textContent = e.message; }
+  }
+  $("#net-add-go").onclick = async () => { if (await act("/api/network/other", { add: $("#net-add").value })) $("#net-add").value = ""; };
+  $("#net-add").addEventListener("keydown", e => { if (e.key === "Enter") $("#net-add-go").click(); });
+  $("#net-others").addEventListener("click", e => { const b = e.target.closest("[data-net-remove]"); if (b) act("/api/network/other", { remove: b.dataset.netRemove }); });
+  $("#net-parts").addEventListener("click", e => {
+    const b = e.target.closest("[data-net-share]");
+    if (b) { b.disabled = true; act("/api/network/share", { key: b.dataset.netShare, on: b.dataset.on === "1" }).then(() => setTimeout(() => load(true), 1500)); }
+  });
+  $("#net-result").addEventListener("click", e => {
+    const b = e.target.closest("[data-net-addnet]");
+    if (b) { act("/api/network/other", { add: b.dataset.netAddnet }); b.closest(".row").remove(); }
+  });
+  $("#net-check-go").onclick = async () => {
+    const b = $("#net-check-go");
+    b.disabled = true; b.textContent = "Checking…";
+    $("#net-result").innerHTML = "";
+    try { renderCheck(await api("/api/network/check", { host: $("#net-check").value })); }
+    catch (e) { $("#net-result").innerHTML = `<p class="net-sum bad">${esc(e.message)}</p>`; }
+    b.disabled = false; b.textContent = "Check";
+  };
+  $("#net-check").addEventListener("keydown", e => { if (e.key === "Enter") $("#net-check-go").click(); });
+  $("#net-fw-check").onclick = () => fw(false);
+  $("#net-fw-fix").onclick = () => fw(true);
+  return { load };
+})();

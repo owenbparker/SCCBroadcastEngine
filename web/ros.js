@@ -381,7 +381,7 @@ const Ros = (() => {
     const me = r.addresses && r.addresses.length ? ` This PC is ${esc(r.self)} (${esc(r.addresses.join(", "))}).` : "";
     list.innerHTML = r.pcs.length ? r.pcs.map(p => `<div class="pc"><span><b>${esc(p.name)}</b><small>${esc(p.address)} · ${p.templates} template${p.templates === 1 ? "" : "s"}${p.version ? " · v" + esc(p.version) : ""}</small></span>
         <button data-send="${esc(p.address)}">Send</button></div>`).join("") + `<div class="mut small" style="margin-top:4px">${me.trim()}</div>`
-      : `<div class="mut small">No other SCC Broadcast Engine found on this network. Is it open on the other PC? You can type its address below.${me}</div>`;
+      : `<div class="mut small">No other SCC Broadcast Engine found on this network. Is it open on the other PC? You can type its address below, or add its network (VLAN) in Settings &gt; Network.${me}</div>`;
   }
 
   async function sendTo(to, btn) {

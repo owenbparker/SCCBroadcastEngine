@@ -145,6 +145,24 @@
             <div class="part-set"><div class="nm"><b>Run game HUDs as separate programs</b><span>A HUD that crashes starts again by itself, and can't take the GFX Engine or the other HUDs down with it. Running HUDs restart when you change this.</span></div>
               <button class="toggle" id="separate-huds" title="Run game HUDs as separate programs"></button></div>
           </div>
+          <div class="card glass2" id="network">
+            <h3>Network</h3>
+            <p class="mut">Connects SCC Broadcast Engine PCs on different networks (VLANs), e.g. 10.230.5.x and 10.230.2.x.</p>
+            <div class="li"><span>This PC</span><span class="v mono" id="net-me"></span></div>
+            <h4 class="net-h">Other networks and PCs</h4>
+            <p class="mut small">PCs are found by themselves only on this PC's own network. Add the other VLANs (or single PCs) here, and every part looks there too: HUDs finding the GFX Engine, the engine's list of engines, the observer PC, Send to another PC.</p>
+            <div id="net-others"></div>
+            <div class="row"><input id="net-add" placeholder="e.g. 10.230.2.0/24, 10.230.2.15 or HUD-PC-3" spellcheck="false" style="flex:1;min-width:0"><button id="net-add-go">Add</button></div>
+            <p class="mut small note" id="net-suggest"></p>
+            <h4 class="net-h">Can other PCs reach this one?</h4>
+            <div id="net-parts"></div>
+            <div class="row" id="net-fw-row" hidden><button id="net-fw-check">Check Windows Firewall</button><button class="k" id="net-fw-fix">Allow through Windows Firewall</button></div>
+            <p class="mut small note" id="net-fw"></p>
+            <h4 class="net-h">Check another PC</h4>
+            <div class="row"><input id="net-check" placeholder="The other PC's address, e.g. 10.230.2.15" spellcheck="false" style="flex:1;min-width:0"><button id="net-check-go">Check</button></div>
+            <div id="net-result"></div>
+            <p class="mut small note" id="net-ports"></p>
+          </div>
         </div>
         <div>
           <div class="card glass2" id="card-controlpc">

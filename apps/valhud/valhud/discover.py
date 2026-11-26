@@ -8,6 +8,8 @@ import json
 import socket
 import urllib.request
 
+from scc_shared import netpeers
+
 
 def own_addresses():
     """This PC's IPv4 addresses on private networks."""
@@ -51,10 +53,8 @@ def find_huds(port, is_hud, timeout=0.35, addresses=None):
     """[{"ip", "url", "state"}] of the PCs on this PC's networks (each /24)
     whose /api/state at port passes is_hud(state)."""
     mine = set(addresses if addresses is not None else own_addresses())
-    candidates = []
-    for a in sorted(mine):
-        net = ipaddress.IPv4Network(a + "/24", strict=False)
-        candidates += [str(h) for h in net.hosts() if str(h) not in mine]
+    # (this PC's networks, then Settings > Network's other networks and PCs: other VLANs)
+    candidates = netpeers.candidates(sorted(mine), skip=mine)
     found = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=128) as pool:
         open_ips = [ip for ip, ok in zip(candidates, pool.map(lambda ip: _open(ip, port, timeout), candidates)) if ok]
