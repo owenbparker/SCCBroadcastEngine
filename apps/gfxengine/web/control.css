@@ -387,6 +387,18 @@ table.sheet td.c:hover { background: #1d3b5e; }
 .team-card .colour-row label { display: flex; flex-direction: column; gap: 3px; }
 .team-card .colour-row label > input { margin-top: 0; }
 
+/* Global: the graphics' primary colour */
+.accent-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.accent-row input[type=color] { width: 44px; height: 32px; padding: 2px; flex: 0 0 44px; }
+.accent-row input[type=text] { width: 96px; font-family: ui-monospace, Consolas, monospace; text-transform: lowercase; }
+.accent-swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.accent-swatches .sw { width: 24px; height: 24px; border-radius: 6px; border: 2px solid rgba(255,255,255,.12); cursor: pointer; box-sizing: border-box; }
+.accent-swatches .sw.on { border-color: var(--text); box-shadow: 0 0 0 2px rgba(0,0,0,.4) inset; }
+.accent-preview { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 8px; background: #1a0406; margin-bottom: 8px; }
+.accent-preview i { display: block; height: 6px; width: 70%; border-radius: 1px; background: linear-gradient(90deg, transparent, var(--accent-c, #ffc52a) 35%); }
+.accent-preview i.thin { height: 2px; width: 100%; background: var(--accent-c, #ffc52a); }
+.accent-preview b { color: var(--accent-c, #ffc52a); font-size: 13px; letter-spacing: .06em; }
+
 /* Global: the ticker */
 .g-ticker textarea { resize: vertical; font-family: inherit; }
 

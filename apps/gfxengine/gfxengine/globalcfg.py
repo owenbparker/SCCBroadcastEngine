@@ -61,6 +61,10 @@ DEFAULT = {
     # The graphics' text: most of it is the primary colour (white), the lines
     # picked out (the stage, LOCAL TIME...) the secondary (gold). Set in Control.
     "text": {"primary": "#ffffff", "secondary": "#ffc52a"},
+    # The graphics' primary colour: the gold highlights (bars, underlines,
+    # dividers, frames, gold text) of every graphic are drawn in it instead
+    # (the gold as designed until it's changed). Set in Global.
+    "accent": "#ffc52a",
     # The graphics whose own output (/output?comp=id) is switched on: it always
     # shows its graphic, on Program or not (the rest show nothing, to save the PC).
     "outputs_on": [],
@@ -72,6 +76,61 @@ DEFAULT = {
 CASTER_BOX = (619, 451, 683, 178)
 CASTER_BOTTOM, CASTER_GAP = 975, 40
 CASTER_SCALE = {1: 1, 2: 1, 3: 0.85, 4: 0.63}
+
+
+# The gold the SCC graphics were made with: its golds (lighter, darker,
+# a little warmer or cooler) become the primary colour's, by how gold they are.
+# The same sums as runtime.js GFX.accentPixels, which does a picture's pixels.
+ACCENT_GOLD = "#ffc52a"
+
+
+def _hsl(r, g, b):
+    r, g, b = r / 255, g / 255, b / 255
+    mx, mn = max(r, g, b), min(r, g, b)
+    lum, d = (mx + mn) / 2, mx - mn
+    if not d:
+        return 0.0, 0.0, lum
+    s = d / (1 - abs(2 * lum - 1))
+    h = ((g - b) / d) % 6 if mx == r else (b - r) / d + 2 if mx == g else (r - g) / d + 4
+    return h * 60, min(1.0, s), lum
+
+
+def _rgb(h, s, lum):
+    c = (1 - abs(2 * lum - 1)) * s
+    x = c * (1 - abs((h / 60) % 2 - 1))
+    m = lum - c / 2
+    r, g, b = ((c, x, 0), (x, c, 0), (0, c, x), (0, x, c), (x, 0, c), (c, 0, x))[int(h // 60) % 6]
+    return (r + m) * 255, (g + m) * 255, (b + m) * 255
+
+
+def gold_weight(h, s, lum):
+    """How much a colour is the design's gold (0 to 1)."""
+    dh = abs(h - 44)
+    wh = 1.0 if dh <= 9 else max(0.0, 1 - (dh - 9) / 8)
+    ws = 1.0 if s >= 0.6 else max(0.0, (s - 0.4) / 0.2)
+    wl = 1.0 if 0.2 <= lum <= 0.85 else max(0.0, 1 - (0.2 - lum) / 0.1 if lum < 0.2 else 1 - (lum - 0.85) / 0.1)
+    return wh * ws * wl
+
+
+def accent_colour(c, accent):
+    """A colour ("#rrggbb") with its gold made the primary colour's."""
+    if not isinstance(c, str) or not re.match(r"^#[0-9a-fA-F]{6}$", c or ""):
+        return c
+    if not accent or accent.lower() == ACCENT_GOLD:
+        return c
+    n = int(c[1:], 16)
+    r, g, b = n >> 16 & 255, n >> 8 & 255, n & 255
+    h, s, lum = _hsl(r, g, b)
+    w = gold_weight(h, s, lum)
+    if not w:
+        return c
+    a = int(accent[1:], 16)
+    th, ts, tl = _hsl(a >> 16 & 255, a >> 8 & 255, a & 255)
+    gh, gs, gl = _hsl(255, 197, 42)
+    nl = lum * tl / gl if lum <= gl else tl + (lum - gl) * (1 - tl) / (1 - gl)
+    nr, ng, nb = _rgb(th, ts * min(1.0, s / gs), nl)
+    out = [round(o * (1 - w) + n2 * w) for o, n2 in ((r, nr), (g, ng), (b, nb))]
+    return "#" + "".join(f"{max(0, min(255, v)):02x}" for v in out)
 
 
 def caster_moves(count):
@@ -158,6 +217,7 @@ def clean(g):
     out["caster"]["text"] = colour(caster.get("text"), out["caster"]["secondary"])
     text = g.get("text") if isinstance(g.get("text"), dict) else {}
     out["text"] = {k: colour(text.get(k), DEFAULT["text"][k]) for k in ("primary", "secondary")}
+    out["accent"] = colour(g.get("accent"), DEFAULT["accent"]).lower()
     clock = dict(DEFAULT["clock"], **(g.get("clock") or {}))
     until = str(clock.get("until") or "").strip()
     out["clock"] = {"mode": clock.get("mode") if clock.get("mode") in CLOCK_LABELS else "time",
@@ -276,7 +336,10 @@ def rows(g):
     c = g["caster"]
     moves = caster_moves(c["count"])
     out += [["Caster boxes", str(c["count"])], ["Caster primary", c["primary"]], ["Caster secondary", c["secondary"]],
-            ["Caster text", c["text"]], ["Text primary", g["text"]["primary"]], ["Text secondary", g["text"]["secondary"]]]
+            ["Caster text", c["text"]], ["Text primary", g["text"]["primary"]],
+            # (gold text follows the primary colour; a secondary set to another colour stays)
+            ["Text secondary", accent_colour(g["text"]["secondary"], g["accent"])],
+            ["Primary colour", g["accent"]]]
     for i in range(4):
         out += [[f"Caster {i + 1} shown", "1" if i < c["count"] else ""], [f"Caster {i + 1} move", moves[i] if i < c["count"] else ""]]
     out += [[k, v] for k, v in g["custom"]]

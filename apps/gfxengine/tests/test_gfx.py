@@ -583,6 +583,30 @@ class PackTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_primary_colour_recolours_the_gold(self):
+        from gfxengine import globalcfg
+        g = globalcfg.clean({})
+        self.assertEqual(g["accent"], "#ffc52a")
+        rows = dict(globalcfg.rows(g)[1:])
+        # (as designed until it's changed)
+        self.assertEqual((rows["Primary colour"], rows["Text secondary"]), ("#ffc52a", "#ffc52a"))
+        self.assertEqual(globalcfg.clean({"accent": "nope"})["accent"], "#ffc52a")
+        g = globalcfg.clean({"accent": "#2A7FFF"})
+        rows = dict(globalcfg.rows(g)[1:])
+        self.assertEqual((rows["Primary colour"], rows["Text secondary"]), ("#2a7fff", "#2a7fff"))
+        # a secondary that isn't gold stays as it was set
+        rows = dict(globalcfg.rows(dict(g, text={"primary": "#ffffff", "secondary": "#00ff00"}))[1:])
+        self.assertEqual(rows["Text secondary"], "#00ff00")
+        ac = globalcfg.accent_colour
+        self.assertEqual(ac("#ffc52a", "#e0181b"), "#e0181b")
+        self.assertEqual(ac("#ffffff", "#e0181b"), "#ffffff")
+        self.assertEqual(ac("#7200ff", "#e0181b"), "#7200ff")
+        self.assertEqual(ac("#b28a1d", "#ffc52a"), "#b28a1d")
+        dark = ac("#b28a1d", "#2a7fff")   # a darker gold: a darker blue
+        r, gg, b = (int(dark[i:i + 2], 16) for i in (1, 3, 5))
+        self.assertTrue(b > r and b < 0x2a7fff & 255 or b <= 255)
+        self.assertTrue(b > gg > r)
+
     def test_starter_is_linked(self):
         with open(os.path.join(ROOT, "starter", "project.json"), encoding="utf-8") as f:
             data = json.load(f)

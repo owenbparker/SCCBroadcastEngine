@@ -306,6 +306,12 @@
 
   function buildContent(layer, value, opts) {
     const t = layer.type;
+    const accent = layer.accent !== false ? GFX.accent() : "";
+    if (accent && t !== "image" && t !== "video" && t !== "web") {
+      layer = accentLayer(layer, accent);
+      if ((t === "rect" || t === "path") && hexRgb(value)) value = GFX.accentHex(value, accent);
+    }
+    if (accent && accentPic(layer, value)) { const img = accentImage(layer, value, accent); if (img) return img; }
     if (t === "image" && value === "{{Sponsors}}") return sponsorBox(layer, opts);
     if (t === "image" && value.startsWith("{{Sponsors all}}")) return sponsorStrip(layer, value.split("|").slice(1));
     if (t === "video" && layer.tint) return tintedVideo(layer, value, opts);
@@ -462,6 +468,119 @@
     tinted.set(key, p);
     return p;
   }
+  // --- the graphics' primary colour (Global's "Primary colour") -------------
+  // The gold highlights the SCC graphics were made with (bars, underlines,
+  // dividers, frames) are drawn in it instead: each pixel or colour that's the
+  // design's gold (a lighter or darker one too) takes the colour's hue, with
+  // its light and dark kept in step; everything else stays as it is. The same
+  // sums as globalcfg.accent_colour. A layer with accent: false keeps its gold.
+  const ACCENT_GOLD = "#ffc52a", GOLD_HSL = rgbHsl(255, 197, 42);
+  GFX.accent = function () {
+    const c = String(GFX.lookup((ctx.tables && ctx.tables.Global) || [], "Primary colour") || "").trim().toLowerCase();
+    return hexRgb(c) && c !== ACCENT_GOLD ? c : "";
+  };
+  function goldWeight(h, s, l) {
+    const dh = Math.abs(h - 44);
+    const wh = dh <= 9 ? 1 : Math.max(0, 1 - (dh - 9) / 8);
+    const ws = s >= 0.6 ? 1 : Math.max(0, (s - 0.4) / 0.2);
+    const wl = l >= 0.2 && l <= 0.85 ? 1 : Math.max(0, l < 0.2 ? 1 - (0.2 - l) / 0.1 : 1 - (l - 0.85) / 0.1);
+    return wh * ws * wl;
+  }
+  function accentMaker(colour) {
+    const rgb = hexRgb(colour);
+    if (!rgb) return null;
+    const [th, ts, tl] = rgbHsl(...rgb), [, gs, gl] = GOLD_HSL;
+    // -> the new [r, g, b], or null for a colour that isn't gold
+    return (r, g, b) => {
+      const [h, s0, l] = rgbHsl(r, g, b), s = Math.min(1, s0), w = goldWeight(h, s, l);
+      if (!w) return null;
+      const nl = l <= gl ? l * tl / gl : tl + (l - gl) * (1 - tl) / (1 - gl);
+      const out = hslRgb(th, ts * Math.min(1, s / gs), nl);
+      return [r * (1 - w) + out[0] * w, g * (1 - w) + out[1] * w, b * (1 - w) + out[2] * w];
+    };
+  }
+  // A colour ("#rrggbb", else as it is) with its gold the primary colour's.
+  GFX.accentHex = function (c, accent) {
+    accent = accent === undefined ? GFX.accent() : accent;
+    const rgb = accent && hexRgb(c), f = rgb && accentMaker(accent);
+    const out = f && f(...rgb);
+    return out ? "#" + out.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("") : c;
+  };
+  // A picture's pixels (RGBA): returns how many changed.
+  GFX.accentPixels = function (px, accent) {
+    const f = accentMaker(accent);
+    let n = 0;
+    if (!f) return 0;
+    const seen = new Map();   // (most of a picture is a few colours)
+    for (let i = 0; i < px.length; i += 4) {
+      if (!px[i + 3]) continue;
+      const key = (px[i] << 16) | (px[i + 1] << 8) | px[i + 2];
+      let out = seen.get(key);
+      if (out === undefined) { out = f(px[i], px[i + 1], px[i + 2]); if (seen.size < 50000) seen.set(key, out); }
+      if (!out) continue;
+      px[i] = out[0]; px[i + 1] = out[1]; px[i + 2] = out[2];
+      n++;
+    }
+    return n;
+  };
+  // A layer that follows it: a picture of the design's own, showing (not one
+  // from the data: a logo, a headshot, or a placeholder for one).
+  const accentPic = (layer, value) => layer.type === "image" && layer.accent !== false && !layer.tint && !layer.recolor
+    && !!value && value === layer.src && !hasTokens(value);
+  // The layer's own colours in it (a copy; the layer itself isn't changed).
+  const ACCENT_KEYS = ["color", "fill", "fill2", "stroke", "divider", "gold", "line", "champ"];
+  function accentLayer(layer, accent) {
+    const out = Object.assign({}, layer);
+    for (const k of ACCENT_KEYS) if (typeof out[k] === "string" && hexRgb(out[k])) out[k] = GFX.accentHex(out[k], accent);
+    return out;
+  }
+  const accented = new Map();   // "address|#colour" -> blob address, the address itself (no gold), or a promise
+  const lastAccent = new Map(); // address -> its last one made
+  function accentSrc(value, colour) {
+    const key = value + "|" + colour;
+    if (accented.has(key)) return accented.get(key);
+    const plain = url(encodeURI(value));
+    const p = new Promise(done => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          const cx = c.getContext("2d", { willReadFrequently: true });
+          cx.drawImage(img, 0, 0);
+          const data = cx.getImageData(0, 0, c.width, c.height);
+          if (!GFX.accentPixels(data.data, colour)) { accented.set(key, plain); return done(plain); }
+          cx.putImageData(data, 0, 0);
+          c.toBlob(b => {
+            const u = b ? URL.createObjectURL(b) : plain;
+            if (accented.size > 400) { for (const [, old] of accented) if (typeof old === "string" && old.startsWith("blob:")) URL.revokeObjectURL(old); accented.clear(); lastAccent.clear(); }
+            accented.set(key, u);
+            lastAccent.set(value, u);
+            done(u);
+          }, "image/png");
+        } catch (e) { accented.set(key, plain); done(plain); }   // (can't be read: as it is)
+      };
+      img.onerror = () => { accented.set(key, plain); done(plain); };
+      img.src = plain;
+    });
+    accented.set(key, p);
+    return p;
+  }
+  function accentImage(layer, value, accent) {
+    const ready = accentSrc(value, accent), plain = url(encodeURI(value));
+    // (no gold in it: the usual picture, smoothed when it's drawn smaller)
+    if (ready === plain) return null;
+    const img = el("img", "gfx-media", { objectFit: fitOf(layer.fit), objectPosition: POSITIONS[layer.position] || "" });
+    img.draggable = false;
+    if (typeof ready === "string") img.src = ready;
+    else {
+      // (until it's in its colour: the colour it had, else as designed)
+      img.src = lastAccent.get(value) || plain;
+      ready.then(u => { img.src = u; });
+    }
+    return img;
+  }
+
   function tintedImage(layer, value) {
     const colour = GFX.resolve(layer.tint);
     const img = el("img", "gfx-media", { objectFit: fitOf(layer.fit), objectPosition: POSITIONS[layer.position] || "" });
@@ -794,6 +913,7 @@
         if (layer.type === "video") { if (v && !/\{\{/.test(v)) videos.add(url(encodeURI(v))); continue; }
         if (v.startsWith("{{Sponsors")) continue;
         if (layer.tint && v && !/\{\{/.test(v) && hexRgb(GFX.resolve(layer.tint))) tintSrc(v, GFX.resolve(layer.tint));
+        if (GFX.accent() && accentPic(layer, v)) { const a = accentSrc(v, GFX.accent()); if (typeof a === "string") want.add(a); }
         add(v);
         const done = smoothed.get(smoothKey(v, layer));
         if (done) want.add(done);
@@ -1089,7 +1209,9 @@
   setInterval(() => { for (const b of live) { if (!b.isConnected) live.delete(b); else if (ticking(b._raw)) setText(b); } }, 250);   // (often enough that the timer changes on the second)
 
   // What else a layer's look takes from the data (a tinted loop's colour...).
-  const extraOf = layer => [...(layer.tint ? [layer.tint, layer.brightness, layer.speed] : []), layer.zoom].map(v => GFX.resolve(v ?? "")).join("|");
+  const extraOf = layer => [...(layer.tint ? [layer.tint, layer.brightness, layer.speed] : []), layer.zoom].map(v => GFX.resolve(v ?? "")).join("|")
+    // (and the primary colour, for the layers that take it)
+    + (layer.accent !== false && !["video", "web"].includes(layer.type) ? "|" + GFX.accent() : "");
 
   // Turning round and round for as long as it's on (a vMix title's RotateContinuous):
   // layer.spin = turns a second, minus = anticlockwise. Uses the separate

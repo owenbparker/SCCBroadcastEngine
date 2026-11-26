@@ -1135,6 +1135,10 @@
           h("input", { type: "checkbox", checked: l.tint === "{{Global!BG loop colour}}", onchange: e => {
             snapshot(); if (e.target.checked) l.tint = "{{Global!BG loop colour}}"; else delete l.tint; changed({ props: true }); } }),
           "Take the background loop's colour") : null,
+        l.type === "image" && !l.tint && !l.recolor ? h("label", { class: "toggle", title: "Its gold (bars, lines, frames) is drawn in the graphics' primary colour, set in Global. Untick to keep the gold as it is" },
+          h("input", { type: "checkbox", checked: l.accent !== false, onchange: e => {
+            snapshot(); if (e.target.checked) delete l.accent; else l.accent = false; changed({ props: true }); } }),
+          "Follows the primary colour") : null,
         l.type === "image" && l.tint && l.tint !== "{{Global!BG loop colour}}" ? bind(l, "tint", "text", { label: "Colour", placeholder: "(none)" }) : null,
         l.type === "image" && /\{\{/.test(l.src || "") ? lab("When Global has none", assetSelect("image", l.placeholder || "", v => { snapshot(); l.placeholder = v; changed({ props: true }); })) : null,
         l.type === "video" ? h("div", { class: "row-gap" },
