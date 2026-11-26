@@ -64,3 +64,39 @@ class WinFrameTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SnapTests(unittest.TestCase):
+    """Windows Snap: drags are handed to Windows' own move / size loop."""
+
+    def test_hit_codes(self):
+        self.assertEqual(winframe.hit_code("caption"), 2)
+        self.assertEqual(winframe.hit_code(""), 2)
+        self.assertEqual(winframe.hit_code("n"), 12)
+        self.assertEqual(winframe.hit_code("se"), 17)
+        self.assertEqual(winframe.hit_code("w"), 10)
+        self.assertIsNone(winframe.hit_code("bogus"))
+
+    def test_points_lparam_handles_monitors_left_of_main(self):
+        lp = winframe.points_lparam(-100, 50)
+        self.assertEqual(lp & 0xFFFF, (-100) & 0xFFFF)
+        self.assertEqual(lp >> 16, 50)
+
+    def test_snap_styles_include_frame_and_maximise_box(self):
+        self.assertTrue(winframe.SNAP_STYLES & winframe.WS_THICKFRAME)
+        self.assertTrue(winframe.SNAP_STYLES & winframe.WS_MAXIMIZEBOX)
+        self.assertTrue(winframe.SNAP_STYLES & winframe.WS_CAPTION)
+
+    def test_no_snap_without_win32_falls_back(self):
+        api = winframe.WindowApi()
+        api._attach(FakeWindow())
+        api._hwnd = lambda: None
+        self.assertFalse(api.win_state()["snap"])
+        self.assertFalse(api.win_begin("caption"))
+
+    def test_page_hands_drags_to_windows(self):
+        with open(os.path.join(ROOT, "web", "winframe.js"), encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn('native("caption")', js)
+        self.assertIn("native(edge)", js)
+        self.assertIn('addEventListener("resize", syncState)', js)

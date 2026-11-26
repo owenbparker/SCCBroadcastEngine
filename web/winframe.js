@@ -3,7 +3,10 @@
 // the top bar's empty space, double-click maximises, and the window's edges
 // resize it. Only in the app window: in a web browser none of this shows.
 (function () {
-  let W = null, maxed = false, act = null, busy = false, want = null;
+  // With "snap" (Windows), a drag is handed to Windows' own move / size loop,
+  // so Windows Snap, Snap Layouts and Win+arrows work; otherwise the page
+  // moves the window itself.
+  let W = null, maxed = false, act = null, busy = false, want = null, snap = false, lastDown = 0, lastXY = [0, 0];
   const body = document.body;
   const NOT_DRAG = "a, button, input, select, textarea, .chip, .t, .menu, [data-menu], [data-go]";
 
@@ -15,6 +18,17 @@
   }
   async function toggleMax() {
     try { const st = await W.win_toggle_max(); setMax(st && st.maximized); } catch (e) { /* closing */ }
+  }
+  // Windows can maximise / restore the window itself (Snap, Win+arrows): follow it.
+  let syncT = null;
+  function syncState() {
+    clearTimeout(syncT);
+    syncT = setTimeout(async () => {
+      try { const st = await W.win_state(); if (st) setMax(st.maximized); } catch (e) { /* closing */ }
+    }, 120);
+  }
+  async function native(edge) {
+    try { return !!(await W.win_begin(edge)); } catch (e) { return false; }
   }
 
   // One window call in flight at a time; mouse moves in between only keep the latest.
@@ -40,6 +54,7 @@
   }
 
   async function startDrag(ev) {
+    if (snap && await native("caption")) return;
     const dpr = window.devicePixelRatio || 1;
     let r = null;
     if (maxed) {
@@ -54,6 +69,7 @@
   }
 
   async function startResize(ev, edge) {
+    if (snap && await native(edge)) return;
     const r = await W.win_rect();
     if (!r) return;
     begin({ kind: "size", edge, sx: ev.screenX, sy: ev.screenY, r, dpr: window.devicePixelRatio || 1 });
@@ -101,15 +117,21 @@
       else if (w === "close") W.win_close();
     });
     document.addEventListener("mousedown", ev => {
-      if (ev.detail > 1 || !dragArea(ev)) return;
+      if (!dragArea(ev)) return;
       ev.preventDefault();
+      // Double-click maximises / restores. Counted here, because when Windows
+      // runs the drag the page never sees the first click's mouse-up.
+      const now = Date.now(), near = Math.abs(ev.screenX - lastXY[0]) < 6 && Math.abs(ev.screenY - lastXY[1]) < 6;
+      if (now - lastDown < 500 && near) {
+        lastDown = 0;
+        end();
+        toggleMax();
+        return;
+      }
+      lastDown = now; lastXY = [ev.screenX, ev.screenY];
       startDrag(ev);
     });
-    document.addEventListener("dblclick", ev => {
-      if (!dragArea(ev)) return;
-      end();
-      toggleMax();
-    });
+    window.addEventListener("resize", syncState);
     document.getElementById("wedges").addEventListener("mousedown", ev => {
       const e = ev.target.dataset && ev.target.dataset.e;
       if (!e || ev.button !== 0) return;
@@ -124,6 +146,7 @@
     try {
       const st = await api.win_state();
       if (!st || !st.native) return;
+      snap = !!st.snap && typeof api.win_begin === "function";
       setup(api);
       setMax(st.maximized);
     } catch (e) { /* an older window without the buttons */ }
