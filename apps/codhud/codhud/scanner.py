@@ -11,6 +11,7 @@ from .capture import Capture, make_dpi_aware
 from .demo import ScreenshotDemo
 from .log import log
 from .names import NameReader, best_match
+from .gameflow import GameFlowReader
 from .postgame import PostgameReader, ScoreboardSaver
 
 
@@ -62,12 +63,14 @@ class Scanner:
         self.game = ScreenshotDemo()
         self.debounce = detect.HudDebounce()
         self.names = NameReader()
+        import os
+        from .config import DATA_DIR
         if demo:
             self.postgame = PostgameReader()
         else:
-            import os
-            from .config import DATA_DIR
             self.postgame = PostgameReader(saver=ScoreboardSaver(os.path.join(DATA_DIR, "scoreboards")))
+        # (its games are kept in the data folder, Demo match or not: the demo shows a made-up one)
+        self.gameflow = GameFlowReader(os.path.join(DATA_DIR, "gameflow"))
         self.frame = None
         self.status = "Starting"
         self.raw = "off"
@@ -90,18 +93,21 @@ class Scanner:
         self._thread.start()
         self.names.start(self, self.config)
         self.postgame.start(self, self.config)
+        self.gameflow.start(self, self.config)
         return self
 
     def stop(self):
         self._stop.set()
         self.names.stop()
         self.postgame.stop()
+        self.gameflow.stop()
 
     def info(self):
         s = self.hub.state
         return {"demo": self.demo, "status": self.status, "hud": s["hud"], "raw": self.raw,
                 "colours": self.colours, "fps": round(self.fps, 1), "spectated": s["spectated"],
-                "spec": s["spec"], "names": self.names.info(), "postgame": self.postgame.info()}
+                "spec": s["spec"], "names": self.names.info(), "postgame": self.postgame.info(),
+                "gameflow": self.gameflow.info()}
 
     def _run(self):
         frames, counted_at = 0, time.monotonic()

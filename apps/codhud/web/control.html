@@ -194,6 +194,13 @@
       <label class="toggle"><input type="checkbox" data-k="overlay.cam"> Webcam</label>
       <label class="toggle"><input type="checkbox" data-k="overlay.sponsor"> Sponsors</label>
     </div>
+    <h3>Primary colour <button class="reset" id="colour-reset" title="Back to the HUD's own green">Reset to green</button></h3>
+    <p class="note" style="margin-top:0">The name plates' green, in any colour (its darker green follows; the grey stripes stay grey).</p>
+    <div class="row" style="flex-wrap: wrap; align-items: center">
+      <div class="swatch-row"><input type="color" id="colour-pick" data-k="overlay.colour"><input type="text" data-k="overlay.colour" maxlength="7" style="width: 96px" spellcheck="false"></div>
+      <label class="toggle"><input type="checkbox" data-k="overlay.global_colour"> Use the GFX Engine's Global primary colour instead</label>
+    </div>
+    <p class="note" id="colour-note"></p>
     <h3>Score box and webcam <button class="reset" data-reset="overlay.layout">Reset</button></h3>
     <p class="note" style="margin-top:0">In 1920×1080 pixels. The team logos sit in the empty boxes beside the scores, on covers the box's colour; the right side mirrors the left. Click the preview to read a pixel's position.</p>
     <table class="cal">
@@ -230,6 +237,33 @@
     <div class="drop" id="pg-drop">Drop, paste (Ctrl+V) or click to pick a screenshot of the end-of-game scoreboard</div>
     <input type="file" id="pg-file" accept="image/*" hidden>
     <p class="note">Kills, deaths, assists and damage (and non-traded kills and highest streak) go to the GFX Engine's Team stats and Player stats, each team on its side (told by the teams' names, else the players'). They're kept there after the next game starts. Players' names need Windows' text recognition; without it they're named from the in-game scoreboards.</p>
+  </section>
+
+  <section class="wide" data-page="gameflow">
+    <h2>Game flow <span><button class="reset" id="gf-start" title="Start the clock now, when the STARTING IN countdown was missed (Hijack at halftime: the second half)">Start clock now</button> <button class="reset" id="gf-end" title="The game is over: keep it as it is">End game</button> <button class="reset" id="gf-clear" title="Wait for the next game (the last one is kept below)">New game</button></span></h2>
+    <p class="note" style="margin-top:0">Hardpoint and Hijack: the score is read off the score box all game long, for the GFX Engine's <b>Game flow</b> graphic (added to its graphics when this HUD connects, over the boards' background). Hardpoint shows the score at every hill and the points per hill; Hijack the two halves, each throw and dunk, the points per half and the scoring stats.</p>
+    <div class="readout">
+      <span>Now</span><span id="gf-status">–</span>
+      <span>Score read</span><span id="gf-raw">–</span>
+    </div>
+    <div class="row" style="flex-wrap: wrap; margin-top: 10px">
+      <label class="toggle"><input type="checkbox" data-k="gameflow.enabled"> Read the score for the game flow</label>
+      <label class="toggle"><input type="checkbox" data-k="gameflow.auto_start"> Start the clock when the STARTING IN countdown goes</label>
+    </div>
+    <div class="two">
+      <div><label>Mode</label><select data-k="gameflow.mode" id="gf-mode">
+        <option value="auto">Read it off the score box</option><option value="hardpoint">Hardpoint</option><option value="hijack">Hijack</option></select></div>
+      <div><label>Map</label><select id="gf-map"></select></div>
+    </div>
+    <div class="two">
+      <div><label>Which map of the series</label><select id="gf-mapno">
+        <option value="1">Map 1</option><option value="2">Map 2</option><option value="3">Map 3</option><option value="4">Map 4</option><option value="5">Map 5</option>
+        <option value="6">Map 6</option><option value="7">Map 7</option><option value="8">Map 8</option><option value="9">Map 9</option></select></div>
+      <div><label>The graphic shows</label><select id="gf-show"></select></div>
+    </div>
+    <h3>Graphic</h3>
+    <div class="preview" id="gf-preview" style="cursor: default; background: #0d1a14"><iframe id="gf-frame" src="/gameflow" title="Game flow preview" tabindex="-1"></iframe></div>
+    <p class="note">The map number is the maps won so far + 1 when the game starts; change it (or the map) here for the game the graphic shows. Without a game yet (or in the Demo match) the graphic shows a made-up one. Every game is kept, so an earlier map's can be shown again.</p>
   </section>
 
   <section class="wide" data-page="cams">
@@ -307,7 +341,7 @@
 </aside>
 </div>
 
-<script>window.SHELL = {"app": "CoD HUD", "logo": "assets/logo-white.png", "pages": [{"id": "overview", "label": "Overview"}, {"id": "editor", "label": "HUD Editor"}, {"id": "teams", "label": "Match & Teams", "group": "Event setup"}, {"id": "players", "label": "Players", "icon": "teams", "group": "Event setup"}, {"id": "live", "label": "Live Game", "group": "Live game"}, {"id": "cams", "label": "Webcams", "icon": "cams", "group": "Live game"}, {"id": "stats", "label": "Post-game Stats", "icon": "data", "group": "Live game"}, {"id": "calibration", "label": "Calibration", "icon": "settings", "group": "Live game"}, {"id": "engine", "label": "GFX Engine", "icon": "engine", "group": "Connections"}]};</script>
+<script>window.SHELL = {"app": "CoD HUD", "logo": "assets/logo-white.png", "pages": [{"id": "overview", "label": "Overview"}, {"id": "editor", "label": "HUD Editor"}, {"id": "teams", "label": "Match & Teams", "group": "Event setup"}, {"id": "players", "label": "Players", "icon": "teams", "group": "Event setup"}, {"id": "live", "label": "Live Game", "group": "Live game"}, {"id": "cams", "label": "Webcams", "icon": "cams", "group": "Live game"}, {"id": "stats", "label": "Post-game Stats", "icon": "data", "group": "Live game"}, {"id": "gameflow", "label": "Game Flow", "icon": "data", "group": "Live game"}, {"id": "calibration", "label": "Calibration", "icon": "settings", "group": "Live game"}, {"id": "engine", "label": "GFX Engine", "icon": "engine", "group": "Connections"}]};</script>
 <script src="enginelink.js"></script>
 <script src="shell.js"></script>
 <script src="update.js"></script>
@@ -448,6 +482,14 @@
     $("#sponsors").innerHTML = (cfg.sponsors.logos || []).map(function (s) {
       return '<img src="' + esc(s.src) + '" title="' + esc(s.secs) + ' seconds" alt="">';
     }).join("") || '<span class="note" style="margin:0">None yet.</span>';
+    renderColour();
+  }
+  function renderColour() {
+    var o = cfg.overlay || {}, g = o.global_accent || "";
+    $$('[data-k="overlay.colour"]').forEach(function (el) { el.disabled = !!o.global_colour; });
+    $("#colour-note").textContent = !o.global_colour ? "" :
+      g ? "Using the GFX Engine's Global primary colour, " + g.toUpperCase() + "." + (cfg.global.follow ? "" : " (Following the GFX Engine's Global information is off on the Teams page, so it won't update.)")
+        : "No Global primary colour from a GFX Engine yet: the colour above is used until one comes in.";
   }
   function loadLogos() {
     return fetch("/api/logos").then(function (r) { return r.json(); }).then(function (d) { logos = d.logos; renderTeams(); });
@@ -620,6 +662,7 @@
     }
     $("#r-pixels").innerHTML = "Score box " + px(0, d.pixel1) + (d.pixel2.enabled ? " · Scoreboards " + px(1, d.pixel2) + " " + px(2, d.pixel3) : "");
     renderPostgame();
+    renderGameflow();
     var port = info.port;
     $("#url-local").textContent = "http://localhost:" + port + "/overlay";
     $("#lan-box").hidden = !info.lan_url;
@@ -653,6 +696,41 @@
   }
   // After "Use Global Information" on the GFX Engine page: the new team names and logos.
   window.onEngineGlobal = function () { loadLogos(); reloadConfig(); };
+
+  // --- game flow ---------------------------------------------------------------------
+  function renderGameflow() {
+    var gf = info.gameflow || {}, c = cfg.gameflow || {};
+    $("#gf-status").textContent = gf.status || "–";
+    $("#gf-raw").textContent = gf.raw ? gf.raw.map(function (v) { return v == null ? "–" : v; }).join(" - ") + (gf.score ? " · kept: " + gf.score.join(" - ") : "") : "–";
+    var mode = gf.mode || (c.mode !== "auto" ? c.mode : "hardpoint");
+    var maps = (mode === "hijack" ? gf.hijack_maps : gf.hp_maps) || [];
+    var want = c.map || "", opts = '<option value="">No map name</option>' + maps.concat(want && maps.indexOf(want) < 0 ? [want] : []).map(function (m) {
+      return '<option value="' + esc(m) + '">' + esc(m) + "</option>";
+    }).join("");
+    if ($("#gf-map").dataset.opts !== opts) { $("#gf-map").innerHTML = opts; $("#gf-map").dataset.opts = opts; }
+    if (document.activeElement !== $("#gf-map")) $("#gf-map").value = want;
+    var games = gf.games || [], show = '<option value="">The game going on (or the last one)</option>' + games.map(function (g) {
+      return '<option value="' + esc(g.id) + '">' + esc(g.id.replace(/ (hardpoint|hijack)$/, "")) + " · " + (g.mode === "hijack" ? "Hijack" : "Hardpoint") + " · " + g.score.join(" - ") + "</option>";
+    }).join("");
+    if ($("#gf-show").dataset.opts !== show) { $("#gf-show").innerHTML = show; $("#gf-show").dataset.opts = show; }
+    if (document.activeElement !== $("#gf-show")) $("#gf-show").value = gf.shown || "";
+    $("#gf-start").textContent = gf.mode === "hijack" && (gf.state === "halftime" || (gf.state === "running" && gf.half === 2)) ? "Start 2nd half now" : "Start clock now";
+    $("#gf-frame").style.transform = "scale(" + ($("#gf-preview").clientWidth / 1920) + ")";
+  }
+  $("#gf-map").onchange = function () { post("/api/gameflow/meta", { map: this.value }).then(function (d) { info = d; cfg = d.config; renderInfo(); }); };
+  $("#gf-mapno").onchange = function () { post("/api/gameflow/meta", { map_no: Number(this.value) }); };
+  $("#gf-show").onchange = function () { post("/api/gameflow/show", { id: this.value }).then(function (d) { info = d; renderInfo(); }); };
+  $("#gf-start").onclick = function () {
+    var gf = info.gameflow || {}, mode = gf.state === "halftime" || gf.state === "running" ? gf.mode : cfg.gameflow.mode;
+    if (mode !== "hardpoint" && mode !== "hijack") mode = gf.mode_read;
+    if (mode !== "hardpoint" && mode !== "hijack") return alert("Pick Hardpoint or Hijack under Mode first.");
+    post("/api/gameflow/start", { mode: mode }).then(function (d) { info = d; renderInfo(); });
+  };
+  $("#gf-end").onclick = function () { post("/api/gameflow/end", {}).then(function (d) { info = d; renderInfo(); }); };
+  $("#gf-clear").onclick = function () {
+    if (confirm("Wait for the next game? The game shown now is kept in the list.")) post("/api/gameflow/clear", {}).then(function (d) { info = d; renderInfo(); });
+  };
+  addEventListener("resize", function () { $("#gf-frame").style.transform = "scale(" + ($("#gf-preview").clientWidth / 1920) + ")"; });
 
   // --- preview: the game picture with the overlay on top --------------------------
   var preview = $("#preview"), frameImg = $("#frame");
@@ -708,6 +786,11 @@
     if (!confirm("Put the name cells and spectated pixels back to the CoD caster HUD's defaults?")) return;
     post("/api/reset", { section: "names" }).then(function () { return post("/api/reset", { section: "spectated" }); }).then(reloadConfig);
   };
+  $("#colour-reset").onclick = function () { save("overlay.colour", "#00542C", true); save("overlay.global_colour", false, true); fillFields(document); renderColour(); };
+  $('[data-k="overlay.global_colour"]').addEventListener("change", function () { setTimeout(renderColour, 0); });
+  $$('[data-k="overlay.colour"]').forEach(function (el) {   // (the picker and the hex field show each other's change)
+    el.addEventListener("input", function () { if (validHex(el.value)) $$('[data-k="overlay.colour"]').forEach(function (o) { if (o !== el) o.value = normHex(el.value); }); });
+  });
   $("#swap-sides").onclick = function () { post("/api/swap", {}).then(reloadConfig); };
 
   // --- log ---------------------------------------------------------------------------

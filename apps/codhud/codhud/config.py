@@ -93,6 +93,11 @@ DEFAULTS = {
     # player's webcam beside their player card and the sponsors under the
     # middle of the screen (where CDL has them).
     "overlay": {"plates": True, "logos": True, "pips": True, "cam": True, "sponsor": True,
+                # The HUD's primary colour: the name plates' green (#00542C, the
+                # title's own, = no change) in any colour. global_colour: take the
+                # GFX Engine's Global "Primary colour" instead (global_accent is
+                # the last one seen, so it still works while the engine's away).
+                "colour": "#00542C", "global_colour": False, "global_accent": "",
                 # The score box (1920x1080 pixels, placed on the new codcaster
                 # score box, 723..1197 x 19..198): the covers in the empty
                 # spaces beside the scores (x is the left one's; the right one
@@ -122,6 +127,14 @@ DEFAULTS = {
     # The post-game stats: read off the end-of-game scoreboard when it comes up
     # (see codhud/postgame.py) and sent to the GFX Engine's team and player stats.
     "postgame": {"enabled": True},
+
+    # Game flow (Hardpoint and Hijack): the score read off the score box all
+    # game long, for the Game flow board (see codhud/gameflow.py). mode: "auto"
+    # (read under the scores), "hardpoint" or "hijack"; map: the map the board
+    # names (Hardpoint: also how many hills it has); auto_start: the clock starts
+    # when the STARTING IN countdown goes (off: start it by hand); boxes:
+    # where the scores, mode and countdown are, when not the CoD caster HUD's own.
+    "gameflow": {"enabled": True, "mode": "auto", "map": "", "auto_start": True, "boxes": {}},
 
     # The SCC GFX Engine this HUD sends its match and series to (see codhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},
