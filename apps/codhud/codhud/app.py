@@ -273,7 +273,8 @@ class HudApp:
         """What the overlay needs of the settings."""
         cfg = self.config.get()
         return {"match": cfg["match"], "overlay": cfg["overlay"], "fonts": cfg["fonts"],
-                "sponsors": cfg["sponsors"]["logos"], "cams": cfg["cams"]["enabled"]}
+                "sponsors": cfg["sponsors"]["logos"], "cams": cfg["cams"]["enabled"],
+                "primary": primary_colour(cfg)}
 
     def logos(self):
         """The team logos to pick from: the bundled ones and those added here."""
@@ -365,6 +366,10 @@ class HudApp:
         if g.get("best_of") and int(g["best_of"]) != int(cfg["match"]["best_of"]):
             changes["best_of"] = int(g["best_of"])
             done.append(f"best of {changes['best_of']}")
+        accent = str(g.get("accent") or "").lower()
+        if re.fullmatch(r"#[0-9a-f]{6}", accent) and accent != (cfg["overlay"].get("global_accent") or "").lower():
+            self.config.set("overlay.global_accent", accent)
+            done.append(f"primary colour {accent}")
         sponsors = [sp for sp in g.get("sponsors") or [] if sp.get("logo_url")]
         key = json.dumps([[sp["logo_url"], sp.get("secs")] for sp in sponsors])
         if force or key != self._applied.get("sponsors"):
@@ -431,6 +436,16 @@ class HudApp:
         frame = self.scanner.frame
         rgb = detect.pixel(frame, x, y) if frame is not None else None
         return {"x": x, "y": y, "hex": detect.rgb_hex(rgb) if rgb else None}
+
+
+def primary_colour(cfg):
+    """The HUD's primary colour (the name plates' green by default): the
+    GFX Engine's Global primary colour when set to follow it."""
+    o = cfg.get("overlay") or {}
+    if o.get("global_colour") and re.fullmatch(r"#[0-9a-fA-F]{6}", o.get("global_accent") or ""):
+        return o["global_accent"].upper()
+    c = o.get("colour") or ""
+    return c.upper() if re.fullmatch(r"#[0-9a-fA-F]{6}", c) else DEFAULTS["overlay"]["colour"]
 
 
 def ign_key(v):

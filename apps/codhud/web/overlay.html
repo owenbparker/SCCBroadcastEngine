@@ -110,10 +110,55 @@
   var fittedAt = 0;
   if (document.fonts) document.fonts.addEventListener("loadingdone", fit);
 
+  // The primary colour: the name plates' green (the title's #00542C) in any
+  // colour. Each pixel's green part (what's left over its grey) is swapped for
+  // the same share of the new colour, so the darker green (#002614) becomes a
+  // darker shade of it and the grey stripes stay as they are.
+  var PLATE_GREEN = [0, 84, 44], plateCache = {}, plateColour = null;
+  function plateArt(file, hex, done) {
+    var key = file + hex;
+    if (plateCache[key]) return done(plateCache[key]);
+    var im = new Image();
+    im.onload = function () {
+      try {
+        var c = document.createElement("canvas"), g, d, px, i, k, lo, t = parseInt(hex.slice(1), 16);
+        var tr = t >> 16 & 255, tg = t >> 8 & 255, tb = t & 255;
+        c.width = im.naturalWidth; c.height = im.naturalHeight;
+        g = c.getContext("2d"); g.drawImage(im, 0, 0);
+        d = g.getImageData(0, 0, c.width, c.height); px = d.data;
+        for (i = 0; i < px.length; i += 4) {
+          lo = Math.min(px[i], px[i + 1], px[i + 2]);
+          if (px[i + 1] - lo < 3 || px[i + 1] < px[i + 2] || px[i + 1] < px[i]) continue;   // (grey, or not green)
+          k = (px[i + 1] - lo) / PLATE_GREEN[1];
+          px[i] = Math.min(255, lo + k * tr); px[i + 1] = Math.min(255, lo + k * tg); px[i + 2] = Math.min(255, lo + k * tb);
+        }
+        g.putImageData(d, 0, 0);
+        plateCache[key] = c.toDataURL("image/png");
+      } catch (e) { plateCache[key] = ""; }
+      done(plateCache[key]);
+    };
+    im.onerror = function () { done(""); };
+    im.src = "assets/overlay/" + file;
+  }
+  function primary() {
+    var hex = String(look.primary || "").toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(hex) || hex === "#00542C") hex = "";   // (the title's own green: the pictures as they are)
+    if (hex === plateColour) return;
+    plateColour = hex;
+    [["left", "box-left.png"], ["right", "box-right.png"]].forEach(function (p) {
+      var apply = function (url) {
+        var el = document.querySelector(".plate." + p[0]);
+        if (el && plateColour === hex) el.style.backgroundImage = url ? 'url("' + url + '")' : "";
+      };
+      if (hex) plateArt(p[1], hex, apply); else apply("");
+    });
+  }
+
   function build() {
     var m = look.match, key = JSON.stringify([m, look.fonts, (look.overlay || {}).layout]);
-    if (key === builtKey) return;
+    if (key === builtKey) return primary();
     builtKey = key;
+    plateColour = null;
     var fam = String((look.fonts || {}).name || "").replace(/["\\]/g, "");
     $("fonts").textContent = (fam ? '@font-face { font-family: "SCC name"; src: local("' + fam + '"), url("/fonts/local/' + encodeURIComponent(fam) + '"); font-weight: 100 900; }' : "") +
       ":root { --f-name: " + (fam ? '"' + fam + '", "SCC name", ' : "") + '"SCC fallback", sans-serif; }';
@@ -149,6 +194,7 @@
       "px;height:" + lay.best_of_h + "px;font-size:" + lay.best_of_text + 'px"><span>BEST OF ' + esc(m.best_of) + "</span></div>";
     fit();
     if (document.fonts) document.fonts.ready.then(fit);
+    primary();
   }
 
   // The sponsors: one after another, each for its seconds.

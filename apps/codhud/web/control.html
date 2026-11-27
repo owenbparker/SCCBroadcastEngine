@@ -194,6 +194,13 @@
       <label class="toggle"><input type="checkbox" data-k="overlay.cam"> Webcam</label>
       <label class="toggle"><input type="checkbox" data-k="overlay.sponsor"> Sponsors</label>
     </div>
+    <h3>Primary colour <button class="reset" id="colour-reset" title="Back to the HUD's own green">Reset to green</button></h3>
+    <p class="note" style="margin-top:0">The name plates' green, in any colour (its darker green follows; the grey stripes stay grey).</p>
+    <div class="row" style="flex-wrap: wrap; align-items: center">
+      <div class="swatch-row"><input type="color" id="colour-pick" data-k="overlay.colour"><input type="text" data-k="overlay.colour" maxlength="7" style="width: 96px" spellcheck="false"></div>
+      <label class="toggle"><input type="checkbox" data-k="overlay.global_colour"> Use the GFX Engine's Global primary colour instead</label>
+    </div>
+    <p class="note" id="colour-note"></p>
     <h3>Score box and webcam <button class="reset" data-reset="overlay.layout">Reset</button></h3>
     <p class="note" style="margin-top:0">In 1920×1080 pixels. The team logos sit in the empty boxes beside the scores, on covers the box's colour; the right side mirrors the left. Click the preview to read a pixel's position.</p>
     <table class="cal">
@@ -448,6 +455,14 @@
     $("#sponsors").innerHTML = (cfg.sponsors.logos || []).map(function (s) {
       return '<img src="' + esc(s.src) + '" title="' + esc(s.secs) + ' seconds" alt="">';
     }).join("") || '<span class="note" style="margin:0">None yet.</span>';
+    renderColour();
+  }
+  function renderColour() {
+    var o = cfg.overlay || {}, g = o.global_accent || "";
+    $$('[data-k="overlay.colour"]').forEach(function (el) { el.disabled = !!o.global_colour; });
+    $("#colour-note").textContent = !o.global_colour ? "" :
+      g ? "Using the GFX Engine's Global primary colour, " + g.toUpperCase() + "." + (cfg.global.follow ? "" : " (Following the GFX Engine's Global information is off on the Teams page, so it won't update.)")
+        : "No Global primary colour from a GFX Engine yet: the colour above is used until one comes in.";
   }
   function loadLogos() {
     return fetch("/api/logos").then(function (r) { return r.json(); }).then(function (d) { logos = d.logos; renderTeams(); });
@@ -708,6 +723,11 @@
     if (!confirm("Put the name cells and spectated pixels back to the CoD caster HUD's defaults?")) return;
     post("/api/reset", { section: "names" }).then(function () { return post("/api/reset", { section: "spectated" }); }).then(reloadConfig);
   };
+  $("#colour-reset").onclick = function () { save("overlay.colour", "#00542C", true); save("overlay.global_colour", false, true); fillFields(document); renderColour(); };
+  $('[data-k="overlay.global_colour"]').addEventListener("change", function () { setTimeout(renderColour, 0); });
+  $$('[data-k="overlay.colour"]').forEach(function (el) {   // (the picker and the hex field show each other's change)
+    el.addEventListener("input", function () { if (validHex(el.value)) $$('[data-k="overlay.colour"]').forEach(function (o) { if (o !== el) o.value = normHex(el.value); }); });
+  });
   $("#swap-sides").onclick = function () { post("/api/swap", {}).then(reloadConfig); };
 
   // --- log ---------------------------------------------------------------------------
