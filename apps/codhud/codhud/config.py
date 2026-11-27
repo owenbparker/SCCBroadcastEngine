@@ -128,13 +128,6 @@ DEFAULTS = {
     # (see codhud/postgame.py) and sent to the GFX Engine's team and player stats.
     "postgame": {"enabled": True},
 
-    # Game flow (Hardpoint and Hijack): the score read off the score box all
-    # game long, for the Game flow board (see codhud/gameflow.py). mode: "auto"
-    # (read under the scores), "hardpoint" or "hijack"; map: the map the board
-    # names (Hardpoint: also how many hills it has); auto_start: the clock starts
-    # when the STARTING IN countdown goes (off: start it by hand); boxes:
-    # where the scores, mode and countdown are, when not the CoD caster HUD's own.
-    "gameflow": {"enabled": True, "mode": "auto", "map": "", "auto_start": True, "boxes": {}},
 
     # The SCC GFX Engine this HUD sends its match and series to (see codhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},

@@ -14,7 +14,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import appearance, detect, fonts, gameflow, postgame
+from . import appearance, detect, fonts, postgame
 from .cams import CamHub
 from .config import DATA_DIR, DEFAULTS, LOGO_DIR, WEB_DIR
 from hudbuilder import embed as hud_builder
@@ -27,7 +27,7 @@ from .updater import Updater, clean_up_old_update
 
 mimetypes.add_type("font/ttf", ".ttf")
 
-PAGES = {"/control": "control.html", "/overlay": "overlay.html", "/gameflow": "gameflow.html"}
+PAGES = {"/control": "control.html", "/overlay": "overlay.html"}
 
 
 class HudApp:
@@ -52,7 +52,6 @@ class HudApp:
                                  save=lambda d: self.config.update({"gfx_engine": d}), log=log,
                                  follow=False)   # (follows Global its own way: _follow)
         self.scanner.postgame.on_read = self.engine.send_now   # (the post-game stats go at once)
-        self.scanner.gameflow.meta = self.gameflow_meta
 
     def _builder_snapshot(self):
         """What Custom design reads: what the GFX Engine gets, with the teams' logos."""
@@ -126,74 +125,6 @@ class HudApp:
     def changed_config(self):
         """Settings changed: the overlay pages pick up the new look."""
         self.hub.touch()
-
-    # --- game flow (Hardpoint / Hijack) ---------------------------------------------
-
-    def gameflow_meta(self):
-        """A game starting now: the map set on the Game flow page, and which map
-        of the series it is (the maps won so far + 1)."""
-        cfg = self.config.get()
-        m = cfg["match"]
-        return {"map": (cfg.get("gameflow") or {}).get("map") or "",
-                "map_no": int(m["left"].get("wins") or 0) + int(m["right"].get("wins") or 0) + 1}
-
-    def gameflow_view(self):
-        """What the Game flow board shows: the game picked on the Game flow page,
-        else the one going on (or the last one), else (Demo match, or no game
-        yet) a made-up one."""
-        cfg = self.config.get()
-        reader = self.scanner.gameflow
-        game, demo = None, False
-        if reader.shown:
-            try:
-                game = reader.load_game(reader.shown)
-            except (OSError, ValueError):
-                game = None
-        if game is None and not self.scanner.demo:
-            game = reader.game
-        if game is None or not game.data["times"]:
-            want = (cfg.get("gameflow") or {}).get("mode")
-            game, demo = gameflow.demo_game(want if want in gameflow.MODES else "hardpoint"), True
-        m = cfg["match"]
-        teams = {side: {"name": m[side].get("name") or "", "short": m[side].get("tricode") or "",
-                        "color": m[side].get("color") or "#888888", "logo": m[side].get("logo") or ""}
-                 for side in ("left", "right")}
-        out = gameflow.view(game, dict(self.gameflow_meta(), **teams))
-        if demo:
-            out["demo"] = True
-            if not (cfg.get("gameflow") or {}).get("map"):
-                out["map"] = "Reactor U92" if game.mode == "hardpoint" else "Lotus"
-        o = cfg.get("overlay") or {}
-        out["accent"] = o.get("global_accent") or "#ffc52a"
-        out["primary"] = primary_colour(cfg)
-        out["fonts"] = cfg.get("fonts") or {}
-        return out
-
-    def gameflow_post(self, path, body):
-        reader = self.scanner.gameflow
-        if path == "/api/gameflow/start":
-            mode = body.get("mode") or (self.config.get().get("gameflow") or {}).get("mode")
-            if mode not in gameflow.MODES:
-                raise ValueError("pick Hardpoint or Hijack first")
-            reader.start_now(mode)
-        elif path == "/api/gameflow/end":
-            reader.end_now()
-        elif path == "/api/gameflow/clear":
-            reader.clear()
-        elif path == "/api/gameflow/show":
-            reader.show(body.get("id") or "")
-        elif path == "/api/gameflow/meta":
-            changes = {}
-            if "map" in body:
-                changes["map"] = str(body.get("map") or "")[:40]
-                self.config.set("gameflow.map", changes["map"])
-            if body.get("map_no"):
-                changes["map_no"] = max(1, min(9, int(body["map_no"])))
-            reader.set_meta(changes)
-        else:
-            return False
-        self.changed_config()
-        return True
 
     # --- the players ---------------------------------------------------------------
 
@@ -336,8 +267,6 @@ class HudApp:
                 "players": self.players(), "cams": self.publishers(),
                 "overlay_window": self.overlay_window.info() if self.overlay_window else {"available": False},
                 "port": port, "lan_url": f"http://{lan}:{port}" if lan else None, "data_dir": DATA_DIR,
-                "gameflow": dict(self.scanner.gameflow.info(), games=self.scanner.gameflow.games(),
-                                 hp_maps=list(gameflow.HP_MAPS), hijack_maps=gameflow.HIJACK_MAPS),
                 "engine_connected": bool(self.engine.connected)}
 
     def look(self):
@@ -401,11 +330,7 @@ class HudApp:
         port = self.server.port if self.server else cfg["http_port"]
         if cfg["global"].get("follow", True) and self._synced != self.engine.url:
             series = {}   # (following: the engine's series first, so connecting doesn't overwrite it with the HUD's)
-        # The Game flow board (Hardpoint / Hijack), a page of the HUD's own that the
-        # GFX Engine adds to its graphics, over the boards' backdrop.
-        return {"fields": fields, "series": series,
-                "hud": {"port": port, "network": bool(cfg.get("allow_network")),
-                        "graphics": [{"id": "game-flow", "name": "Game flow", "path": "/gameflow", "kind": "board", "backdrop": True}]}}
+        return {"fields": fields, "series": series, "hud": {"port": port, "network": bool(cfg.get("allow_network"))}}
 
     def _engine_apply_global(self, g, fetch, force=True):
         """The GFX Engine's Global information into the HUD: the teams' names,
@@ -667,8 +592,6 @@ def make_handler(app):
                     self._json(app.player_links())
                 except ValueError as e:
                     self._json({"error": str(e)})
-            elif path == "/api/gameflow":
-                self._json(app.gameflow_view())
             elif path == "/api/pixel":
                 self._json(app.pixel(int(query["x"][0]), int(query["y"][0])))
             else:
@@ -716,9 +639,6 @@ def make_handler(app):
                     app.changed_match(body.get("changes") or {})
                 elif path == "/api/swap":
                     app.swap_sides()
-                elif path.startswith("/api/gameflow/"):
-                    if not app.gameflow_post(path, body):
-                        return self._json({"error": "not found"}, 404)
                 elif path == "/api/names/clear":
                     app.scanner.names.clear()
                 elif path == "/api/postgame/screenshot":
