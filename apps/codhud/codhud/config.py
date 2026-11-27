@@ -93,6 +93,11 @@ DEFAULTS = {
     # player's webcam beside their player card and the sponsors under the
     # middle of the screen (where CDL has them).
     "overlay": {"plates": True, "logos": True, "pips": True, "cam": True, "sponsor": True,
+                # The HUD's primary colour: the name plates' green (#00542C, the
+                # title's own, = no change) in any colour. global_colour: take the
+                # GFX Engine's Global "Primary colour" instead (global_accent is
+                # the last one seen, so it still works while the engine's away).
+                "colour": "#00542C", "global_colour": False, "global_accent": "",
                 # The score box (1920x1080 pixels, placed on the new codcaster
                 # score box, 723..1197 x 19..198): the covers in the empty
                 # spaces beside the scores (x is the left one's; the right one

@@ -524,3 +524,37 @@ class PortTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrimaryColourTests(unittest.TestCase):
+    def test_default_is_the_green(self):
+        from codhud.app import primary_colour
+        self.assertEqual(primary_colour(copy.deepcopy(DEFAULTS)), "#00542C")
+
+    def test_own_and_global(self):
+        from codhud.app import primary_colour
+        cfg = copy.deepcopy(DEFAULTS)
+        cfg["overlay"]["colour"] = "#7a1fd6"
+        self.assertEqual(primary_colour(cfg), "#7A1FD6")
+        cfg["overlay"]["global_colour"] = True
+        self.assertEqual(primary_colour(cfg), "#7A1FD6")    # (no Global colour seen yet)
+        cfg["overlay"]["global_accent"] = "#ffc52a"
+        self.assertEqual(primary_colour(cfg), "#FFC52A")
+        cfg["overlay"]["colour"] = "nonsense"
+        cfg["overlay"]["global_colour"] = False
+        self.assertEqual(primary_colour(cfg), "#00542C")
+
+    def test_old_settings_keep_everything(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "config.json")
+            old = copy.deepcopy(DEFAULTS)
+            for k in ("colour", "global_colour", "global_accent"):
+                del old["overlay"][k]
+            old["match"]["left"]["name"] = "KEEP ME"
+            old["overlay"]["plates"] = False
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(old, f)
+            c = Config(path).get()
+            self.assertEqual(c["match"]["left"]["name"], "KEEP ME")
+            self.assertFalse(c["overlay"]["plates"])
+            self.assertEqual(c["overlay"]["colour"], "#00542C")
