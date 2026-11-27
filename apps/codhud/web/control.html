@@ -574,7 +574,7 @@
   // --- game flow ---------------------------------------------------------------------
   function renderGameflow() {
     var g = info.scanner.gameflow || {}, sm = g.summary || {};
-    var reads = (g.reads || []).map(function (v) { return v == null ? "–" : v; }).join(" – ");
+    var reads = (g.reads || []).map(function (v) { return v == null ? "?" : v; }).join(" – ");
     $("#gf-status").textContent = (g.status || "") + (g.state === "running" || g.state === "waiting" ? " · reading the score box: " + reads : "") +
       (sm.mode ? (info.engine_connected ? " · on the GFX Engine" : " · goes to the GFX Engine when it's connected") : "");
     var html = "";
