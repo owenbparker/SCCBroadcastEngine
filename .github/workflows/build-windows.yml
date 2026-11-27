@@ -59,6 +59,14 @@ jobs:
           python -m valhud.reader tests/fixtures/tab_scoreboard.png --expect tests/fixtures/tab_scoreboard.json
           if ($LASTEXITCODE) { exit 1 }
 
+      - name: Read CoD score box numbers with Windows text recognition (Game flow)
+        working-directory: apps/codhud
+        continue-on-error: true
+        run: |
+          $env:PYTHONPATH = "$env:GITHUB_WORKSPACE;$env:GITHUB_WORKSPACE\apps\codhud"
+          python -m codhud.gameflow --ocr-check
+          if ($LASTEXITCODE) { exit 1 }
+
       - name: Fetch MediaMTX and FFmpeg (Multistream)
         run: python apps/multistream/tools/fetch_binaries.py
 
