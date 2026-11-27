@@ -40,6 +40,7 @@ from .live import Live
 from .log import log, since
 from .media import Jobs, ffmpeg_path, stinger_cut
 from .project import Workspace, blank_comp, blank_layer, new_id
+from .gameflow import GameFlow
 from .stats import GAMES, Stats, read as read_stats, rows as stats_rows
 from .teams import Teams, flag, ign_key, player_named, roster_rows
 from . import data as data_mod, matchup, results, schedule, standings, tournament, tournaments
@@ -217,6 +218,7 @@ class Engine:
                 thing.listeners.append(self.changed)
             self.ws, self.live, self.assets, self.sources = ws, live, assets, sources
             self.stats = Stats(folder)
+            self.gameflow = GameFlow(folder)
             if old[1]:
                 old[1].stop()
             if old[0]:
@@ -326,6 +328,7 @@ class Engine:
             snap["tables"]["Head to head"] = matchup.h2h_rows(g, None, team_of, player_named)
         # Tonight's run of show (SCC Broadcast Engine's, on the left of Control).
         snap["tables"]["Run of show"] = self.run_of_show[1]
+        snap["tables"]["Game flow"] = self.gameflow.rows()
         for name, feed in self.feeds.items():
             snap["tables"][name] = feed["rows"]
         snap["tables"]["HUDs"] = self.hud_rows()
@@ -756,6 +759,9 @@ class Engine:
             if not old:
                 log(f"{name} connected from {client}")
         if self.stats.update(name, str(body.get("game") or ""), fields) or was_live != self.stats.live():
+            self.feeds_rev += 1
+        # (CoD: Hardpoint / Hijack's score over time, for the Game flow graphic)
+        if "gameflow" in body and self.gameflow.update(body.get("gameflow")):
             self.feeds_rev += 1
         # The series score into Global: only a score the HUD changed while
         # connected (a map won there) - so connecting a HUD, or restarting
@@ -1603,6 +1609,10 @@ def make_handler(engine):
                     result = engine.roster_links(body.get("game"), body.get("fields"))
                 elif path == "/api/stats/clear":
                     engine.clear_stats()
+                elif path == "/api/gameflow/clear":
+                    engine.gameflow.clear()
+                    engine.feeds_rev += 1
+                    engine.changed()
                 elif path == "/api/ingest":
                     engine.check_paired(body.get("engine"))
                     engine.ingest(body, self.client_address[0])

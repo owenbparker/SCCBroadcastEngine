@@ -123,6 +123,13 @@ DEFAULTS = {
     # (see codhud/postgame.py) and sent to the GFX Engine's team and player stats.
     "postgame": {"enabled": True},
 
+    # Game Flow (Hardpoint and Hijack): the score read off the score box
+    # through the game, for the GFX Engine's Game flow graphic (see
+    # codhud/gameflow.py). mode: auto (told from the scores), hardpoint,
+    # hijack or off; map: the Hardpoint map (how many hills it has) and the
+    # graphic's title.
+    "gameflow": {"mode": "auto", "map": ""},
+
     # The SCC GFX Engine this HUD sends its match and series to (see codhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},
 }

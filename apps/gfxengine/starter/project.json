@@ -13075,6 +13075,508 @@
    "kind": "board"
   },
   {
+   "id": "cgf10a7e1",
+   "name": "Game flow",
+   "layer": 0,
+   "width": 1920,
+   "height": 1080,
+   "kind": "board",
+   "layers": [
+    {
+     "id": "la4c123b1",
+     "name": "Layer 1",
+     "type": "image",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 0.749,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 24
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Team stats/Layer 1.png",
+     "fit": "fill",
+     "loop": true,
+     "tint": "{{Global!BG loop colour}}"
+    },
+    {
+     "id": "l612dd272",
+     "name": "Background loop",
+     "type": "video",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "screen",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 600,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Global!BG loop}}",
+     "fit": "cover",
+     "loop": true,
+     "audio": false,
+     "tint": "{{Global!BG loop colour}}",
+     "brightness": "{{Global!BG loop brightness}}",
+     "speed": "{{Global!BG loop speed}}"
+    },
+    {
+     "id": "ld1371c17",
+     "name": "Chart panel",
+     "type": "image",
+     "x": 113,
+     "y": 293,
+     "w": 1180,
+     "h": 664,
+     "opacity": 0.251,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 176
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Team stats/Rectangle 3 copy 5.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l149d4395",
+     "name": "Bars panel",
+     "type": "image",
+     "x": 1323,
+     "y": 293,
+     "w": 487,
+     "h": 664,
+     "opacity": 0.251,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 668
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Team stats/Rectangle 3 copy 7.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l36b3216f",
+     "name": "Chart panel line",
+     "type": "image",
+     "x": 113,
+     "y": 286,
+     "w": 1180,
+     "h": 7,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 84
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Team stats/Rectangle 4.png",
+     "fit": "fill",
+     "loop": true,
+     "recolor": "{{Global!Left color}}"
+    },
+    {
+     "id": "ldaeeb975",
+     "name": "Bars panel line",
+     "type": "image",
+     "x": 1323,
+     "y": 286,
+     "w": 487,
+     "h": 7,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 576
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Team stats/Rectangle 4 copy.png",
+     "fit": "fill",
+     "loop": true,
+     "recolor": "{{Global!Right color}}"
+    },
+    {
+     "id": "l729fae92",
+     "name": "Title",
+     "type": "text",
+     "x": 115,
+     "y": 151,
+     "w": 1200,
+     "h": 71,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 186
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Game flow!Title}}",
+     "font": "TradeGothic-BoldCondTwenty",
+     "size": 50.81,
+     "color": "{{Global!Text primary}}",
+     "align": "left",
+     "valign": "top",
+     "tracking": 100.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 400,
+     "italic": false,
+     "scroll": 0,
+     "baseline": 43.7
+    },
+    {
+     "id": "l3d5a4fd1",
+     "name": "Subtitle",
+     "type": "text",
+     "x": 117,
+     "y": 214,
+     "w": 900,
+     "h": 40,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 198
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Game flow!Subtitle}}",
+     "font": "Gotham-Bold",
+     "size": 28.45,
+     "color": "{{Global!Text secondary}}",
+     "align": "left",
+     "valign": "top",
+     "tracking": 50.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 400,
+     "italic": false,
+     "scroll": 0,
+     "baseline": 24.5
+    },
+    {
+     "id": "l2aabfe22",
+     "name": "Status",
+     "type": "text",
+     "x": 1410,
+     "y": 214,
+     "w": 400,
+     "h": 40,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 198
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Game flow!Status}}",
+     "font": "Gotham-Bold",
+     "size": 28.45,
+     "color": "{{Global!Text secondary}}",
+     "align": "right",
+     "valign": "top",
+     "tracking": 50.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 400,
+     "italic": false,
+     "scroll": 0,
+     "baseline": 24.5
+    },
+    {
+     "id": "l8f219e9c",
+     "name": "Panel title",
+     "type": "text",
+     "x": 1343,
+     "y": 303,
+     "w": 447,
+     "h": 56,
+     "opacity": 1.0,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-up",
+       "dur": 450,
+       "delay": 186
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "text": "{{Game flow!Panel title}}",
+     "font": "TradeGothic-BoldCondTwenty",
+     "size": 38,
+     "color": "{{Global!Text primary}}",
+     "align": "left",
+     "valign": "top",
+     "tracking": 100.0,
+     "caps": true,
+     "lineHeight": 1.2,
+     "fit": "shrink",
+     "weight": 400,
+     "italic": false,
+     "scroll": 0
+    },
+    {
+     "id": "lb0eb53f1",
+     "name": "Game flow line",
+     "type": "gameflow",
+     "part": "chart",
+     "x": 133,
+     "y": 313,
+     "w": 1140,
+     "h": 624,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "font": "TradeGothicLTStd-BdCn20",
+     "color": "{{Global!Text primary}}",
+     "gold": "{{Global!Text secondary}}",
+     "logos": true,
+     "numbers": true,
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 176
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     }
+    },
+    {
+     "id": "l6947ccf2",
+     "name": "Points per hill / half",
+     "type": "gameflow",
+     "part": "panel",
+     "x": 1343,
+     "y": 372,
+     "w": 447,
+     "h": 565,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "font": "TradeGothicLTStd-BdCn20",
+     "color": "{{Global!Text primary}}",
+     "gold": "{{Global!Text secondary}}",
+     "logos": true,
+     "numbers": true,
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 176
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     }
+    },
+    {
+     "id": "l5ec84d8d",
+     "name": "Rectangle 3 copy 9",
+     "type": "image",
+     "x": -20,
+     "y": 1010,
+     "w": 1960,
+     "h": 157,
+     "opacity": 0.902,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 12
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Team stats/Rectangle 3 copy 9-2.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "lbc742547",
+     "name": "Rectangle 3 copy 9",
+     "type": "image",
+     "x": -20,
+     "y": 1009,
+     "w": 1961,
+     "h": 158,
+     "opacity": 0.749,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 450,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "assets/Team stats/Rectangle 3 copy 9-3.png",
+     "fit": "fill",
+     "loop": true
+    },
+    {
+     "id": "l70f58904",
+     "name": "Sponsors",
+     "type": "image",
+     "x": 360,
+     "y": 1022,
+     "w": 1200,
+     "h": 45,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 450,
+       "delay": 596
+      },
+      "out": {
+       "type": "fade",
+       "dur": 250,
+       "delay": 0
+      }
+     },
+     "src": "{{Sponsors all}}",
+     "fit": "contain",
+     "loop": true,
+     "mono": true
+    }
+   ]
+  },
+  {
    "id": "c53ee5ed0",
    "name": "Group bracket",
    "layer": 0,
@@ -43705,6 +44207,9 @@
   ],
   "Group bracket E-H": [
    "661bfabe4435636e"
+  ],
+  "Game flow": [
+   "e090e83e192c730a"
   ]
  },
  "pack_removed": [
@@ -43732,6 +44237,7 @@
   "Caster 3x lower third",
   "Recent results",
   "Head to head",
-  "Group bracket E-H"
+  "Group bracket E-H",
+  "Game flow"
  ]
 }

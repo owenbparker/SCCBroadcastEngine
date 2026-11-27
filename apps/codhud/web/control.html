@@ -232,6 +232,17 @@
     <p class="note">Kills, deaths, assists and damage (and non-traded kills and highest streak) go to the GFX Engine's Team stats and Player stats, each team on its side (told by the teams' names, else the players'). They're kept there after the next game starts. Players' names need Windows' text recognition; without it they're named from the in-game scoreboards.</p>
   </section>
 
+  <section class="wide" data-page="stats">
+    <h2>Game flow <span><button class="reset" id="gf-start" title="The map's clock starts now (when the countdown wasn't caught); in Hijack's halftime, the second half starts now">Start clock now</button> <button class="reset" id="gf-clear" title="Forget this game's flow, here and on the GFX Engine">Clear</button></span></h2>
+    <div class="two">
+      <div><label>Mode</label><select data-k="gameflow.mode"><option value="auto">Auto (told from the scores)</option><option value="hardpoint">Hardpoint</option><option value="hijack">Hijack</option><option value="off">Off</option></select></div>
+      <div><label>Map</label><select data-k="gameflow.map"><option value="">Not set (5 hills)</option><option>Lotus</option><option>Lithium</option><option>Munition</option><option>Reactor U92</option><option>Rooftops</option><option>Sentry</option></select></div>
+    </div>
+    <p class="note" id="gf-status"></p>
+    <table class="pg" id="gf-table"></table>
+    <p class="note">The score is read off the score box all through a Hardpoint or Hijack game (with Windows' text recognition), timed from when the STARTING IN countdown goes away, and sent to the GFX Engine's <b>Game flow</b> graphic: the score line, the points per hill (Hardpoint, the map sets P1–P5 or P6) or per half with throws, dunks and runoff (Hijack). It keeps the last game until the next one starts. Joined a game late? It starts when the scores climb; "Start clock now" starts it by hand.</p>
+  </section>
+
   <section class="wide" data-page="cams">
     <h2>Webcams</h2>
     <label class="toggle"><input type="checkbox" data-k="cams.enabled"> Show the spectated player's webcam</label>
@@ -560,6 +571,31 @@
   $("#pg-clear").onclick = function () { post("/api/postgame/clear").then(function (d) { info = d; renderPostgame(); }); };
   $("#pg-swap").onclick = function () { post("/api/postgame/swap").then(function (d) { info = d; renderPostgame(); }); };
 
+  // --- game flow ---------------------------------------------------------------------
+  function renderGameflow() {
+    var g = info.scanner.gameflow || {}, sm = g.summary || {};
+    var reads = (g.reads || []).map(function (v) { return v == null ? "–" : v; }).join(" – ");
+    $("#gf-status").textContent = (g.status || "") + (g.state === "running" || g.state === "waiting" ? " · reading the score box: " + reads : "") +
+      (sm.mode ? (info.engine_connected ? " · on the GFX Engine" : " · goes to the GFX Engine when it's connected") : "");
+    var html = "";
+    if (sm.mode === "hardpoint") {
+      html = "<tr><th></th>" + sm.per_hill.map(function (_, i) { return "<th>P" + (i + 1) + "</th>"; }).join("") + "<th>Score</th></tr>";
+      ["left", "right"].forEach(function (side, s) {
+        html += "<tr><td>" + esc(cfg.match[side].name || side) + "</td>" + sm.per_hill.map(function (p) { return "<td>" + p[s] + "</td>"; }).join("") + "<td><b>" + sm.score[s] + "</b></td></tr>";
+      });
+    } else if (sm.mode === "hijack") {
+      html = "<tr><th></th><th>1st half</th><th>2nd half</th><th>Throws</th><th>Dunks</th><th>Runoff</th><th>Avg / score</th><th>Score</th></tr>";
+      ["left", "right"].forEach(function (side, s) {
+        var st = sm.stats[s], h = sm.halves;
+        html += "<tr><td>" + esc(cfg.match[side].name || side) + "</td><td>" + (h[0] ? h[0][s] : "–") + "</td><td>" + (h[1] ? h[1][s] : "–") +
+          "</td><td>" + st.throws + "</td><td>" + st.dunks + "</td><td>" + st.runoff + "</td><td>" + (st.avg == null ? "–" : st.avg) + "</td><td><b>" + sm.score[s] + "</b></td></tr>";
+      });
+    }
+    $("#gf-table").innerHTML = html;
+  }
+  $("#gf-start").onclick = function () { post("/api/gameflow/start").then(function (d) { info = d; renderGameflow(); }); };
+  $("#gf-clear").onclick = function () { post("/api/gameflow/clear").then(function (d) { info = d; renderGameflow(); }); };
+
   $("#names-clear").onclick = function () { post("/api/names/clear").then(function (d) { info = d; renderPlayers(); }); };
 
   // --- webcams ------------------------------------------------------------------------
@@ -620,6 +656,7 @@
     }
     $("#r-pixels").innerHTML = "Score box " + px(0, d.pixel1) + (d.pixel2.enabled ? " · Scoreboards " + px(1, d.pixel2) + " " + px(2, d.pixel3) : "");
     renderPostgame();
+    renderGameflow();
     var port = info.port;
     $("#url-local").textContent = "http://localhost:" + port + "/overlay";
     $("#lan-box").hidden = !info.lan_url;

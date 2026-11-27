@@ -125,7 +125,7 @@
 
   // --- data and fields -----------------------------------------------------------
   const ctx = { tables: {} };
-  GFX.setData = function (tables) { ctx.tables = tables || {}; GFX.retext(); tickRotators(); redrawBrackets(); reshow(); };
+  GFX.setData = function (tables) { ctx.tables = tables || {}; GFX.retext(); tickRotators(); redrawBrackets(); redrawGameflows(); reshow(); };
   // The engine's clock (seconds), so every output changes sponsor at the same moment.
   let clockOffset = 0;
   GFX.setClock = function (engineNow) { if (engineNow) clockOffset = engineNow * 1000 - Date.now(); };
@@ -316,6 +316,7 @@
     if (t === "image" && value.startsWith("{{Sponsors all}}")) return sponsorStrip(layer, value.split("|").slice(1));
     if (t === "video" && layer.tint) return tintedVideo(layer, value, opts);
     if (t === "bracket") return bracketBox(layer);
+    if (t === "gameflow") return gameflowBox(layer, opts);
     if (t === "image" && layer.recolor && value) {
       // A one-colour shape in another colour (from Global): the picture as a mask.
       const m = el("div", "gfx-media gfx-recolor");
@@ -830,6 +831,266 @@
       box.appendChild(frame);
       const pad = ch * 0.1;
       slot(cx + pad, gy - ch / 2 + pad, cw - 2 * pad, ch - 2 * pad, "Top champion", "", dark, false, true);
+    }
+  }
+
+  // --- Game flow (Call of Duty Hardpoint / Hijack, from the CoD HUD): the
+  // "Game flow" data's score over time. part "chart": the score line (each
+  // hill's end in Hardpoint; every score, as it happened, in Hijack's two
+  // halves) with the logos at the ends of the lines; part "panel": the points
+  // per hill (or per half, with throws, dunks, runoff and the average score)
+  // as split bars in the teams' colours (Global).
+  const gameflows = new Set();
+  function gameflowBox(layer, opts) {
+    const box = el("div", "gfx-media gfx-gameflow");
+    box._layer = layer;
+    box._sample = !!(opts && opts.showHidden);   // (Composer: the example until a game has been read)
+    gameflows.add(box);
+    drawGameflow(box);
+    return box;
+  }
+  function redrawGameflows() {
+    for (const b of gameflows) { if (!b.isConnected && b._seen) gameflows.delete(b); else { if (b.isConnected) b._seen = true; drawGameflow(b); } }
+  }
+  // (what Composer shows before a game has been read: the broadcast team's example)
+  const GF_SAMPLE = { mode: "hardpoint", map: "Reactor U92", map_no: 1, state: "final", score: [153, 250], hills: 5,
+    marks: [[0, 0], [29, 8], [49, 32], [88, 44], [119, 63], [124, 96], [135, 131], [142, 152], [152, 179], [152, 220], [153, 250]],
+    labels: ["P1", "P2", "P3", "P4", "P5", "P1", "P2", "P3", "P4", "P5"], per_hill: [[40, 43], [27, 45], [49, 39], [31, 60], [6, 63]] };
+  function gfColour(v, fallback) { const c = GFX.resolve(v || "").trim(); return hexRgb(c) ? c : fallback; }
+  function gfTextOn(hex) {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex || "");
+    if (!m) return "#ffffff";
+    const [r, g, b] = m.slice(1).map(x => parseInt(x, 16));
+    return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111111" : "#ffffff";
+  }
+  function gfLegible(hex) {
+    // (a dark team colour is lightened just enough to read as text on a dark background)
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex || "");
+    if (!m) return hex;
+    const rgb = m.slice(1).map(x => parseInt(x, 16));
+    const lum = c => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+    let mix = 0;
+    while (lum(rgb.map(v => v + (255 - v) * mix)) < 0.42 && mix < 0.7) mix += 0.05;
+    return "#" + rgb.map(v => Math.round(v + (255 - v) * mix).toString(16).padStart(2, "0")).join("");
+  }
+  function drawGameflow(box) {
+    const layer = box._layer;
+    const rows = ctx.tables["Game flow"] || [];
+    let data = null;
+    try { data = JSON.parse(GFX.lookup(rows, "Data") || "null"); } catch (e) { data = null; }
+    if (!data && box._sample) data = GF_SAMPLE;
+    const g = k => GFX.lookup(ctx.tables.Global || [], k) || "";
+    const look = [layer.w, layer.h, layer.part, layer.font, layer.color, layer.gold, layer.dark, layer.line, layer.leftColor, layer.rightColor,
+      layer.logos, layer.numbers];
+    const cl = gfColour(layer.leftColor || "{{Global!Left color}}", "#0b6b3a"), cr = gfColour(layer.rightColor || "{{Global!Right color}}", "#b8191c");
+    const key = JSON.stringify([data, look, cl, cr, g("Left name"), g("Right name"), g("Left logo"), g("Right logo"), GFX.resolve(layer.color || "")]);
+    if (box._key === key) return;
+    box._key = key;
+    box.textContent = "";
+    if (!data || !data.mode) return;
+    const W = layer.w, H = layer.h;
+    const [family, weight] = GFX.fontFor(layer);
+    const fg = gfColour(layer.color, "#ffffff"), gold = gfColour(layer.gold, "#ffc52a"), dark = gfColour(layer.dark, "#000b05");
+    const grid = gfColour(layer.line, "rgba(255,255,255,.18)");
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    Object.assign(svg.style, { position: "absolute", left: 0, top: 0, overflow: "visible", fontFamily: family, fontWeight: weight });
+    box.appendChild(svg);
+    const add = (tag, attrs, text) => {
+      const n = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) if (v != null) n.setAttribute(k, v);
+      if (text != null) n.textContent = text;
+      svg.appendChild(n);
+      return n;
+    };
+    const text = (x, y, s, size, fill, anchor, extra) => add("text", Object.assign({ x, y, "font-size": size, fill, "text-anchor": anchor || "middle",
+      "dominant-baseline": "central" }, extra || {}), s);
+    const halo = { stroke: dark, "stroke-width": 6, "paint-order": "stroke", "stroke-linejoin": "round" };
+    const cols = [cl, cr], tcols = [gfLegible(cl), gfLegible(cr)];
+    const names = [g("Left name") || "LEFT", g("Right name") || "RIGHT"];
+    if (layer.part === "panel") return gfPanel();
+    return gfChart();
+
+    // ---- the split bars (points per hill / per half) -----------------------------------------------
+    function gfPanel() {
+      const hp = data.mode === "hardpoint";
+      const lab = W * 0.1, x0 = lab, x1 = W, bw = x1 - x0;
+      const head = H * 0.07;
+      text(x0, head / 2, names[0].toUpperCase(), head * 0.55, tcols[0], "start");
+      text(x1, head / 2, names[1].toUpperCase(), head * 0.55, tcols[1], "end");
+      let bars = [];
+      if (hp) bars = (data.per_hill || []).map((p, i) => ["P" + (i + 1), p]);
+      else bars = [["1ST HALF", (data.halves || [])[0]], ["2ND HALF", (data.halves || [])[1]]];
+      const statsRows = hp ? [] : [["THROWS (+15)", "throws"], ["DUNKS (+30)", "dunks"], ["RUNOFF POINTS", "runoff"], ["AVG POINTS / SCORE", "avg"]];
+      const slots = bars.length + statsRows.length * 0.8;
+      const gap = H * 0.025, top = head + gap;
+      const bh = Math.min(H * 0.16, (H - top - gap * (bars.length + statsRows.length)) / Math.max(1, slots));
+      let y = top;
+      for (const [label, p] of bars) {
+        const two = label.includes(" ");
+        if (two) {
+          const [a, b] = label.split(" ");
+          text(lab * 0.45, y + bh * 0.32, a, bh * 0.24, fg, "middle", { opacity: 0.85 });
+          text(lab * 0.45, y + bh * 0.66, b, bh * 0.24, fg, "middle", { opacity: 0.85 });
+        } else text(lab * 0.45, y + bh / 2, label, bh * 0.36, fg, "middle", { opacity: 0.85 });
+        if (!p) {
+          add("rect", { x: x0, y, width: bw, height: bh, fill: "rgba(255,255,255,.08)" });
+          text(x0 + bw / 2, y + bh / 2, "–", bh * 0.4, "rgba(255,255,255,.5)");
+        } else {
+          const tot = (+p[0] || 0) + (+p[1] || 0), f = tot > 0 ? p[0] / tot : 0.5, wl = bw * f;
+          add("rect", { x: x0, y, width: wl, height: bh, fill: cols[0] });
+          add("rect", { x: x0 + wl, y, width: bw - wl, height: bh, fill: cols[1] });
+          const fs = bh * 0.44, pad = bh * 0.14;
+          text(x0 + pad, y + bh / 2, String(p[0]), fs, gfTextOn(cols[0]), "start");
+          text(x1 - pad, y + bh / 2, String(p[1]), fs, gfTextOn(cols[1]), "end");
+        }
+        y += bh + gap;
+      }
+      if (statsRows.length) {
+        y += gap;
+        const rh = bh * 0.72;
+        for (const [label, k] of statsRows) {
+          add("rect", { x: x0, y, width: bw, height: rh, fill: "rgba(0,0,0,.45)" });
+          text(x0 + bw / 2, y + rh / 2, label, rh * 0.32, fg, "middle", { opacity: 0.8 });
+          ((data.stats || [])).forEach((st, s) => {
+            const v = st && st[k] != null ? (k === "avg" ? Number(st[k]).toFixed(1) : String(st[k])) : "–";
+            text(s ? x1 - rh * 0.25 : x0 + rh * 0.25, y + rh / 2, v, rh * 0.5, tcols[s], s ? "end" : "start");
+          });
+          y += rh + gap * 0.7;
+        }
+      }
+    }
+
+    // ---- the score line ----------------------------------------------------------------------------
+    function gfChart() {
+      const hp = data.mode === "hardpoint";
+      const fs = Math.max(14, Math.min(W, H * 2) * 0.022);
+      const L = fs * 3.2, B = fs * 2.6, R = W * 0.14, T = fs * 1.2;     // margins (the logos sit on the right)
+      const pw = W - L - R, ph = H - T - B;
+      let top, pts, xmax, xticks = [];
+      if (hp) {
+        const marks = data.marks || [[0, 0]];
+        top = Math.max(250, ...marks.flat());
+        xmax = Math.max(1, marks.length - 1, (data.labels || []).length);
+        pts = [0, 1].map(s => marks.map((m, i) => [i, m[s]]));
+        xticks = [[0, "HILLS"]].concat((data.labels || []).map((l, i) => [i + 1, l]));
+      } else {
+        const HALF = 240, GAP = 30, line = data.line || [];
+        const xpos = (t, h) => h === 1 ? Math.min(t, HALF) : Math.min(Math.max(t, HALF), 2 * HALF) + GAP;
+        top = Math.max(300, ...line.map(p => Math.max(p[1], p[2])));
+        xmax = 2 * HALF + GAP;
+        pts = [1, 2].map(c => line.map(p => [xpos(p[0], p[3]), p[c], p[3]]));
+        for (const h of [1, 2]) for (let k = 0; k <= 4; k++) xticks.push([(h === 1 ? 0 : HALF + GAP) + k * 60, `${4 - k}:00`]);
+        data._xpos = xpos;
+      }
+      const ytop = top * 1.12, ybot = -top * 0.06;
+      const X = x => L + pw * x / xmax, Y = v => T + ph * (1 - (v - ybot) / (ytop - ybot));
+      // grid, axes
+      for (let v = 0; v <= top; v += 50) {
+        add("line", { x1: L, x2: L + pw, y1: Y(v), y2: Y(v), stroke: grid, "stroke-width": 1 });
+        text(L - fs * 0.6, Y(v), String(v), fs, fg, "end", { opacity: 0.8 });
+      }
+      add("line", { x1: L, x2: L, y1: T, y2: T + ph, stroke: fg, "stroke-width": 2, opacity: 0.6 });
+      add("line", { x1: L, x2: L + pw, y1: T + ph, y2: T + ph, stroke: fg, "stroke-width": 2, opacity: 0.6 });
+      for (const [x, s] of xticks) {
+        add("line", { x1: X(x), x2: X(x), y1: T, y2: T + ph, stroke: grid, "stroke-width": 1, opacity: 0.6 });
+        text(X(x), T + ph + fs * 1.1, s, fs * (s === "HILLS" ? 0.9 : 1), fg, "middle", { opacity: 0.85 });
+      }
+      const lw = Math.max(3, fs * 0.22);
+      if (!hp) {
+        // halftime, and each half's target
+        const xd = X(240 + 15);
+        add("line", { x1: X(0), x2: X(240), y1: Y(150), y2: Y(150), stroke: fg, "stroke-width": 1.5, "stroke-dasharray": "8 6", opacity: 0.4 });
+        add("line", { x1: X(270), x2: X(510), y1: Y(300), y2: Y(300), stroke: fg, "stroke-width": 1.5, "stroke-dasharray": "8 6", opacity: 0.4 });
+        add("line", { x1: xd, x2: xd, y1: T, y2: T + ph, stroke: gold, "stroke-width": lw });
+        text(xd - fs * 0.5, T + fs * 0.4, "1ST HALF", fs * 1.05, gold, "end");
+        text(xd - fs * 0.5, T + fs * 1.5, "FIRST TO 150", fs * 0.75, fg, "end", { opacity: 0.6 });
+        text(xd + fs * 0.5, T + fs * 0.4, "2ND HALF", fs * 1.05, gold, "start");
+        text(xd + fs * 0.5, T + fs * 1.5, "FIRST TO 300", fs * 0.75, fg, "start", { opacity: 0.6 });
+        text(L + pw / 2, T + ph + fs * 2.2, "TIME REMAINING", fs * 0.85, fg, "middle", { opacity: 0.7 });
+      }
+      // the lines (Hijack: each half on its own, the halftime carry-over in grey)
+      const final = data.state === "final";
+      const pathOf = p => p.map((q, i) => `${i ? "L" : "M"}${X(q[0]).toFixed(1)} ${Y(q[1]).toFixed(1)}`).join("");
+      const ends = [];
+      [0, 1].forEach(s => {
+        let p = pts[s];
+        if (!p.length) return;
+        if (hp) add("path", { d: pathOf(p), fill: "none", stroke: cols[s], "stroke-width": lw, "stroke-linejoin": "round", "stroke-linecap": "round" });
+        else {
+          const h1 = p.filter(q => q[2] === 1), h2 = p.filter(q => q[2] === 2);
+          const h1over = h2.length || data.state === "halftime" || final;
+          if (h1.length) add("path", { d: pathOf(h1.concat(h1over ? [[240, h1[h1.length - 1][1]]] : [])), fill: "none", stroke: cols[s], "stroke-width": lw, "stroke-linejoin": "round" });
+          if (h1.length && !h2.length && h1over) p = p.concat([[240, h1[h1.length - 1][1]]]);
+          if (h1.length && h2.length) add("path", { d: pathOf([[240, h1[h1.length - 1][1]], [h2[0][0], h2[0][1]]]), fill: "none", stroke: "#8a8a8a", "stroke-width": lw });
+          if (h2.length) add("path", { d: pathOf(h2.concat(final ? [[xmax, h2[h2.length - 1][1]]] : [])), fill: "none", stroke: cols[s], "stroke-width": lw, "stroke-linejoin": "round" });
+          if (final && h2.length) p = p.concat([[xmax, h2[h2.length - 1][1]]]);
+        }
+        const last = p[p.length - 1];
+        ends.push({ s, x: X(last[0]), y: Y(last[1]), v: last[1] });
+      });
+      // the numbers: Hardpoint, each team's score at every hill's end (the leader's above its line, the other's below);
+      // Hijack, a +N box on each score and the total after it
+      // (a number that would cover another, or a +N box, moves clear of it, or is left out)
+      const placed = [];
+      const hits = r => placed.some(o => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
+      const label = (x, y, str, size, fill, dir) => {
+        const w = size * 0.52 * str.length + 4, hh = size * 0.9;
+        for (let k = 0; k < 3; k++) {
+          const yy = y + dir * k * hh * 0.9, r = [x - w / 2, yy - hh / 2, x + w / 2, yy + hh / 2];
+          if (!hits(r)) { placed.push(r); text(x, yy, str, size, fill, "middle", halo); return; }
+        }
+      };
+      if (layer.numbers !== false) {
+        if (hp) {
+          const marks = data.marks || [];
+          marks.forEach((m, i) => {
+            if (!i) return;
+            [0, 1].forEach(s => {
+              const above = m[s] > m[1 - s] || (m[s] === m[1 - s] && s === 0);
+              if (i === marks.length - 1) return;     // (the last one is by the logo)
+              label(X(i), Math.min(Y(m[s]) + (above ? -fs * 1.05 : fs * 1.05), Y(0) - fs * 0.7), String(m[s]), fs * 1.05, tcols[s], above ? -1 : 1);
+            });
+          });
+        } else {
+          const drives = data.drives || [];
+          for (const dv of drives) {
+            const x = X(data._xpos(dv.t, dv.half)), ym = (Y(dv.y0) + Y(dv.y1)) / 2, s = dv.team;
+            const plus = "+" + dv.total, bsz = Math.max(fs * 0.6, Math.min(fs * 0.85, Math.abs(Y(dv.y0) - Y(dv.y1)) * 0.6));
+            const bwid = bsz * (0.62 * plus.length + 0.5);
+            add("rect", { x: x - bwid / 2, y: ym - bsz * 0.62, width: bwid, height: bsz * 1.24, rx: bsz * 0.18, fill: cols[s] });
+            text(x, ym, plus, bsz, gfTextOn(cols[s]));
+            placed.push([x - bwid / 2, ym - bsz * 0.62, x + bwid / 2, ym + bsz * 0.62]);
+          }
+          // (each team's total after a score; the last one is by the logo once the game is over)
+          for (const dv of drives) {
+            const lastOfTeam = dv === drives.filter(d => d.team === dv.team).pop();
+            if ((final || data.state === "halftime") && lastOfTeam) continue;
+            label(X(data._xpos(dv.t, dv.half)), Y(dv.y1) - fs * 0.85, String(dv.y1), fs * 0.95, tcols[dv.team], -1);
+          }
+        }
+      }
+      // the logos (or names) at the end of each line, the score on them
+      ends.sort((a, b) => a.y - b.y);
+      const size = Math.min(R * 0.95, ph * 0.3);
+      let prevBottom = -1e9;
+      ends.forEach((e, k) => {
+        let cy = e.y + (k === 0 ? -0.15 : 0.15) * size;
+        cy = Math.max(cy, prevBottom + size / 2 + 4);
+        cy = Math.min(Math.max(cy, T + size / 2), T + ph - size / 2 + B * 0.5);
+        prevBottom = cy + size / 2;
+        const logo = g(e.s ? "Right logo" : "Left logo");
+        const lx = e.x + size * 0.1;
+        if (logo && layer.logos !== false) {
+          const im = add("image", { x: lx, y: cy - size / 2, width: size, height: size, preserveAspectRatio: "xMidYMid meet", opacity: 0.85 });
+          im.setAttributeNS("http://www.w3.org/1999/xlink", "href", url(encodeURI(logo)));
+          im.setAttribute("href", url(encodeURI(logo)));
+          text(lx + size / 2, cy, String(e.v), fs * 1.5, "#ffffff", "middle", halo);
+        } else {
+          text(lx, e.y, `${(g(e.s ? "Right short" : "Left short") || names[e.s]).toUpperCase()} ${e.v}`, fs * 1.2, tcols[e.s], "start", halo);
+        }
+      });
     }
   }
 
@@ -1864,6 +2125,7 @@
     .gfx-rot-img{position:absolute;inset:0;width:100%;height:100%;display:block}
     .gfx-rot-bar{position:absolute;left:0;right:0;bottom:-8px;height:3px;background:currentColor;color:#f5c518;transform-origin:0 50%;opacity:.85}
     .gfx-bracket{overflow:visible}
+    .gfx-gameflow{overflow:visible}
     .gfx-bk-slot{position:absolute;box-sizing:border-box;overflow:hidden;transition:opacity .4s}
     .gfx-bk-logo{position:absolute;object-fit:contain}
     .gfx-bk-name{position:absolute;top:0;bottom:0;display:flex;align-items:center;white-space:nowrap;text-transform:uppercase;letter-spacing:-.01em;overflow:hidden}

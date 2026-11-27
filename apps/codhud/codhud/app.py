@@ -52,6 +52,7 @@ class HudApp:
                                  save=lambda d: self.config.update({"gfx_engine": d}), log=log,
                                  follow=False)   # (follows Global its own way: _follow)
         self.scanner.postgame.on_read = self.engine.send_now   # (the post-game stats go at once)
+        self.scanner.gameflow.on_change = self.engine.send_now  # (and the game flow as it changes)
 
     def _builder_snapshot(self):
         """What Custom design reads: what the GFX Engine gets, with the teams' logos."""
@@ -175,6 +176,16 @@ class HudApp:
                 _post(self.engine.url + "/api/stats/clear", {}, 5)
             except Exception as e:
                 log(f"Couldn't clear the stats on the GFX Engine: {getattr(e, 'reason', e)}", "warn")
+        self.engine.send_now()
+
+    def clear_gameflow(self):
+        """No game flow: here, and on the GFX Engine (its kept one too)."""
+        self.scanner.gameflow.clear()
+        if self.engine.connected and self.engine.url:
+            try:
+                _post(self.engine.url + "/api/gameflow/clear", {}, 5, key=self.engine.key)
+            except Exception as e:
+                log(f"Couldn't clear the game flow on the GFX Engine: {getattr(e, 'reason', e)}", "warn")
         self.engine.send_now()
 
     def postgame_fields(self):
@@ -329,7 +340,9 @@ class HudApp:
         port = self.server.port if self.server else cfg["http_port"]
         if cfg["global"].get("follow", True) and self._synced != self.engine.url:
             series = {}   # (following: the engine's series first, so connecting doesn't overwrite it with the HUD's)
-        return {"fields": fields, "series": series, "hud": {"port": port, "network": bool(cfg.get("allow_network"))}}
+        return {"fields": fields, "series": series, "hud": {"port": port, "network": bool(cfg.get("allow_network"))},
+                # Hardpoint / Hijack: the score over time, for the engine's Game flow graphic ({}: none yet)
+                "gameflow": self.scanner.gameflow.summary()}
 
     def _engine_apply_global(self, g, fetch, force=True):
         """The GFX Engine's Global information into the HUD: the teams' names,
@@ -635,6 +648,11 @@ def make_handler(app):
                     app.read_postgame(app.scanner.frame, "the game")
                 elif path == "/api/postgame/clear":
                     app.clear_postgame()
+                elif path == "/api/gameflow/clear":
+                    app.clear_gameflow()
+                elif path == "/api/gameflow/start":
+                    app.scanner.gameflow.start_now()
+                    app.engine.send_now()
                 elif path == "/api/postgame/swap":
                     app.scanner.postgame.swap()
                     app.engine.send_now()

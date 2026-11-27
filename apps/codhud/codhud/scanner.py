@@ -11,6 +11,7 @@ from .capture import Capture, make_dpi_aware
 from .demo import ScreenshotDemo
 from .log import log
 from .names import NameReader, best_match
+from .gameflow import GameFlowReader
 from .postgame import PostgameReader, ScoreboardSaver
 
 
@@ -68,6 +69,7 @@ class Scanner:
             import os
             from .config import DATA_DIR
             self.postgame = PostgameReader(saver=ScoreboardSaver(os.path.join(DATA_DIR, "scoreboards")))
+        self.gameflow = GameFlowReader()
         self.frame = None
         self.status = "Starting"
         self.raw = "off"
@@ -90,18 +92,26 @@ class Scanner:
         self._thread.start()
         self.names.start(self, self.config)
         self.postgame.start(self, self.config)
+        self.gameflow.start(self, self.config, self._map_no)
         return self
+
+    def _map_no(self):
+        """Which map of the series this is: the maps won so far, plus one."""
+        m = self.config.get()["match"]
+        return int(m["left"].get("wins") or 0) + int(m["right"].get("wins") or 0) + 1
 
     def stop(self):
         self._stop.set()
         self.names.stop()
         self.postgame.stop()
+        self.gameflow.stop()
 
     def info(self):
         s = self.hub.state
         return {"demo": self.demo, "status": self.status, "hud": s["hud"], "raw": self.raw,
                 "colours": self.colours, "fps": round(self.fps, 1), "spectated": s["spectated"],
-                "spec": s["spec"], "names": self.names.info(), "postgame": self.postgame.info()}
+                "spec": s["spec"], "names": self.names.info(), "postgame": self.postgame.info(),
+                "gameflow": self.gameflow.info()}
 
     def _run(self):
         frames, counted_at = 0, time.monotonic()
