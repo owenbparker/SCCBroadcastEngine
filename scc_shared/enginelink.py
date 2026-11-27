@@ -500,6 +500,8 @@ class EngineLink:
             body = {"source": self.source, "game": self.game, "fields": snap.get("fields") or {},
                     "series": _scores_only(mine), "hud": snap.get("hud"),
                     "engine": self.engine_id, "hud_id": self.hud_id, "protocol": PROTOCOL}
+            if "gameflow" in snap:      # (CoD: Hardpoint / Hijack's score over time)
+                body["gameflow"] = snap["gameflow"]
             if body == self._last_body and time.time() - self.sent_at < 4:
                 continue
             try:

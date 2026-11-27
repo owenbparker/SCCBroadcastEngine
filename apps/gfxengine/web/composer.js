@@ -16,7 +16,7 @@
   const undo = [], redo = [];
   try { compId = localStorage.getItem("gfx-edit"); } catch (e) { /* */ }
 
-  const TYPE_ICON = { text: "T", rect: "▭", image: "🖼", video: "▶", lottie: "✦", bracket: "⊏", web: "◫", path: "✒" };
+  const TYPE_ICON = { text: "T", rect: "▭", image: "🖼", video: "▶", lottie: "✦", bracket: "⊏", gameflow: "📈", web: "◫", path: "✒" };
 
   // --- saving ------------------------------------------------------------
   const saveSoon = debounce(save, 120);
@@ -387,6 +387,12 @@
         gold: "#b28a1d", dark: "#000b05", line: "#b28a1d", champ: "#ffc52a" }],
       ["Champion", "text", textOf("{{Tournament!Top champion}}")],
       ["Bracket size (8 / 16)", "text", textOf("{{Tournament!Top teams}} COMPETITOR BRACKET", { size: 48, h: 64 })]]],
+    ["Call of Duty game flow", [
+      ["Game flow line (Hardpoint / Hijack)", "gameflow", { part: "chart", x: 100, y: 300, w: 1180, h: 620, font: "Bebas Neue", color: "#ffffff", gold: "#ffc52a", logos: true, numbers: true }],
+      ["Points per hill / half", "gameflow", { part: "panel", x: 1340, y: 330, w: 470, h: 600, font: "Bebas Neue", color: "#ffffff", gold: "#ffc52a" }],
+      ["Game flow title", "text", textOf("{{Game flow!Title}}", { size: 64, w: 1200, h: 80 })],
+      ["Game flow subtitle", "text", textOf("{{Game flow!Subtitle}}", { size: 32, w: 800, h: 44, color: "#ffc52a" })],
+      ["Panel title (points per hill / half)", "text", textOf("{{Game flow!Panel title}}", { size: 44, w: 470, h: 60 })]]],
   ];
   const special = $("#add-special");
   special.replaceChildren(h("option", { value: "" }, "★"),
@@ -1058,7 +1064,7 @@
     if (!l) return renderCompProps();
     const sections = [];
     sections.push(h("div", { class: "sect" },
-      h("h3", {}, ({ text: "Text", rect: "Shape", path: "Path", image: "Picture", video: "Video", lottie: "Lottie animation", bracket: "Bracket", web: "Web page" }[l.type] || "Layer") + " layer"),
+      h("h3", {}, ({ text: "Text", rect: "Shape", path: "Path", image: "Picture", video: "Video", lottie: "Lottie animation", bracket: "Bracket", gameflow: "Game flow", web: "Web page" }[l.type] || "Layer") + " layer"),
       lab("Name", bind(l, "name", "text")),
       h("label", { title: "Give it a name to change it from Control (and from data)" }, "Field (changed from Control)",
         h("div", { class: "row-gap" },
@@ -1114,6 +1120,16 @@
         h("div", { class: "grid2" }, bind(l, "color", "color", { label: "Text" }), bind(l, "gold", "color", { label: "First round" })),
         h("div", { class: "grid2" }, bind(l, "dark", "color", { label: "Later rounds" }), bind(l, "line", "color", { label: "Lines" })),
         bind(l, "champ", "color", { label: "Champion's frame" })));
+    } else if (l.type === "gameflow") {
+      sections.push(h("div", { class: "sect" }, h("h3", {}, "Game flow"),
+        h("p", { class: "muted small" }, "Call of Duty Hardpoint and Hijack, from the CoD HUD (it reads the score all game): the score line, or the points per hill / per half as bars in the teams' colours (Global). Shows the broadcast team's example here until a game has been read."),
+        lab("Shows", h("select", { onchange: e => { snapshot(); l.part = e.target.value; changed({ props: true }); } },
+          h("option", { value: "chart", selected: l.part !== "panel" }, "The score line"), h("option", { value: "panel", selected: l.part === "panel" }, "Points per hill / per half"))),
+        lab("Font", h("select", { onchange: e => setFont(l, e.target.value) }, fontOptions(l.font))),
+        h("div", { class: "grid2" }, bind(l, "color", "color", { label: "Text" }), bind(l, "gold", "color", { label: "Halftime line" })),
+        h("div", { class: "grid2" }, bind(l, "leftColor", "text", { label: "Left team's colour", placeholder: "{{Global!Left color}}" }), bind(l, "rightColor", "text", { label: "Right team's colour", placeholder: "{{Global!Right color}}" })),
+        h("div", { class: "grid2" }, bind(l, "dark", "color", { label: "Number outline" }), bind(l, "line", "color", { label: "Grid lines" })),
+        l.part !== "panel" ? h("div", { class: "row-gap" }, bind(l, "logos", "check", { label: "Logos at the line ends" }), bind(l, "numbers", "check", { label: "Scores on the line" })) : null));
     } else if (l.type === "web") {
       sections.push(h("div", { class: "sect" }, h("h3", {}, "Page"),
         lab("Address", bind(l, "src", "text", { placeholder: "{{Rocket League HUD!target_cam}}" })),
