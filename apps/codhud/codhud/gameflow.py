@@ -35,6 +35,7 @@ import time
 
 import numpy as np
 
+from .config import WEB_DIR
 from .detect import crop
 from .log import log
 
@@ -463,8 +464,97 @@ def _digits(words):
     return text
 
 
-def read_score(cell, ocr, cache=None, key=None):
+GLYPH_W, GLYPH_H = 12, 20
+# (the digits of a real CDL screenshot, to start with: 1 5 6 8 9)
+DIGITS_FILE = os.path.join(WEB_DIR, "assets", "gameflow-digits.json")
+
+
+def glyphs(cell):
+    """The score's digits, left to right, each as a GLYPH_W x GLYPH_H mask."""
+    on = cell.astype(np.int16).max(axis=-1) >= 170
+    cols = on.any(axis=0)
+    out, x = [], 0
+    while x < len(cols):
+        if cols[x]:
+            x0 = x
+            while x < len(cols) and cols[x]:
+                x += 1
+            part = on[:, x0:x]
+            ys = np.where(part.any(axis=1))[0]
+            if x - x0 >= 2 and len(ys) >= on.shape[0] * 0.3:      # (not a speck)
+                part = part[ys[0]:ys[-1] + 1]
+                h, w = part.shape
+                # (a thin glyph - a 1 - keeps its thinness: placed in a box as wide as it is tall x 0.6)
+                box = np.zeros((h, max(w, int(h * 0.6))), bool)
+                box[:, (box.shape[1] - w) // 2:(box.shape[1] - w) // 2 + w] = part
+                yi = (np.arange(GLYPH_H) * box.shape[0] / GLYPH_H).astype(int)
+                xi = (np.arange(GLYPH_W) * box.shape[1] / GLYPH_W).astype(int)
+                out.append(box[yi][:, xi])
+        x += 1
+    return out
+
+
+class DigitBook:
+    """The score box's digits as seen: learnt from every number Windows reads
+    (and a few from a real CDL screenshot to start with), so a lone digit,
+    which text recognition often can't read, is still known."""
+
+    def __init__(self, path=None):
+        self.path = path
+        self.book = {}
+        for f in (DIGITS_FILE, path):
+            try:
+                with open(f, encoding="utf-8") as fh:
+                    for d, masks in json.load(fh).items():
+                        for m in masks:
+                            self._add(d, np.array([c == "1" for c in m], bool).reshape(GLYPH_H, GLYPH_W))
+            except (OSError, ValueError, TypeError):
+                pass
+        self._dirty = False
+
+    def _add(self, d, mask):
+        have = self.book.setdefault(d, [])
+        if any(_iou(mask, m) > 0.92 for m in have):
+            return False
+        have.append(mask)
+        del have[:-4]
+        return True
+
+    def learn(self, text, gl):
+        if len(text) == len(gl) and text.isdigit():
+            for d, m in zip(text, gl):
+                self._dirty |= self._add(d, m)
+
+    def read(self, gl):
+        out = ""
+        for g in gl:
+            scores = sorted(((max(_iou(g, m) for m in ms), d) for d, ms in self.book.items() if ms), reverse=True)
+            if not scores or scores[0][0] < 0.8 or (len(scores) > 1 and scores[0][0] - scores[1][0] < 0.06):
+                return ""
+            out += scores[0][1]
+        return out
+
+    def save(self):
+        if not (self.path and self._dirty):
+            return
+        data = {d: ["".join("1" if v else "0" for v in m.ravel()) for m in ms] for d, ms in self.book.items()}
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, self.path)
+        self._dirty = False
+
+
+def _iou(a, b):
+    return float((a & b).sum()) / max(1.0, float((a | b).sum()))
+
+
+_BOOK = None
+
+
+def read_score(cell, ocr, cache=None, key=None, book=None):
     """A score (an int) off its cell of the score box, or None."""
+    global _BOOK
     img = score_ink(cell)
     if img is None:
         return None
@@ -473,14 +563,23 @@ def read_score(cell, ocr, cache=None, key=None):
         hit = cache.get(key)
         if hit and hit[0] == sig:
             return hit[1]
+    if book is None:
+        _BOOK = _BOOK or DigitBook()
+        book = _BOOK
+    gl = glyphs(cell)
     text = _digits(ocr.words(img))
-    if not text:
-        # A lone digit is the hardest thing to read: read it twice side by side ("77") instead.
-        from PIL import Image
-        two = Image.new("L", (img.width * 2, img.height), 255)
-        two.paste(img, (0, 0)); two.paste(img, (img.width - img.width // 6, 0))
-        t2 = _digits(ocr.words(two))
-        text = t2[:len(t2) // 2] if len(t2) % 2 == 0 and t2 and t2[:len(t2) // 2] == t2[len(t2) // 2:] else ""
+    if text:
+        book.learn(text, gl)
+    else:
+        # A lone digit is the hardest thing for text recognition: the digits seen before,
+        # else read it twice side by side ("77").
+        text = book.read(gl)
+        if not text:
+            from PIL import Image
+            two = Image.new("L", (img.width * 2, img.height), 255)
+            two.paste(img, (0, 0)); two.paste(img, (img.width - img.width // 6, 0))
+            t2 = _digits(ocr.words(two))
+            text = t2[:len(t2) // 2] if len(t2) % 2 == 0 and t2 and t2[:len(t2) // 2] == t2[len(t2) // 2:] else ""
     value = int(text) if text and len(text) <= 3 and int(text) <= READ_MAX else None
     if cache is not None and value is not None:
         cache[key] = (sig, value)
@@ -529,6 +628,12 @@ class GameFlowReader:
         self._lock = threading.Lock()
         self._settings = None
         self._next_banner = 0.0
+        try:
+            from .config import DATA_DIR
+            self.book = DigitBook(os.path.join(DATA_DIR, "gameflow-digits.json"))
+        except Exception:
+            self.book = DigitBook()
+        self._saved_at = time.time()
 
     def info(self):
         with self._lock:
@@ -613,7 +718,13 @@ class GameFlowReader:
         now = time.time() if now is None else now
         t = self.tracker
         if hud in ("on", "score"):
-            reads = tuple(read_score(crop(frame, *_box(g, s)), ocr, self._cache, s) for s in ("left", "right"))
+            reads = tuple(read_score(crop(frame, *_box(g, s)), ocr, self._cache, s, self.book) for s in ("left", "right"))
+            if now - self._saved_at > 30:       # (the digits learnt, kept for the next start)
+                self._saved_at = now
+                try:
+                    self.book.save()
+                except OSError:
+                    pass
         else:
             reads = (None, None)
         banner = None
