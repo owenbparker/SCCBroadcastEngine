@@ -47,7 +47,12 @@ DEFAULT = {
     # from "started" (the engine's time.time(), 0 = stopped), up or "down" to 0.
     # Reset goes back to "from".
     "timer": {"secs": 0, "from": 0, "down": False, "started": 0},
-    "roster": "left",    # whose players the player graphics show
+    "roster": "left",    # whose players the player graphics show: "left", "right" or "team" (roster_team)
+    # ...a team from the Teams tab picked instead of Global's ("team"): its name and game.
+    "roster_team": {"name": "", "game": ""},
+    # The CEN Desk Front TV board's teams and game: Global's (empty), or a team
+    # from the Teams tab ({"name", "game"}) and a game's logo ("valorant"...).
+    "desk": {"left": {"name": "", "game": ""}, "right": {"name": "", "game": ""}, "game": ""},
     # who the Player stats page shows: the top player ("auto") or one picked ("left 3")
     "player_stats": "auto",
     # The Head Chicklet's player ("left 2"), and the Head to Head board's two
@@ -195,6 +200,34 @@ def name_lines(name):
     return "", " ".join(words), "", ""
 
 
+def team_pick(v):
+    """A team picked from the Teams tab: {"name", "game"} (an empty name: none, Global's)."""
+    v = v if isinstance(v, dict) else {}
+    return {"name": str(v.get("name") or "").strip()[:120], "game": str(v.get("game") or "").strip()[:60]}
+
+
+def desk_rows(g, find, live_game=""):
+    """The "Desk" table the CEN Desk Front TV board reads: Global's rows, with
+    each side's team and the game's logo replaced by the ones picked for it in
+    Control (a team from the Teams tab: its name, short name, colour and logo)."""
+    g = clean(g)
+    pick = g["desk"]
+    for side in ("left", "right"):
+        p = pick[side]
+        if not p["name"]:
+            continue
+        team = find(p["name"], p["game"]) or {"name": p["name"], "short": "", "logo": "", "color": "", "game": p["game"]}
+        t = g[side]
+        same = team["name"].lower() == t["name"].lower()
+        # (the team playing on that side keeps its series score; any other starts at 0)
+        g[side] = dict(t, name=team["name"], short=team.get("short") or "", logo=team.get("logo") or "",
+                       color=team.get("color") or t["color"], game=team.get("game") or t["game"],
+                       score=t["score"] if same else 0)
+    if pick["game"]:
+        g["game_logo"] = GAME_LOGOS[pick["game"]]
+    return rows(g, live_game)
+
+
 def _num(v, lo, hi, default):
     try:
         return max(lo, min(hi, float(v)))
@@ -242,7 +275,13 @@ def clean(g):
     out["bug_loop"] = g.get("bug_loop", True) is not False
     out["bug_loop_zoom"] = int(round(_num(g.get("bug_loop_zoom"), 100, 400, 100)))
     out["h2h"] = matchup.clean_h2h(g.get("h2h"))
-    out["roster"] = "right" if g.get("roster") == "right" else "left"
+    out["roster"] = g.get("roster") if g.get("roster") in ("right", "team") else "left"
+    out["roster_team"] = team_pick(g.get("roster_team"))
+    if out["roster"] == "team" and not out["roster_team"]["name"]:
+        out["roster"] = "left"
+    desk = g.get("desk") if isinstance(g.get("desk"), dict) else {}
+    out["desk"] = {"left": team_pick(desk.get("left")), "right": team_pick(desk.get("right")),
+                   "game": desk.get("game") if desk.get("game") in GAME_LOGOS else ""}
     pick = str(g.get("player_stats") or "")
     out["player_stats"] = pick if re.match(r"^(left|right) ([1-9]|10)$", pick) else "auto"
     caster = dict(DEFAULT["caster"], **(g.get("caster") or {}))

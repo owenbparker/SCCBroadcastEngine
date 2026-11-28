@@ -313,17 +313,29 @@ class Engine:
         snap["tables"]["Teams"] = self.teams.rows()
         snap["tables"]["Schedule"] = schedule.rows(g["schedule"], self.teams.find)
         snap["tables"]["Standings"] = standings.rows(g["standings"], self.teams.find, g["event"])
+        snap["tables"]["Desk"] = globalcfg.desk_rows(g, self.teams.find, self.live_game())
         side = g["roster"]
         stats_names = dict(r[:2] for r in snap["tables"]["Stats"][1:] if len(r) >= 2)
+        names = lambda s_: [stats_names.get(f"{s_.title()} player {i}", "") for i in range(1, 6)]   # noqa: E731
         # "Roster" is the team the player graphics show; "Opponent" is the other
-        # team in Global, for the Opponent lineup graphics.
-        for table, s_ in (("Roster", side), ("Opponent", "right" if side == "left" else "left")):
-            snap["tables"][table] = roster_rows(self.teams.find(g[s_]["name"], g[s_]["game"]), s_,
-                                                [stats_names.get(f"{s_.title()} player {i}", "") for i in range(1, 6)])
+        # team in Global, for the Opponent lineup graphics. A team picked from
+        # the Teams tab (not one of Global's) has no game stats; its opponent is
+        # the other side if it's one of Global's teams, else Global's right team.
+        if side == "team":
+            pick = g["roster_team"]
+            team = self.teams.find(pick["name"], pick["game"]) or {"name": pick["name"], "game": pick["game"]}
+            playing = next((s_ for s_ in ("left", "right") if g[s_]["name"].lower() == team["name"].lower()), "")
+            snap["tables"]["Roster"] = roster_rows(team, playing or "team", names(playing) if playing else None)
+            opp = "left" if playing == "right" else "right"
+            name, game = team["name"], team.get("game", "")
+        else:
+            snap["tables"]["Roster"] = roster_rows(self.teams.find(g[side]["name"], g[side]["game"]), side, names(side))
+            opp = "right" if side == "left" else "left"
+            name, game = g[side]["name"], g[side]["game"]
+        snap["tables"]["Opponent"] = roster_rows(self.teams.find(g[opp]["name"], g[opp]["game"]), opp, names(opp))
         # The Recent Results graphic: the past results of the team the player graphics show.
         title = " ".join(x for x in (g["event"], "RESULTS") if x)
-        snap["tables"]["Results"] = results.rows(g["results"], g[side]["name"],
-                                                 lambda n: self.teams.find(n, g[side]["game"]), title)
+        snap["tables"]["Results"] = results.rows(g["results"], name, lambda n: self.teams.find(n, game), title)
         team_of = lambda s_: self.teams.find(g[s_]["name"], g[s_]["game"])   # noqa: E731
         snap["tables"]["Spotlight"] = matchup.spotlight_rows(g, team_of, flag)
         try:
@@ -459,7 +471,7 @@ class Engine:
                     for page, sides in v.items():   # ({"team": {"left": "champion"}}: just that one)
                         if isinstance(sides, dict):
                             g[k].setdefault(page, {}).update(sides)
-                elif k in ("left", "right", "bgloop", "caster", "pictures", "text", "h2h") and isinstance(v, dict):
+                elif k in ("left", "right", "bgloop", "caster", "pictures", "text", "h2h", "desk") and isinstance(v, dict):
                     g[k].update(v)
                 else:
                     g[k] = v

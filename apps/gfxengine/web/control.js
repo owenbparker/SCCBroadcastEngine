@@ -410,6 +410,7 @@ $("#update-back").addEventListener("click", e => {
     const clock = comp.layers.some(l => /\{\{\s*clock\s*\}\}/i.test(l.text || ""));
     const timer = comp.layers.some(l => /\{\{\s*timer\s*\}\}/i.test(l.text || ""));
     const roster = comp.layers.some(l => /\{\{\s*(Roster|Opponent)!/i.test((l.text || "") + (l.src || "")));
+    const desk = comp.layers.some(l => /\{\{\s*Desk!/i.test((l.text || "") + (l.src || "") + (l.recolor || "") + (l.color || "")));
     const opponent = comp.layers.some(l => /\{\{\s*Opponent!/i.test((l.text || "") + (l.src || "")));
     const mvp = comp.layers.some(l => /\{\{\s*Stats!MVP/i.test((l.text || "") + (l.src || "")));
     const caster = comp.layers.some(l => /Global!Caster/i.test(l.move || ""));
@@ -420,8 +421,8 @@ $("#update-back").addEventListener("click", e => {
     const spot = uses(/\{\{\s*Spotlight!/i), h2h = uses(/\{\{\s*Head to head!/i), past = uses(/\{\{\s*Results!/i);
     // (Player stats has its own setting: its picture is the MVP's)
     const picsPage = comp.layers.some(l => /\{\{\s*Stats!MVP (headshot|champion)\}\}/i.test(l.src || "")) ? "player" : "team";
-    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent, past) : null, spot ? spotlightField(s) : null, bugLoop ? bugLoopField(s) : null, h2h ? h2hField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null, textColours ? textColoursField(s) : null].filter(Boolean);
-    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage, textColours, spot, h2h, past, bugLoop,
+    const extras = () => [comp.hud ? hudField(s, comp) : null, caster ? casterField(s) : null, roster ? rosterField(s, opponent, past) : null, desk ? deskField(s) : null, spot ? spotlightField(s) : null, bugLoop ? bugLoopField(s) : null, h2h ? h2hField(s) : null, mvp ? mvpField(s) : null, pics ? picturesField(s, picsPage) : null, clock ? clockField(s) : null, timer ? timerField(s) : null, bracket ? sizeField(s) : null, sched ? countField(s) : null, standing ? standingsField(s) : null, textColours ? textColoursField(s) : null].filter(Boolean);
+    const sig = JSON.stringify([comp.id, fields.map(f => [f.field, f.type]), App.assetsRev, bracket, sched, standing, clock, timer, roster, mvp, caster, pics, picsPage, textColours, spot, h2h, past, bugLoop, desk,
       Object.keys(s.data.feeds || {}), (s.data.tables.Global || []).map(r => r[0]),
       comp.hud ? JSON.stringify(s.data.feeds[comp.hud.split("/")[0]] && s.data.feeds[comp.hud.split("/")[0]].unreachable) : ""]);
     if (!force && box.dataset.sig === sig) {
@@ -445,7 +446,7 @@ $("#update-back").addEventListener("click", e => {
     const same = box.dataset.comp === comp.id;
     box.dataset.comp = comp.id;
     if (!fields.length) {
-      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || mvp || caster || pics || textColours || spot || h2h || bugLoop || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
+      keepScroll(box, () => box.replaceChildren(...(bracket || sched || clock || timer || roster || desk || mvp || caster || pics || textColours || spot || h2h || bugLoop || comp.hud ? extras() : [h("div", { class: "empty" }, "This graphic has no fields. In Composer, pick a layer and give it a field name to change it from here.")])), same);
       return;
     }
     keepScroll(box, () => { box.replaceChildren(...fields.map(l => {
@@ -530,12 +531,48 @@ $("#update-back").addEventListener("click", e => {
   }
   // The player graphics: whose players (the left or right team's roster, from the Teams tab).
   // An Opponent lineup graphic shows the other team from the one picked here.
+  // Or any team in the Teams tab ("team:" + its name and game), when it isn't one of Global's.
   function rosterField(s, opponent, past) {
     const el = h("div", { class: "field roster-field", "data-opponent": opponent ? "1" : "", "data-results": past ? "1" : "" },
       h("label", {}, opponent ? "Opponent of" : past ? "Team" : "Players from", h("span", { class: "kind" }, "teams")),
-      h("select", { "data-k": "roster", onchange: e => api("/api/global", { global: { roster: e.target.value } }) },
-        h("option", { value: "left" }), h("option", { value: "right" })),
+      h("select", { "data-k": "roster", onchange: e => {
+        const v = e.target.value, t = teamPicked(v);
+        api("/api/global", { global: t ? { roster: "team", roster_team: t } : { roster: v } });
+      } }),
       h("div", { class: "resolved", "data-k": "roster-note" }));
+    markSize(el, s);
+    return el;
+  }
+  // A team from the Teams tab, as a select's value: "team:" + [name, game].
+  const teamValue = t => t && t.name ? "team:" + JSON.stringify([t.name, t.game || ""]) : "";
+  const teamPicked = v => { if (!String(v).startsWith("team:")) return null; const [name, game] = JSON.parse(v.slice(5)); return { name, game }; };
+  // The Teams tab's teams as [value, label] options (the game after the name when it has one).
+  const teamOptions = s => (s.data.tables.Teams || []).slice(1).filter(r => r[0])
+    .map(r => [teamValue({ name: r[0], game: r[4] }), `${r[0]}${r[4] ? ` (${r[4]})` : ""}`]);
+  // Options, some in groups: [value, label] or [group label, [[value, label]...]]; rebuilt only when they change.
+  function fillGroups(sel, groups, value) {
+    const sig = JSON.stringify(groups);
+    if (sel.dataset.sig !== sig) {
+      sel.dataset.sig = sig;
+      sel.replaceChildren(...groups.map(g => Array.isArray(g[1])
+        ? h("optgroup", { label: g[0] }, ...g[1].map(([v, t]) => h("option", { value: v }, t)))
+        : h("option", { value: g[0] }, g[1])));
+    }
+    if (document.activeElement !== sel) sel.value = value;
+  }
+  // The CEN Desk Front TV board: its two teams and its game, Global's unless
+  // one from the Teams tab (or another game) is picked here.
+  const DESK_GAMES = [["valorant", "VALORANT"], ["lol", "League of Legends"], ["cod", "Call of Duty"], ["rl", "Rocket League"],
+    ["overwatch", "Overwatch"], ["smash", "Super Smash Bros. Ultimate"]];
+  function deskField(s) {
+    const set = change => api("/api/global", { global: { desk: change } });
+    const team = side => h("label", { class: "swatch" }, side === "left" ? "Team Left" : "Team Right",
+      h("select", { "data-k": "desk-" + side, onchange: e => set({ [side]: teamPicked(e.target.value) || { name: "", game: "" } }) }));
+    const el = h("div", { class: "field caster-field desk-field" },
+      h("label", {}, "Teams and game", h("span", { class: "kind" }, "board")),
+      h("div", { class: "row-gap" }, team("left"), team("right"),
+        h("label", { class: "swatch" }, "Game", h("select", { "data-k": "desk-game", onchange: e => set({ game: e.target.value }) }))),
+      h("div", { class: "resolved", "data-k": "desk-note" }));
     markSize(el, s);
     return el;
   }
@@ -697,13 +734,35 @@ $("#update-back").addEventListener("click", e => {
     const ro = el.querySelector("[data-k=roster]");
     if (ro) {
       const label = side => { const t = s.global[side]; return `${side === "left" ? "Left" : "Right"} team: ${t.name || "(none)"}${t.game ? ` (${t.game})` : ""}`; };
-      ro.options[0].textContent = label("left"); ro.options[1].textContent = label("right");
-      if (document.activeElement !== ro) ro.value = s.global.roster || "left";
+      const picked = s.global.roster === "team" ? teamValue(s.global.roster_team) : "";
+      const teams = teamOptions(s);
+      if (picked && !teams.some(o => o[0] === picked)) teams.push([picked, `${s.global.roster_team.name} (not in the Teams tab)`]);
+      fillGroups(ro, [["Global", [["left", label("left")], ["right", label("right")]]], ...(teams.length ? [["Teams tab", teams]] : [])],
+        picked || s.global.roster || "left");
       const opp = !!ro.closest(".roster-field").dataset.opponent;
       const rows = Object.fromEntries((s.data.tables[opp ? "Opponent" : "Roster"] || []).slice(1));
       el.querySelector("[data-k=roster-note]").textContent = (opp ? `Shows the ${rows.Side === "left" ? "left" : "right"} team${rows.Team ? ` (${rows.Team})` : ""}. ` : "") + (rows.Team
         ? `${rows.Players} player${rows.Players === "1" ? "" : "s"} on ${rows.Team}'s roster in the Teams tab.`
         : "That team isn't in the Teams tab, so the names come from the game's stats.");
+    }
+    if (ro && s.global.roster === "team" && !ro.closest(".roster-field").dataset.opponent)
+      el.querySelector("[data-k=roster-note]").textContent += " Picked from the Teams tab (not Global's teams): pick a Global team to follow Global again.";
+    const dk = s.global.desk || { left: {}, right: {}, game: "" };
+    for (const side of ["left", "right"]) {
+      const sel = el.querySelector(`[data-k=desk-${side}]`);
+      if (!sel) continue;
+      const g = s.global[side] || {}, picked = teamValue(dk[side]);
+      const teams = teamOptions(s);
+      if (picked && !teams.some(o => o[0] === picked)) teams.push([picked, `${dk[side].name} (not in the Teams tab)`]);
+      fillGroups(sel, [["", `Global (${g.name || "none"})`], ...(teams.length ? [["Teams tab", teams]] : [])], picked);
+    }
+    const dg = el.querySelector("[data-k=desk-game]");
+    if (dg) {
+      const gl = Object.fromEntries((s.data.tables.Global || []).slice(1))["Game logo"] || "";
+      const now = (DESK_GAMES.find(([k]) => gl.includes(`games/${k === "rl" ? "rocketleague" : k}.`)) || [])[1];
+      fillGroups(dg, [["", `Global${now ? ` (${now})` : gl ? " (its own logo)" : " (none)"}`], ["Games", DESK_GAMES]], dk.game || "");
+      el.querySelector("[data-k=desk-note]").textContent = "Global follows the Global page (its teams, and its game logo, else the game being played). " +
+        "A team from the Teams tab shows its name, colour and logo here only; another team than Global's starts at 0.";
     }
     if (ro && ro.closest(".roster-field").dataset.results) {
       const res = Object.fromEntries((s.data.tables.Results || []).slice(1));

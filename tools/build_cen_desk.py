@@ -15,6 +15,7 @@ and it is in pack_new (so every workspace made from the pack gets it once).
 
 import json
 import os
+import re
 import sys
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -146,6 +147,9 @@ def build():
         _image("lcen0tl23", "Tournament logo", 705, 717, 505, 307, "{{Global!Tournament logo}}",
                _anim("scale", 0.2, 0.5)),
     ]
+    # The teams and the game come from the "Desk" table: Global's, unless other
+    # teams (from the Teams tab) or another game are picked for the board in Control.
+    layers = json.loads(re.sub(r"\{\{Global!((Left|Right) [^}]*|Game logo)\}\}", r"{{Desk!\1}}", json.dumps(layers)))
     comp = {"id": "ccendesk1", "name": NAME, "layer": 0, "width": W, "height": H, "kind": "board", "layers": layers}
 
     path = os.path.join(STARTER, "project.json")
