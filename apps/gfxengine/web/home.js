@@ -355,11 +355,26 @@ App.on(s => {
     g = (await postFile("/api/global/logo?side=tournament", f)).global; render(true); toast("Tournament logo saved");
   });
   $("#g-tourney-clear").addEventListener("click", () => { g.tournament_logo = ""; api("/api/global", { global: { tournament_logo: "" } }); render(true); });
-  function renderBrand() {
+  // The game's logo: one set here, else the game being played's (shown faded).
+  dropZone($("#g-gamelogo"), "image/*", false, async ([f]) => {
+    g = (await postFile("/api/global/logo?side=game", f)).global; render(true); toast("Game logo saved");
+  });
+  $("#g-gamelogo-clear").addEventListener("click", () => { g.game_logo = ""; api("/api/global", { global: { game_logo: "" } }); render(true); });
+  function renderBrand(s) {
     const d = $("#g-tourney"), logo = pic(g.tournament_logo);
     d.classList.toggle("has", !!logo);
     d.style.backgroundImage = logo ? `url("${logo}")` : "";
     $("#g-tourney-clear").hidden = !logo;
+    const row = ((s && s.data && s.data.tables.Global) || []).find(r => r[0] === "Game logo");
+    const own = pic(g.game_logo), auto = !own && row && row[1] ? pic(row[1]) : "";
+    const gd = $("#g-gamelogo");
+    gd.classList.toggle("has", !!(own || auto));
+    gd.style.backgroundImage = own || auto ? `url("${own || auto}")` : "";
+    gd.style.opacity = auto ? ".75" : "";
+    $("#g-gamelogo-clear").hidden = !own;
+    $("#g-gamelogo-note").textContent = own ? "Every game logo spot in the graphics shows it."
+      : auto ? "The logo of the game being played (the connected game HUD's, else the teams' game). Drop a picture to use your own."
+      : "Left empty, the graphics show the logo of the game being played (the connected game HUD's, else the teams' game).";
   }
 
   // The sponsors, in order, each for its own seconds.
@@ -543,7 +558,7 @@ App.on(s => {
     if (force || !document.activeElement || !$("#g-custom").contains(document.activeElement)) renderCustom();
     renderTokens();
     renderFeeds(s);
-    renderBrand();
+    renderBrand(s);
     renderSponsors(force);
     renderLoop();
     renderAccent();

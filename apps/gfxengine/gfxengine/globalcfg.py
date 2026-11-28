@@ -27,6 +27,9 @@ DEFAULT = {
     "right": {"name": "", "short": "", "logo": "", "color": "#b8191c", "score": 0, "game": ""},
     "custom": [],    # [[label, value], ...]
     "tournament_logo": "",
+    # The game's logo: a picture set here, or none (the logo of the game being
+    # played: the connected game HUD's, else the teams' game; see game_logo).
+    "game_logo": "",
     # [{"logo": "assets/sponsors/x.png", "secs": 10}, ...]; the rotation is
     # counted from sponsor_epoch (when the list last changed) so every output
     # shows the same one at the same time.
@@ -149,6 +152,47 @@ CLOCK_LABELS = {"time": "LOCAL TIME", "soon": "STARTING SOON", "brb": "BE RIGHT 
 TICKER_GAP = "  |  "
 TEAM_KEYS = ("name", "short", "logo", "color", "score", "game")
 DEFAULT_LOOP = "loops/scc-bg-loop.webm"   # (comes with the engine, in web/)
+# Each game's own logo (with the engine, in web/games/), by the names a game
+# goes by: the HUDs' codes ("valorant", "lol", "cod"...) or the team list's.
+GAME_LOGOS = {"lol": "games/lol.svg", "valorant": "games/valorant.svg", "cod": "games/cod.png",
+              "rl": "games/rocketleague.png", "smash": "games/smash.png", "overwatch": "games/overwatch.png"}
+GAME_CODES = {"league": "lol", "leagueoflegends": "lol", "val": "valorant", "callofduty": "cod",
+              "rocketleague": "rl", "ssbu": "smash", "smashultimate": "smash", "supersmashbrosultimate": "smash",
+              "smashbros": "smash", "ow": "overwatch", "ow2": "overwatch", "overwatch2": "overwatch"}
+
+
+def game_code(name):
+    """"VALORANT", "League of Legends", "cod"... -> "valorant", "lol", "cod" ("" if not a game we know)."""
+    low = re.sub(r"[^a-z0-9]", "", str(name or "").lower())
+    return low if low in GAME_LOGOS else GAME_CODES.get(low, "")
+
+
+def game_logo(g, live_game=""):
+    """The game logo the graphics show: the one set in Global, else the game
+    being played's (the connected game HUD's, else the teams' game)."""
+    if g.get("game_logo"):
+        return g["game_logo"]
+    for name in (live_game, g["left"].get("game"), g["right"].get("game")):
+        if game_code(name):
+            return GAME_LOGOS[game_code(name)]
+    return ""
+
+
+# A team's name over two lines, a big one and a small one, as the CEN desk
+# board has them: "St. Clair Saints" = small "St. Clair" over a big "Saints";
+# "Fuel Esports" = a big "Fuel" over a small "Esports".
+NAME_SUFFIXES = {"esports", "esport", "e-sports", "gaming", "gg", "club", "academy", "team", "college",
+                 "university", "univ", "varsity", "jv", "ec"}
+
+
+def name_lines(name):
+    """(small over, big low, big high, small under): two of them used, the rest ""."""
+    words = str(name or "").split()
+    if len(words) >= 2 and words[-1].lower().strip(".") in NAME_SUFFIXES:
+        return "", "", " ".join(words[:-1]), words[-1]
+    if len(words) >= 2:
+        return " ".join(words[:-1]), words[-1], "", ""
+    return "", " ".join(words), "", ""
 
 
 def _num(v, lo, hi, default):
@@ -180,6 +224,7 @@ def clean(g):
     out["custom"] = [[str(r[0])[:80], str(r[1])[:500]] for r in (g.get("custom") or [])
                      if isinstance(r, (list, tuple)) and len(r) >= 2 and str(r[0]).strip()]
     out["tournament_logo"] = str(g.get("tournament_logo") or "")[:300]
+    out["game_logo"] = str(g.get("game_logo") or "")[:300]
     # (white: drawn all white in the rows of sponsor logos, like the design's)
     out["sponsors"] = [{"logo": str(sp.get("logo"))[:300], "secs": _num(sp.get("secs"), 1, 600, 10), "white": sp.get("white", True) is not False}
                        for sp in (g.get("sponsors") or []) if isinstance(sp, dict) and sp.get("logo")][:40]
@@ -311,8 +356,9 @@ def game_number(g):
     return g.get("game") or str(int(g["left"]["score"]) + int(g["right"]["score"]) + 1)
 
 
-def rows(g):
-    """The "Global" data source's table: label | value."""
+def rows(g, live_game=""):
+    """The "Global" data source's table: label | value (live_game: the game
+    the connected game HUD plays, for the game logo)."""
     g = clean(g)
     out = [["Field", "Value"], ["Event", g["event"]], ["Stage", g["stage"]], ["Best of", str(g["best_of"])],
            ["Game", game_number(g)]]
@@ -322,12 +368,14 @@ def rows(g):
         out += [[f"{S} name", t["name"]], [f"{S} short", t["short"]], [f"{S} logo", t["logo"]],
                 [f"{S} color", t["color"]], [f"{S} score", str(t["score"])], [f"{S} game", t["game"]]]
         # (the boxes for games won: "1" once the team has won n games)
+        lines = name_lines(t["name"])
+        out += [[f"{S} name {k}", v] for k, v in zip(("small over", "big low", "big high", "small under"), lines)]
         out += [[f"{S} won {n}", "1" if int(t["score"]) >= n else ""] for n in range(1, 5)]
     # (how many of those boxes a side shows: the games to win the series)
     out += [[f"Game box {n}", "1" if n <= (int(g["best_of"]) + 1) // 2 else ""] for n in range(1, 5)]
     loop = g["bgloop"]
     sp = g["sponsors"]
-    out += [["Tournament logo", g["tournament_logo"]],
+    out += [["Tournament logo", g["tournament_logo"]], ["Game logo", game_logo(g, live_game)],
             ["Sponsor logo", sp[0]["logo"] if sp else ""], ["Sponsors", str(len(sp))],
             ["BG loop", (loop["src"] or DEFAULT_LOOP) if loop["on"] else ""], ["BG loop colour", loop["color"]],
             ["BG loop brightness", str(loop["brightness"])], ["BG loop speed", str(loop["speed"])],

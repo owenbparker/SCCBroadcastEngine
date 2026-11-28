@@ -288,11 +288,16 @@ class Engine:
                                   for p in team.get("players") or []]
         return g
 
+    def live_game(self):
+        """The game of the game HUD that sent last ("" if none is connected)."""
+        feeds = [f for f in list(self.feeds.values()) if f.get("game")]
+        return max(feeds, key=lambda f: f.get("at", 0))["game"] if feeds else ""
+
     def data_snapshot(self):
         """The tables graphics read: the data sources, "Global", and what game HUDs send."""
         snap = self.sources.snapshot()
         g = self.global_config()
-        snap["tables"]["Global"] = globalcfg.rows(g)
+        snap["tables"]["Global"] = globalcfg.rows(g, self.live_game())
         snap["tables"]["Global"].append(["Tournament name", tournaments.active_name(self.ws.snapshot().get("tournaments"))])
         snap["tables"]["Sponsors"] = globalcfg.sponsor_rows(g)
         try:
@@ -606,10 +611,10 @@ class Engine:
 
     def save_global_logo(self, side, filename, blob):
         """A picture for Global: a team's logo ("left", "right"), the tournament's
-        logo ("tournament"), one more sponsor ("sponsor") or the background loop
+        logo ("tournament"), the game's logo ("game"), one more sponsor ("sponsor") or the background loop
         ("bgloop", a video)."""
-        if side not in ("left", "right", "tournament", "sponsor", "bgloop"):
-            raise ValueError("left, right, tournament, sponsor or bgloop")
+        if side not in ("left", "right", "tournament", "game", "sponsor", "bgloop"):
+            raise ValueError("left, right, tournament, game, sponsor or bgloop")
         ext = os.path.splitext(filename or "")[1].lower()
         if side == "bgloop":
             if ext not in (".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv", ".mxf"):
@@ -646,6 +651,8 @@ class Engine:
         self.assets_rev += 1
         if side == "tournament":
             return self.set_global({"tournament_logo": rel})
+        if side == "game":
+            return self.set_global({"game_logo": rel})
         if side == "sponsor":
             g = self.global_config()
             secs = g["sponsors"][-1]["secs"] if g["sponsors"] else 10

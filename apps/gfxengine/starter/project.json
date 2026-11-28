@@ -43844,6 +43844,964 @@
    "width": 1920,
    "height": 1080,
    "kind": "board"
+  },
+  {
+   "id": "ccendesk1",
+   "name": "CEN Desk Front TV",
+   "layer": 0,
+   "width": 1920,
+   "height": 1080,
+   "kind": "board",
+   "layers": [
+    {
+     "id": "lcen0bd01",
+     "name": "Backdrop",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 0.749,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 450,
+       "delay": 24
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "assets/Team stats/Layer 1.png",
+     "fit": "fill",
+     "loop": true,
+     "tint": "{{Global!BG loop colour}}"
+    },
+    {
+     "id": "lcen0bl02",
+     "name": "Background loop",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "screen",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 600,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "video",
+     "src": "{{Global!BG loop}}",
+     "fit": "cover",
+     "loop": true,
+     "audio": false,
+     "tint": "{{Global!BG loop colour}}",
+     "brightness": "{{Global!BG loop brightness}}",
+     "speed": "{{Global!BG loop speed}}"
+    },
+    {
+     "id": "lcen0rc03",
+     "name": "Team B colour",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 0.75,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-left",
+       "dur": 700,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "assets/CEN Desk Front TV/right glow.png",
+     "loop": true,
+     "fit": "fill",
+     "recolor": "{{Global!Right color}}"
+    },
+    {
+     "id": "lcen0lc04",
+     "name": "Team A colour",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 0.75,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-right",
+       "dur": 700,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "assets/CEN Desk Front TV/left glow.png",
+     "loop": true,
+     "fit": "fill",
+     "recolor": "{{Global!Left color}}"
+    },
+    {
+     "id": "lcen0rs05",
+     "name": "Team B shade",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-left",
+       "dur": 700,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "assets/CEN Desk Front TV/right shade.png",
+     "loop": true,
+     "fit": "fill"
+    },
+    {
+     "id": "lcen0ls06",
+     "name": "Team A shade",
+     "x": 0,
+     "y": 0,
+     "w": 1920,
+     "h": 1080,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "slide-right",
+       "dur": 700,
+       "delay": 0
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "assets/CEN Desk Front TV/left shade.png",
+     "loop": true,
+     "fit": "fill"
+    },
+    {
+     "id": "lcen0gl07",
+     "name": "Game logo",
+     "x": 560,
+     "y": 49,
+     "w": 800,
+     "h": 206,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 500,
+       "delay": 200
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "{{Global!Game logo}}",
+     "loop": true,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ],
+     "fit": "contain"
+    },
+    {
+     "id": "lcen0rt08",
+     "name": "Round",
+     "x": 619,
+     "y": 255,
+     "w": 684,
+     "h": 70,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 400,
+       "delay": 500
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Stage}}",
+     "font": "Neographik MT Std",
+     "size": 60,
+     "color": "{{Global!Text primary}}",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0ll09",
+     "name": "Left team logo",
+     "x": 67,
+     "y": 249,
+     "w": 500,
+     "h": 500,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 500,
+       "delay": 400
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "{{Global!Left logo}}",
+     "loop": true,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ],
+     "fit": "contain"
+    },
+    {
+     "id": "lcen0rl10",
+     "name": "Right team logo",
+     "x": 1353,
+     "y": 249,
+     "w": 500,
+     "h": 500,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 500,
+       "delay": 400
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "{{Global!Right logo}}",
+     "loop": true,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ],
+     "fit": "contain"
+    },
+    {
+     "id": "lcen0vs11",
+     "name": "VS",
+     "x": 880,
+     "y": 446,
+     "w": 160,
+     "h": 139,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "VS",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 400,
+       "delay": 900
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "VS",
+     "font": "Dharma Gothic E",
+     "size": 150,
+     "color": "{{Global!Text primary}}",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 900,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0ls12",
+     "name": "Left name small over",
+     "x": 94,
+     "y": 839,
+     "w": 740,
+     "h": 90,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 500,
+       "delay": 600
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Left name small over}}",
+     "font": "Neographik MT Std",
+     "size": 72,
+     "color": "{{Global!Text primary}}",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0lb13",
+     "name": "Left name big low",
+     "x": 92,
+     "y": 918,
+     "w": 861,
+     "h": 150,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 500,
+       "delay": 500
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Left name big low}}",
+     "font": "Neographik MT Std",
+     "size": 110,
+     "color": "{{Global!Text primary}}",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0lh14",
+     "name": "Left name big high",
+     "x": 92,
+     "y": 830,
+     "w": 861,
+     "h": 150,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 500,
+       "delay": 500
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Left name big high}}",
+     "font": "Neographik MT Std",
+     "size": 110,
+     "color": "{{Global!Text primary}}",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0lu15",
+     "name": "Left name small under",
+     "x": 94,
+     "y": 957,
+     "w": 740,
+     "h": 90,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-right",
+       "dur": 500,
+       "delay": 600
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Left name small under}}",
+     "font": "Neographik MT Std",
+     "size": 72,
+     "color": "{{Global!Text primary}}",
+     "align": "left",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0rs16",
+     "name": "Right name small over",
+     "x": 1084,
+     "y": 839,
+     "w": 740,
+     "h": 90,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-left",
+       "dur": 500,
+       "delay": 600
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Right name small over}}",
+     "font": "Neographik MT Std",
+     "size": 72,
+     "color": "{{Global!Text primary}}",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0rb17",
+     "name": "Right name big low",
+     "x": 967,
+     "y": 918,
+     "w": 861,
+     "h": 150,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-left",
+       "dur": 500,
+       "delay": 500
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Right name big low}}",
+     "font": "Neographik MT Std",
+     "size": 110,
+     "color": "{{Global!Text primary}}",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0rh18",
+     "name": "Right name big high",
+     "x": 967,
+     "y": 830,
+     "w": 861,
+     "h": 150,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-left",
+       "dur": 500,
+       "delay": 500
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Right name big high}}",
+     "font": "Neographik MT Std",
+     "size": 110,
+     "color": "{{Global!Text primary}}",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0ru19",
+     "name": "Right name small under",
+     "x": 1084,
+     "y": 957,
+     "w": 740,
+     "h": 90,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "wipe-left",
+       "dur": 500,
+       "delay": 600
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Right name small under}}",
+     "font": "Neographik MT Std",
+     "size": 72,
+     "color": "{{Global!Text primary}}",
+     "align": "right",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0pb20",
+     "name": "Presented by",
+     "x": 760,
+     "y": 1019,
+     "w": 400,
+     "h": 50,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "Presented by",
+     "anim": {
+      "in": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 1200
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "PRESENTED BY",
+     "font": "Neographik MT Std",
+     "size": 24,
+     "color": "{{Global!Text primary}}",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "shrink",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 3,
+       "blur": 6,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0rx21",
+     "name": "Right score",
+     "x": 1042,
+     "y": 262,
+     "w": 300,
+     "h": 400,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 500,
+       "delay": 800
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Right score}}",
+     "font": "Bourgeois Medium Condensed",
+     "size": 380,
+     "color": "{{Global!Text primary}}",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0lx22",
+     "name": "Left score",
+     "x": 555,
+     "y": 262,
+     "w": 300,
+     "h": 400,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 500,
+       "delay": 800
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "text",
+     "text": "{{Global!Left score}}",
+     "font": "Bourgeois Medium Condensed",
+     "size": 380,
+     "color": "{{Global!Text primary}}",
+     "align": "center",
+     "valign": "top",
+     "tracking": 0,
+     "caps": true,
+     "lineHeight": 1.15,
+     "fit": "squeeze",
+     "weight": 700,
+     "italic": false,
+     "scroll": 0,
+     "fx": [
+      {
+       "type": "shadow",
+       "x": 0,
+       "y": 5,
+       "blur": 10,
+       "color": "#00000099"
+      }
+     ]
+    },
+    {
+     "id": "lcen0tl23",
+     "name": "Tournament logo",
+     "x": 705,
+     "y": 717,
+     "w": 505,
+     "h": 307,
+     "opacity": 1,
+     "rotation": 0,
+     "visible": true,
+     "blend": "normal",
+     "field": "",
+     "anim": {
+      "in": {
+       "type": "scale",
+       "dur": 500,
+       "delay": 200
+      },
+      "out": {
+       "type": "fade",
+       "dur": 500,
+       "delay": 0
+      }
+     },
+     "type": "image",
+     "src": "{{Global!Tournament logo}}",
+     "loop": true,
+     "fit": "contain"
+    }
+   ]
   }
  ],
  "transitions": [
@@ -44210,6 +45168,10 @@
   ],
   "Game flow": [
    "e090e83e192c730a"
+  ],
+  "CEN Desk Front TV": [
+   "be127a6166e9ea0a",
+   "9b02f31ec7d34b8b"
   ]
  },
  "pack_removed": [
@@ -44238,6 +45200,7 @@
   "Recent results",
   "Head to head",
   "Group bracket E-H",
-  "Game flow"
+  "Game flow",
+  "CEN Desk Front TV"
  ]
 }

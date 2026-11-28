@@ -39,6 +39,7 @@
     [/vazirmatn.*black/i, "Vazirmatn", 900], [/vazirmatn/i, "Vazirmatn", 700],
     [/anton/i, "Anton", 400], [/brick/i, "Permanent Marker", 400],
     [/redzone|carbon|bebas|impact|oswald/i, "Bebas Neue", 400],
+    [/neographik/i, "Montserrat", 800], [/bourgeois/i, "Barlow Condensed", 700], [/dharma.?gothic/i, "Bebas Neue", 400],
     [/(helvetica|arial|roboto|sf.?pro|segoe).*(black|heavy)/i, "Inter", 900],
     [/(helvetica|arial|roboto|sf.?pro|segoe).*bold/i, "Inter", 700],
   ];
