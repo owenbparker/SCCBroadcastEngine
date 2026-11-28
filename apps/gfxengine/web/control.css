@@ -676,3 +676,4 @@ button.icon.on { background: var(--accent); color: #000; border-color: var(--acc
 .sel-box.draw { border: 1px solid #2e90fa; background: #2e90fa1a; }
 .sel-box.draw.round { border-radius: 50%; }
 .canvas.box-tool { cursor: crosshair; }
+.g-brand .g-sub { margin: 16px 0 0; font-size: 13px; }
