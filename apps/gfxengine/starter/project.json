@@ -43944,7 +43944,7 @@
      "src": "assets/CEN Desk Front TV/right glow.png",
      "loop": true,
      "fit": "fill",
-     "recolor": "{{Global!Right color}}"
+     "recolor": "{{Desk!Right color}}"
     },
     {
      "id": "lcen0lc04",
@@ -43974,7 +43974,7 @@
      "src": "assets/CEN Desk Front TV/left glow.png",
      "loop": true,
      "fit": "fill",
-     "recolor": "{{Global!Left color}}"
+     "recolor": "{{Desk!Left color}}"
     },
     {
      "id": "lcen0rs05",
@@ -44059,7 +44059,7 @@
       }
      },
      "type": "image",
-     "src": "{{Global!Game logo}}",
+     "src": "{{Desk!Game logo}}",
      "loop": true,
      "fx": [
       {
@@ -44145,7 +44145,7 @@
       }
      },
      "type": "image",
-     "src": "{{Global!Left logo}}",
+     "src": "{{Desk!Left logo}}",
      "loop": true,
      "fx": [
       {
@@ -44183,7 +44183,7 @@
       }
      },
      "type": "image",
-     "src": "{{Global!Right logo}}",
+     "src": "{{Desk!Right logo}}",
      "loop": true,
      "fx": [
       {
@@ -44269,7 +44269,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Left name small over}}",
+     "text": "{{Desk!Left name small over}}",
      "font": "Neographik MT Std",
      "size": 72,
      "color": "{{Global!Text primary}}",
@@ -44317,7 +44317,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Left name big low}}",
+     "text": "{{Desk!Left name big low}}",
      "font": "Neographik MT Std",
      "size": 110,
      "color": "{{Global!Text primary}}",
@@ -44365,7 +44365,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Left name big high}}",
+     "text": "{{Desk!Left name big high}}",
      "font": "Neographik MT Std",
      "size": 110,
      "color": "{{Global!Text primary}}",
@@ -44413,7 +44413,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Left name small under}}",
+     "text": "{{Desk!Left name small under}}",
      "font": "Neographik MT Std",
      "size": 72,
      "color": "{{Global!Text primary}}",
@@ -44461,7 +44461,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Right name small over}}",
+     "text": "{{Desk!Right name small over}}",
      "font": "Neographik MT Std",
      "size": 72,
      "color": "{{Global!Text primary}}",
@@ -44509,7 +44509,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Right name big low}}",
+     "text": "{{Desk!Right name big low}}",
      "font": "Neographik MT Std",
      "size": 110,
      "color": "{{Global!Text primary}}",
@@ -44557,7 +44557,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Right name big high}}",
+     "text": "{{Desk!Right name big high}}",
      "font": "Neographik MT Std",
      "size": 110,
      "color": "{{Global!Text primary}}",
@@ -44605,7 +44605,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Right name small under}}",
+     "text": "{{Desk!Right name small under}}",
      "font": "Neographik MT Std",
      "size": 72,
      "color": "{{Global!Text primary}}",
@@ -44701,7 +44701,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Right score}}",
+     "text": "{{Desk!Right score}}",
      "font": "Bourgeois Medium Condensed",
      "size": 380,
      "color": "{{Global!Text primary}}",
@@ -44749,7 +44749,7 @@
       }
      },
      "type": "text",
-     "text": "{{Global!Left score}}",
+     "text": "{{Desk!Left score}}",
      "font": "Bourgeois Medium Condensed",
      "size": 380,
      "color": "{{Global!Text primary}}",
@@ -45171,7 +45171,8 @@
   ],
   "CEN Desk Front TV": [
    "be127a6166e9ea0a",
-   "9b02f31ec7d34b8b"
+   "9b02f31ec7d34b8b",
+   "2319be821d8e3799"
   ]
  },
  "pack_removed": [

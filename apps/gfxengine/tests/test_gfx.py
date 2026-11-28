@@ -1959,6 +1959,26 @@ class OpponentLineupTests(unittest.TestCase):
             engine.set_global({"roster": "right"})
             t = engine.data_snapshot()["tables"]
             self.assertEqual((dict(t["Roster"][1:])["Team"], dict(t["Opponent"][1:])["Team"]), ("Away", "Home"))
+            # Any team from the Teams tab instead of Global's.
+            engine.save_teams(engine.teams.list() + [
+                {"name": "Visitors", "game": "VALORANT", "players": [{"name": "Vee", "ign": "v", "country": "", "photo": ""}]}])
+            engine.set_global({"roster": "team", "roster_team": {"name": "Visitors", "game": "VALORANT"}})
+            t = engine.data_snapshot()["tables"]
+            roster = dict(t["Roster"][1:])
+            self.assertEqual((roster["Team"], roster["Player 1"], roster["Side"]), ("Visitors", "Vee", "team"))
+            self.assertEqual(dict(t["Opponent"][1:])["Team"], "Away")
+            self.assertEqual(dict(t["Results"][1:]).get("Team", "Visitors"), "Visitors")
+            # (a Global team picked from the Teams tab: its opponent is the other side)
+            engine.set_global({"roster": "team", "roster_team": {"name": "Away", "game": ""}})
+            t = engine.data_snapshot()["tables"]
+            self.assertEqual((dict(t["Roster"][1:])["Team"], dict(t["Opponent"][1:])["Team"]), ("Away", "Home"))
+            # Back to Global's: the team picked is kept, Global's left team shows.
+            engine.set_global({"roster": "left"})
+            self.assertEqual(engine.global_config()["roster_team"]["name"], "Away")
+            self.assertEqual(dict(engine.data_snapshot()["tables"]["Roster"][1:])["Team"], "Home")
+            # (no team named: Global's left)
+            engine.set_global({"roster": "team", "roster_team": {"name": ""}})
+            self.assertEqual(engine.global_config()["roster"], "left")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
