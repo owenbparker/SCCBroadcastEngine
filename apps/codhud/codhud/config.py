@@ -135,6 +135,13 @@ DEFAULTS = {
     # graphic's title.
     "gameflow": {"mode": "auto", "map": ""},
 
+    # Map bans and picks (see codhud/mapbans.py): the game (its maps and third
+    # mode), the pools (None: the game's current CDL pool), Team A, each
+    # veto's steps and the maps' results.
+    "map_bans": {"game": "mw4", "pools": None, "custom": [], "team_a": "left",
+                 "bo3": {"steps": []}, "bo5": {"steps": []}, "bo7": {"steps": []},
+                 "results": {}, "tournament_logo": ""},
+
     # The SCC GFX Engine this HUD sends its match and series to (see codhud/enginelink.py).
     "gfx_engine": {"url": "", "name": "", "connected": False},
 }
