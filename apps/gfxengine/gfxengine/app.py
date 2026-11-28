@@ -38,7 +38,7 @@ from .config import DATA_DIR, WEB_DIR, Settings, safe_join
 from .data import Sources
 from .live import Live
 from .log import log, since
-from .media import Jobs, ffmpeg_path, stinger_cut
+from .media import Jobs, LoopBaker, ffmpeg_path, stinger_cut
 from .project import Workspace, blank_comp, blank_layer, new_id
 from .gameflow import GameFlow
 from .stats import GAMES, Stats, read as read_stats, rows as stats_rows
@@ -179,6 +179,9 @@ class Engine:
         self._pcache = (None, {})   # (the project snapshot, what's worked out from it): see _from_project
         self._fonts_cache = (None, 0, [])
         self._ffmpeg_cache = (0, False)
+        # (background loops in their colour, made once: see media.LoopBaker)
+        self.loops = LoopBaker(os.path.join(DATA_DIR, "cache", "loops"))
+        self._loop_wanted = None
         threading.Thread(target=self._trim_photos, daemon=True).start()
         self._open_lock = threading.Lock()
         self.jobs.listeners.append(self.changed)
@@ -298,6 +301,7 @@ class Engine:
         snap = self.sources.snapshot()
         g = self.global_config()
         snap["tables"]["Global"] = globalcfg.rows(g, self.live_game())
+        self._colour_global_loop(snap["tables"]["Global"])
         snap["tables"]["Global"].append(["Tournament name", tournaments.active_name(self.ws.snapshot().get("tournaments"))])
         snap["tables"]["Sponsors"] = globalcfg.sponsor_rows(g)
         try:
@@ -1146,6 +1150,33 @@ class Engine:
         log(f"Added {name}")
         return result
 
+    def loop_path(self, src):
+        """The file of a background loop ("assets/...", "library/..." or one in web/)."""
+        src = (src or "").split("?")[0]
+        if not src or re.match(r"^[a-z]+:", src):
+            return None
+        path = self.assets.path_of(src) if src.startswith(("assets/", "library/")) else safe_join(WEB_DIR, src)
+        return path if path and os.path.isfile(path) else None
+
+    def coloured_loop(self, src, colour, brightness):
+        """{"url"} of src in that colour, once it's made (see media.LoopBaker)."""
+        try:
+            brightness = float(brightness)
+        except (TypeError, ValueError):
+            brightness = 1.6
+        got = self.loops.get(self.loop_path(src), colour or "", brightness)
+        return {"url": "loops-coloured/" + got["file"]} if "file" in got else got
+
+    def _colour_global_loop(self, rows):
+        """Starts making Global's background loop in its colour when that changes,
+        so it's ready before a board with it goes on air."""
+        d = dict(r[:2] for r in rows[1:] if len(r) >= 2)
+        want = (d.get("BG loop") or "", d.get("BG loop colour") or "", d.get("BG loop brightness") or "1.6")
+        if want == self._loop_wanted or not want[0]:
+            return
+        self._loop_wanted = want
+        threading.Thread(target=self.coloured_loop, args=want, daemon=True).start()
+
     def stinger_cut(self, src):
         path = self.assets.path_of(src)
         if not path or not os.path.isfile(path):
@@ -1405,6 +1436,12 @@ def make_handler(engine):
                 return self._json({"graphics": engine.pack()})
             if path.startswith("/api/source/"):
                 return self._json(engine.sources.table(path.rsplit("/", 1)[1]))
+            if path == "/api/coloured-loop":
+                g1 = lambda k, d="": (q.get(k) or [d])[0]   # noqa: E731
+                return self._json(engine.coloured_loop(g1("src"), g1("color"), g1("brightness", "1.6")))
+            if path.startswith("/loops-coloured/"):
+                full = engine.loops.file(path.rsplit("/", 1)[1])
+                return self._file(full, cache=True) if full else self._json({"error": "not found"}, 404)
             if path == "/api/stinger-cut":
                 return self._json({"cut": engine.stinger_cut((q.get("src") or [""])[0])})
             if path == "/api/hud-look":
@@ -1652,6 +1689,13 @@ def make_handler(engine):
                     live.program(body["id"], bool(body.get("on")), body.get("transition") or "animate")
                 elif path == "/api/clear":
                     live.clear(body.get("bus", "program"), body.get("transition") or "animate")
+                elif path == "/api/stinger-played":
+                    # (an output says how smoothly a stinger played: in the log, to find a laggy output)
+                    total, dropped = int(body.get("total") or 0), int(body.get("dropped") or 0)
+                    if total > 0:
+                        pct = round(100 * dropped / total)
+                        log(f"Stinger {str(body.get('name') or '')[:60]} on an output ({self.client_address[0]}): "
+                            f"{dropped} of {total} frames dropped ({pct}%)", "warn" if pct >= 10 else "info")
                 # --- transitions, data ---
                 elif path == "/api/transitions":
                     ws.set_transitions(body["transitions"], body.get("default"))
