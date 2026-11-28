@@ -760,6 +760,7 @@ DESIGNS = [
     ("valorant", "val-agent-select-champions", "Agent select (Champions)", "/agent-select?look=champions", "Board"),
     ("valorant", "val-mapbans", "Map bans", "/map-bans?bo=3", "Board"),
     ("cod", "cod-overlay", "CDL / codcaster HUD", "/overlay", "In-game HUD"),
+    ("cod", "cod-mapbans", "Map picks & bans", "/map-bans", "Board"),
     ("rl", "rl-newgerrit", "NEW GERRIT", "/overlay-newgerrit", "In-game HUD"),
     ("rl", "rl-gerrit2026", "Gerrit 2026", "/overlay-gerrit2026", "In-game HUD"),
     ("rl", "rl-classic", "Classic", "/overlay-classic", "In-game HUD"),

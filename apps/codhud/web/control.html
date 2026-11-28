@@ -29,6 +29,24 @@
   .maps-list .m label { margin: 0; display: flex; gap: 4px; align-items: center; color: var(--muted); font-size: 12px; white-space: nowrap; }
   .maps-list .m input[type=radio] { width: auto; accent-color: var(--accent); }
   .maps-list .m.off { opacity: .4; }
+  .mb-steps { display: grid; gap: 6px; margin-top: 12px; }
+  .mb-step { display: grid; grid-template-columns: 26px 150px minmax(0, 1fr) 190px; gap: 10px; align-items: center; font-size: 13px; }
+  .mb-step .n { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .mb-step .ban { color: #ff7a7a; font-weight: 600; }
+  .mb-step .pick { color: var(--accent); font-weight: 600; }
+  .mb-step .who { color: var(--muted); font-size: 12px; }
+  .mb-mode { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin: 10px 0 0; }
+  .mb-results { display: grid; gap: 6px; }
+  .mb-result { display: grid; grid-template-columns: 70px minmax(0, 1fr) 80px 80px 150px; gap: 10px; align-items: center; font-size: 13px; }
+  .mb-result .mode { color: var(--muted); font-size: 12px; }
+  .mb-pools { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .mb-pools .checks label { display: flex; align-items: center; gap: 8px; margin: 4px 0; color: var(--text); font-size: 13px; }
+  .mb-art { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .mb-art .m { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; font-size: 12px; }
+  .mb-art .pic { aspect-ratio: 16 / 9; background: #111 center / cover no-repeat; display: grid; place-items: center; color: var(--muted); }
+  .mb-art .bar { display: flex; align-items: center; gap: 4px; padding: 5px 6px; }
+  .mb-art .bar b { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mb-art button { padding: 2px 7px; font-size: 11px; }
   @media (max-width: 700px) { .teams { grid-template-columns: 1fr; } }
   .status { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .dot { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; background: #c0392b; }
@@ -250,6 +268,41 @@
     <p class="note">The score is read off the score box all through a Hardpoint or Hijack game (with Windows' text recognition), timed from when the STARTING IN countdown goes away, and sent to the GFX Engine's <b>Game flow</b> graphic: the score line, the points per hill (Hardpoint, the map sets P1–P5 or P6) or per half with throws, dunks and runoff (Hijack). It keeps the last game until the next one starts. Joined a game late? It starts when the scores climb; "Start clock now" starts it by hand.</p>
   </section>
 
+  <section class="wide" data-page="mapbans">
+    <h2>Map bans <button class="reset" id="mb-clear" title="Clear this veto's bans and picks">Clear</button></h2>
+    <div class="out"><span>Map picks &amp; bans graphics (OBS / vMix browser source, 1920×1080; also in GFX Engine under Game HUD)</span>
+      <div class="row"><code id="url-mb-both"></code><button data-copy="url-mb-both">Copy</button></div>
+      <div class="row" style="margin-top:6px"><code id="url-mb-picks"></code><button data-copy="url-mb-picks">Copy</button></div>
+      <div class="row" style="margin-top:6px"><code id="url-mb-bans"></code><button data-copy="url-mb-bans">Copy</button></div></div>
+    <div class="row" style="align-items:center; flex-wrap: wrap">
+      <div class="seg" id="mb-format"><button data-f="3">Best of 3</button><button data-f="5">Best of 5</button><button data-f="7">Best of 7</button></div>
+      <span class="note" style="margin:0; flex: 0 0 auto">Team A:</span>
+      <div class="seg" id="mb-team-a"><button data-side="left"></button><button data-side="right"></button></div>
+    </div>
+    <p class="note" id="mb-order"></p>
+    <div class="mb-steps" id="mb-steps"></div>
+    <p class="note">The Call of Duty League's veto (Competitive Settings, November 2026): each mode has its own bans and picks; the
+      higher seed chooses to be Team A or Team B. The graphics follow as you fill it in, live on air too.</p>
+  </section>
+
+  <section class="wide" data-page="mapbans">
+    <h2>Maps played</h2>
+    <p class="note" style="margin-top:0">Each map's score shows on the picks board, with the winner's logo (the higher score wins, or pick the winner).</p>
+    <div class="mb-results" id="mb-results"></div>
+  </section>
+
+  <section class="wide" data-page="mapbans">
+    <h2>Map pool <button class="reset" id="mb-current" title="Every mode back to the game's current CDL pool">Current CDL pool</button></h2>
+    <div class="row" style="align-items:center"><div style="flex:0 0 280px"><label style="margin-top:0">Game</label><select id="mb-game"></select></div>
+      <span class="note" id="mb-pool-note" style="margin: 18px 0 0"></span></div>
+    <div class="mb-pools" id="mb-pools"></div>
+    <h3>Pictures</h3>
+    <p class="note" style="margin-top:0">A wide picture of each map (16:9 works best). Add your own for any map; they're kept on this PC.</p>
+    <div class="mb-art" id="mb-art"></div>
+    <input type="file" id="mb-art-file" accept="image/png,image/jpeg,image/webp" hidden>
+    <div class="row" style="margin-top:12px; max-width: 420px"><input type="text" id="mb-custom" placeholder="Another map's name" maxlength="40"><button id="mb-custom-add" style="flex:0 0 auto">Add map</button></div>
+  </section>
+
   <section class="wide" data-page="cams">
     <h2>Webcams</h2>
     <label class="toggle"><input type="checkbox" data-k="cams.enabled"> Show the spectated player's webcam</label>
@@ -325,7 +378,7 @@
 </aside>
 </div>
 
-<script>window.SHELL = {"app": "CoD HUD", "logo": "assets/logo-white.png", "pages": [{"id": "overview", "label": "Overview"}, {"id": "editor", "label": "HUD Editor"}, {"id": "teams", "label": "Match & Teams", "group": "Event setup"}, {"id": "players", "label": "Players", "icon": "teams", "group": "Event setup"}, {"id": "live", "label": "Live Game", "group": "Live game"}, {"id": "cams", "label": "Webcams", "icon": "cams", "group": "Live game"}, {"id": "stats", "label": "Post-game Stats", "icon": "data", "group": "Live game"}, {"id": "calibration", "label": "Calibration", "icon": "settings", "group": "Live game"}, {"id": "engine", "label": "GFX Engine", "icon": "engine", "group": "Connections"}]};</script>
+<script>window.SHELL = {"app": "CoD HUD", "logo": "assets/logo-white.png", "pages": [{"id": "overview", "label": "Overview"}, {"id": "editor", "label": "HUD Editor"}, {"id": "teams", "label": "Match & Teams", "group": "Event setup"}, {"id": "players", "label": "Players", "icon": "teams", "group": "Event setup"}, {"id": "live", "label": "Live Game", "group": "Live game"}, {"id": "cams", "label": "Webcams", "icon": "cams", "group": "Live game"}, {"id": "mapbans", "label": "Map Bans", "icon": "tournament", "group": "Live game"}, {"id": "stats", "label": "Post-game Stats", "icon": "data", "group": "Live game"}, {"id": "calibration", "label": "Calibration", "icon": "settings", "group": "Live game"}, {"id": "engine", "label": "GFX Engine", "icon": "engine", "group": "Connections"}]};</script>
 <script src="enginelink.js"></script>
 <script src="shell.js"></script>
 <script src="update.js"></script>
@@ -640,6 +693,142 @@
     });
   }
 
+
+  // --- map bans -------------------------------------------------------------------------
+  var mbFormat = null, mbArtFor = null;
+  function mbSave(changes) {
+    return post("/api/config", { changes: { map_bans: changes } }).then(function (d) { info = d; cfg.map_bans = d.config.map_bans; renderMapBans(true); });
+  }
+  function mbSteps(n) { return info.map_bans["bo" + n].map(function (s) { return { map: s.auto ? "" : s.map }; }); }
+  $$("#mb-format button").forEach(function (b) { b.onclick = function () { mbFormat = Number(b.dataset.f); renderMapBans(true); }; });
+  $$("#mb-team-a button").forEach(function (b) { b.onclick = function () { mbSave({ team_a: b.dataset.side }); }; });
+  $("#mb-clear").onclick = function () {
+    if (!confirm("Clear the best of " + mbFormat + " veto's bans and picks?")) return;
+    var ch = {}; ch["bo" + mbFormat] = { steps: [] }; mbSave(ch);
+  };
+  $("#mb-current").onclick = function () { post("/api/config", { path: "map_bans.pools", value: null }).then(function (d) { info = d; renderMapBans(true); }); };
+  $("#mb-game").onchange = function () {
+    var g = this.value;
+    post("/api/config", { path: "map_bans.pools", value: null })
+      .then(function () { return mbSave({ game: g }); });
+  };
+  $("#mb-custom-add").onclick = function () {
+    var name = $("#mb-custom").value.trim();
+    if (!name) return;
+    post("/api/map-bans/custom", { add: name }).then(function (d) { info = d; $("#mb-custom").value = ""; renderMapBans(true); });
+  };
+  $("#mb-art-file").onchange = function () {
+    var file = this.files[0], map = mbArtFor;
+    this.value = "";
+    if (!file || !map) return;
+    var r = new FileReader();
+    r.onload = function () { post("/api/map-art", { map: map, data: r.result }).then(function (d) { info = d; renderMapBans(true); }); };
+    r.readAsDataURL(file);
+  };
+  function tri(side) { return (cfg.match[side] || {}).tricode || (cfg.match[side] || {}).name || side; }
+  function renderMapBans(force) {
+    var mb = info.map_bans;
+    if (!mb || !$("#mb-steps").offsetParent && !force) return;
+    if (!mbFormat) { var b = Number(cfg.match.best_of) || 5; mbFormat = b <= 3 ? 3 : b >= 7 ? 7 : 5; }
+    var base = "http://localhost:" + info.port + "/map-bans";
+    $("#url-mb-both").textContent = base;
+    $("#url-mb-picks").textContent = base + "?show=picks";
+    $("#url-mb-bans").textContent = base + "?show=bans";
+    $$("#mb-format button").forEach(function (x) { x.classList.toggle("on", Number(x.dataset.f) === mbFormat); });
+    $$("#mb-team-a button").forEach(function (x) { x.textContent = tri(x.dataset.side); x.classList.toggle("on", x.dataset.side === mb.team_a); });
+    var a = tri(mb.team_a), bb = tri(mb.team_a === "left" ? "right" : "left");
+    $("#mb-order").textContent = a + " is Team A, " + bb + " is Team B." +
+      (Number(cfg.match.best_of) !== mbFormat ? " (The match is a best of " + cfg.match.best_of + "; the graphics show the best of " + mbFormat + " when they're opened with ?bo=" + mbFormat + ".)" : "");
+    // The veto.
+    var box = $("#mb-steps"), steps = mb["bo" + mbFormat];
+    var key = JSON.stringify([mbFormat, steps, mb.pools, cfg.match.left.tricode, cfg.match.right.tricode]);
+    if (force || box.dataset.key !== key && !box.contains(document.activeElement)) {
+      box.dataset.key = key;
+      var html = "", mode = null;
+      steps.forEach(function (st, i) {
+        if (st.mode !== mode) { mode = st.mode; html += '<div class="mb-mode">' + esc(st.mode_name) + "</div>"; }
+        var used = {};
+        steps.forEach(function (x, j) { if (j !== i && x.mode === st.mode && x.map && !x.auto) used[x.map] = 1; });
+        var opts = mb.pools[st.mode].filter(function (m) { return !used[m] || m === st.map; });
+        if (st.map && opts.indexOf(st.map) < 0) opts.push(st.map);
+        var first = st.action === "decider" ? '<option value="">' + (st.auto ? esc(st.map) + " (the map left)" : "The map left") + "</option>" : '<option value="">—</option>';
+        var what = st.action === "decider" ? '<span><span class="pick">Decider</span> · Map ' + st.game + "</span>"
+          : '<span><b>' + esc(tri(st.team)) + '</b> <span class="' + st.action + '">' + (st.action === "ban" ? "bans" : "picks") + "</span>" + (st.game ? " · Map " + st.game : "") + "</span>";
+        html += '<div class="mb-step"><span class="n">' + (i + 1) + "</span>" + what +
+          '<select data-step="' + i + '">' + first + opts.map(function (m) { return "<option" + (m === st.map && !st.auto ? " selected" : "") + ">" + esc(m) + "</option>"; }).join("") + "</select>" +
+          '<span class="who">' + (st.side_team ? esc(tri(st.side_team)) + " picks the side" : "") + "</span></div>";
+      });
+      box.innerHTML = html;
+      $$("[data-step]", box).forEach(function (sel) {
+        sel.onchange = function () {
+          var list = mbSteps(mbFormat); list[sel.dataset.step].map = sel.value;
+          var ch = {}; ch["bo" + mbFormat] = { steps: list }; mbSave(ch);
+        };
+      });
+    }
+    // The maps played.
+    var games = mb["games" + mbFormat], rbox = $("#mb-results");
+    var rkey = JSON.stringify([games, cfg.match.left.tricode, cfg.match.right.tricode]);
+    if (force || rbox.dataset.key !== rkey && !rbox.contains(document.activeElement)) {
+      rbox.dataset.key = rkey;
+      rbox.innerHTML = games.map(function (g) {
+        var sc = function (side) { return '<input type="number" min="0" placeholder="' + esc(tri(side)) + '" data-score="' + side + '" data-game="' + g.n + '" value="' + (g.score[side] == null ? "" : g.score[side]) + '">'; };
+        var cur = (cfg.map_bans.results || {})[String(g.n)] || {};
+        return '<div class="mb-result"><b>Map ' + g.n + '</b><span>' + (g.map ? esc(g.map) : "–") + ' <span class="mode">' + esc(g.mode_name) + "</span></span>" +
+          sc("left") + sc("right") + '<select data-winner="' + g.n + '"><option value="">' + (g.winner && !cur.winner ? "Winner: " + esc(tri(g.winner)) : "Winner: by score") + "</option>" +
+          ["left", "right"].map(function (s) { return '<option value="' + s + '"' + (cur.winner === s ? " selected" : "") + ">" + esc(tri(s)) + " won</option>"; }).join("") + "</select></div>";
+      }).join("");
+      var saveResult = function (n, patch) {
+        var r = Object.assign({}, (cfg.map_bans.results || {})[n] || {}, patch);
+        var res = {}; res[n] = r; mbSave({ results: res });
+      };
+      $$("[data-score]", rbox).forEach(function (inp) {
+        inp.onchange = function () { var p = {}; p[inp.dataset.score] = inp.value === "" ? null : Number(inp.value); saveResult(inp.dataset.game, p); };
+      });
+      $$("[data-winner]", rbox).forEach(function (sel) { sel.onchange = function () { saveResult(sel.dataset.winner, { winner: sel.value || null }); }; });
+    }
+    // The pool.
+    var gsel = $("#mb-game"), gopts = Object.keys(mb.games).map(function (k) { return '<option value="' + k + '">' + esc(mb.games[k]) + "</option>"; }).join("");
+    if (gsel.dataset.opts !== gopts) { gsel.innerHTML = gopts; gsel.dataset.opts = gopts; }
+    if (document.activeElement !== gsel) gsel.value = mb.game;
+    var current = Object.keys(mb.pools).every(function (m) { return JSON.stringify(mb.pools[m]) === JSON.stringify(mb.current_pools[m]); });
+    $("#mb-pool-note").textContent = current ? "The current CDL pool." : "Your own pool (Current CDL pool puts it back).";
+    var pbox = $("#mb-pools"), pkey = JSON.stringify([mb.maps, mb.pools, mb.modes]);
+    if (force || pbox.dataset.key !== pkey) {
+      pbox.dataset.key = pkey;
+      pbox.innerHTML = Object.keys(mb.modes).map(function (mode) {
+        return '<div><h3 style="margin-top:6px">' + esc(mb.modes[mode]) + ' <span class="note">(' + mb.pools[mode].length + ")</span></h3><div class=\"checks\">" +
+          mb.maps.map(function (m) { return '<label><input type="checkbox" data-pool="' + mode + '" value="' + esc(m) + '"' + (mb.pools[mode].indexOf(m) >= 0 ? " checked" : "") + "> " + esc(m) + "</label>"; }).join("") + "</div></div>";
+      }).join("");
+      $$("[data-pool]", pbox).forEach(function (c) {
+        c.onchange = function () {
+          var pools = {};
+          Object.keys(mb.modes).forEach(function (mode) { pools[mode] = $$('[data-pool="' + mode + '"]:checked', pbox).map(function (x) { return x.value; }); });
+          post("/api/config", { path: "map_bans.pools", value: pools }).then(function (d) { info = d; renderMapBans(true); });
+        };
+      });
+    }
+    var abox = $("#mb-art"), akey = JSON.stringify([mb.maps, mb.art, mb.own_art]);
+    if (force || abox.dataset.key !== akey) {
+      abox.dataset.key = akey;
+      var custom = cfg.map_bans.custom || [];
+      abox.innerHTML = mb.maps.map(function (m) {
+        var art = mb.art[m];
+        return '<div class="m"><div class="pic" style="' + (art ? "background-image:url(&quot;" + art + "&quot;)" : "") + '">' + (art ? "" : "No picture") + "</div>" +
+          '<div class="bar"><b title="' + esc(m) + '">' + esc(m) + '</b><button data-art="' + esc(m) + '">' + (art ? "Change" : "Add") + "</button>" +
+          (mb.own_art.indexOf(m) >= 0 ? '<button data-art-off="' + esc(m) + '" title="Take your picture away">✕</button>' : "") +
+          (custom.indexOf(m) >= 0 ? '<button data-custom-off="' + esc(m) + '" title="Take this map off the list">Remove</button>' : "") + "</div></div>";
+      }).join("");
+      $$("[data-art]", abox).forEach(function (b) { b.onclick = function () { mbArtFor = b.dataset.art; $("#mb-art-file").click(); }; });
+      $$("[data-art-off]", abox).forEach(function (b) {
+        b.onclick = function () { if (confirm("Take your picture of " + b.dataset.artOff + " away?")) post("/api/map-art", { map: b.dataset.artOff, data: "" }).then(function (d) { info = d; renderMapBans(true); }); };
+      });
+      $$("[data-custom-off]", abox).forEach(function (b) {
+        b.onclick = function () { post("/api/map-bans/custom", { remove: b.dataset.customOff }).then(function (d) { info = d; cfg.map_bans = d.config.map_bans; renderMapBans(true); }); };
+      });
+    }
+  }
+
   // --- live status --------------------------------------------------------------
   var HUD = { on: "On screen", score: "Score box only", off: "Not on screen" };
   function renderInfo() {
@@ -672,6 +861,7 @@
     $("#r-pixels").innerHTML = "Score box " + px(0, d.pixel1) + (d.pixel2.enabled ? " · Scoreboards " + px(1, d.pixel2) + " " + px(2, d.pixel3) : "");
     renderPostgame();
     renderGameflow();
+    renderMapBans();
     var port = info.port;
     $("#url-local").textContent = "http://localhost:" + port + "/overlay";
     $("#lan-box").hidden = !info.lan_url;
@@ -693,6 +883,7 @@
       } else {
         // (the match and sponsors can change from the GFX Engine's Global information)
         cfg.allow_network = d.config.allow_network; cfg.match = d.config.match; cfg.sponsors = d.config.sponsors; cfg.cams = d.config.cams;
+        cfg.map_bans = d.config.map_bans;
         if (JSON.stringify([cfg.match, cfg.sponsors]) !== before) loadLogos();
       }
       renderInfo();

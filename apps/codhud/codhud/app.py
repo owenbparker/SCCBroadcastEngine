@@ -14,7 +14,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import appearance, detect, fonts, postgame
+from . import appearance, detect, fonts, mapbans, postgame
 from .cams import CamHub
 from .config import DATA_DIR, DEFAULTS, LOGO_DIR, WEB_DIR
 from hudbuilder import embed as hud_builder
@@ -118,9 +118,23 @@ class HudApp:
                 log(f"Couldn't swap the sides on the GFX Engine: {getattr(e, 'reason', e)}", "warn")
         self._applied = {"left_logo_url": self._applied.get("right_logo_url"),
                          "right_logo_url": self._applied.get("left_logo_url"),
-                         "sponsors": self._applied.get("sponsors")}
+                         "sponsors": self._applied.get("sponsors"),
+                         "tournament_logo_url": self._applied.get("tournament_logo_url")}
         self.roster = {"left": self.roster.get("right"), "right": self.roster.get("left")}
         self.changed_match({"left": m["right"], "right": m["left"]})
+        # Map bans: Team A and the maps' scores stay with their teams.
+        mb = cfg.get("map_bans") or {}
+        flip = {"left": "right", "right": "left"}
+        results = {}
+        for k, r in (mb.get("results") or {}).items():
+            r = dict(r or {})
+            r["left"], r["right"] = r.get("right"), r.get("left")
+            if r.get("winner") in flip:
+                r["winner"] = flip[r["winner"]]
+            results[k] = r
+        self.config.set("map_bans.results", results)
+        self.config.set("map_bans.team_a", flip.get(mb.get("team_a"), "right"))
+        self.changed_config()
         log(f"Sides swapped: {m['right']['name'] or 'right team'} on the left")
 
     def changed_config(self):
@@ -278,7 +292,12 @@ class HudApp:
                 "players": self.players(), "cams": self.publishers(),
                 "overlay_window": self.overlay_window.info() if self.overlay_window else {"available": False},
                 "port": port, "lan_url": f"http://{lan}:{port}" if lan else None, "data_dir": DATA_DIR,
-                "engine_connected": bool(self.engine.connected)}
+                "engine_connected": bool(self.engine.connected), "map_bans": mapbans.panel(cfg)}
+
+    def map_bans_view(self, bo=None):
+        """What the map picks / map bans graphics show."""
+        cfg = self.config.get()
+        return mapbans.view(cfg, bo or cfg["match"].get("best_of") or 5, primary_colour(cfg))
 
     def look(self):
         """What the overlay needs of the settings."""
@@ -341,7 +360,15 @@ class HudApp:
         port = self.server.port if self.server else cfg["http_port"]
         if cfg["global"].get("follow", True) and self._synced != self.engine.url:
             series = {}   # (following: the engine's series first, so connecting doesn't overwrite it with the HUD's)
-        return {"fields": fields, "series": series, "hud": {"port": port, "network": bool(cfg.get("allow_network"))},
+        return {"fields": fields, "series": series,
+                "hud": {"port": port, "network": bool(cfg.get("allow_network")),
+                        # The map picks and bans graphics: added to the engine's graphics (Game HUD)
+                        "graphics": [{"id": "map-picks-bans", "name": "Map picks & bans", "path": "/map-bans",
+                                      "kind": "board", "backdrop": True},
+                                     {"id": "map-picks", "name": "Map picks", "path": "/map-bans?show=picks",
+                                      "kind": "board", "backdrop": True},
+                                     {"id": "map-bans", "name": "Map bans", "path": "/map-bans?show=bans",
+                                      "kind": "board"}]},
                 # Hardpoint / Hijack: the score over time, for the engine's Game flow graphic ({}: none yet)
                 "gameflow": self.scanner.gameflow.summary()}
 
@@ -383,6 +410,17 @@ class HudApp:
         if re.fullmatch(r"#[0-9a-f]{6}", accent) and accent != (cfg["overlay"].get("global_accent") or "").lower():
             self.config.set("overlay.global_accent", accent)
             done.append(f"primary colour {accent}")
+        # The tournament logo, under the map picks and bans until the maps are in.
+        turl = g.get("tournament_logo_url") or ""
+        if turl and (force or turl != self._applied.get("tournament_logo_url")):
+            try:
+                name = save_logo_bytes(LOGO_DIR, "engine-tournament", fetch(turl))
+                self._applied["tournament_logo_url"] = turl
+                if f"logos/{name}" != (cfg.get("map_bans") or {}).get("tournament_logo"):
+                    self.config.set("map_bans.tournament_logo", f"logos/{name}")
+                    done.append("tournament logo")
+            except Exception as e:
+                log(f"Couldn't fetch the tournament logo from the GFX Engine: {e}", "warn")
         sponsors = [sp for sp in g.get("sponsors") or [] if sp.get("logo_url")]
         key = json.dumps([[sp["logo_url"], sp.get("secs")] for sp in sponsors])
         if force or key != self._applied.get("sponsors"):
@@ -600,6 +638,16 @@ def make_handler(app):
                 self._file(None, fonts.path_of(unquote(path[len("/fonts/local/"):])))
             elif path == "/api/logos":
                 self._json({"logos": app.logos()})
+            elif path in ("/map-bans", "/map-bans/"):
+                # The map picks and bans graphic (?show=picks / bans, ?bo=3 / 5 / 7).
+                self.send_response(302)
+                self.send_header("Location", "/mapbans/index.html" + (f"?{url.query}" if url.query else ""))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif path == "/api/map-bans":
+                self._json(app.map_bans_view((query.get("bo") or [None])[0]))
+            elif path.startswith("/map-art/"):
+                self._file(None, mapbans.art_by_slug(unquote(path[len("/map-art/"):])))
             elif path == "/api/players":
                 try:
                     self._json(app.player_links())
@@ -699,6 +747,24 @@ def make_handler(app):
                     logo = app.add_logo(body.get("name"), body.get("data"))
                     if body.get("team") in ("left", "right"):
                         app.changed_match({body["team"]: {"logo": logo}})
+                elif path == "/api/map-art":
+                    # {"map", "data": a data: URL, or "" to take the picture added here away}
+                    mapbans.save_art(body.get("map"), body.get("data") or "")
+                    log(f"Map bans: {'new' if body.get('data') else 'removed the'} picture for {body.get('map')}")
+                    app.changed_config()
+                elif path == "/api/map-bans/custom":
+                    # {"add": name} / {"remove": name}: maps added by hand
+                    custom = list((app.config.get().get("map_bans") or {}).get("custom") or [])
+                    if body.get("add"):
+                        name = mapbans.clean_name(body["add"])
+                        if not name:
+                            raise ValueError("type the map's name")
+                        if name.lower() not in {m.lower() for m in mapbans.all_maps(app.config.get())}:
+                            custom.append(name)
+                    if body.get("remove"):
+                        custom = [m for m in custom if m != body["remove"]]
+                    app.config.set("map_bans.custom", custom)
+                    app.changed_config()
                 elif path == "/api/demo":
                     app.scanner.set_demo(bool(body.get("on")))
                 elif path == "/api/overlay-window":

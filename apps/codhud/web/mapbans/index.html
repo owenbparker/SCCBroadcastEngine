@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Map picks &amp; bans</title>
+<!--
+  The map picks and bans graphic (1920x1080, transparent), rebuilt from the
+  vMix title "Cod Maps BO5 CEN": the MAP PICKS board (a column per game of the
+  series: the map, its score and the winner's logo) over the MAP BANS strip
+  (each team's ban in each mode, Team A on top).
+    /map-bans               both
+    /map-bans?show=picks    the picks board only
+    /map-bans?show=bans     the bans strip only
+    ?bo=3 / 5 / 7           another series length than the match's
+  Everything comes live from the CoD HUD's Map Bans page; the teams (names,
+  logos) from the match, which follows the GFX Engine's Global information.
+-->
+<style>
+  @font-face { font-family: "CoD map"; src: local("Dharma Gothic E"), local("Dharma Gothic E Bold"), local("DharmaGothicE-Bold"),
+               url("/fonts/local/Dharma%20Gothic%20E"), url("/fonts/BebasNeue.ttf") format("truetype"); }
+  @font-face { font-family: "CoD label"; src: local("Hitmarker Normal"), local("Hitmarker"), url("/fonts/local/Hitmarker%20Normal"),
+               url("/fonts/Inter.ttf") format("truetype"); font-weight: 100 900; }
+  :root { --primary: #D50537; --primary-hi: #FC003C; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+  .stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  .stage:not(.play) { visibility: hidden; }
+  .abs { position: absolute; }
+
+  /* ---- MAP PICKS ---- */
+  .picks-tag { left: 0; top: 42px; width: 224px; height: 37px; background: linear-gradient(90deg, #020202, #1a1a1a 45%, #5b5b5b); }
+  .picks-txt { left: 9px; top: 36px; width: 216px; height: 53px; display: flex; align-items: center;
+               font: 700 30px "CoD label", "Inter", sans-serif; color: #fff; letter-spacing: .01em; white-space: nowrap; }
+  .back { left: 0; top: 78px; width: 1756px; height: 643px; overflow: hidden; box-shadow: 0 0 3px rgba(0, 0, 0, .6);
+          background: linear-gradient(90deg, var(--primary-hi), var(--primary)); }
+  .back .tlogo { position: absolute; left: 352px; top: 25px; width: 992px; height: 594px; object-fit: contain; opacity: .75;
+                 filter: drop-shadow(0 0 5px rgba(0, 0, 0, .5)); }
+  .col { top: 78px; height: 643px; overflow: hidden; box-shadow: 0 0 5px rgba(0, 0, 0, .5); }
+  .col .art { position: absolute; inset: 0; background: #17181b center / cover no-repeat; }
+  .col .art span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl;
+                   transform: rotate(180deg); font: 150px "CoD map", "Bebas Neue", sans-serif; color: rgba(255, 255, 255, .08);
+                   text-transform: uppercase; white-space: nowrap; }
+  .col.empty .art { background: #1b1c20; }
+  .col .fade { position: absolute; inset: 0; background: rgba(0, 0, 0, .4); }
+  .col .win { position: absolute; left: 81px; top: 72px; width: 395px; height: 396px; object-fit: contain; opacity: 0; transition: opacity .5s; }
+  .col.done .win { opacity: 1; }
+  .col .score { position: absolute; left: 0; right: 0; top: 456px; height: 104px; display: flex; align-items: center; justify-content: center;
+                font: 100px "CoD map", "Bebas Neue", sans-serif; color: #fff; text-shadow: 0 0 5px rgba(0, 0, 0, .8); white-space: nowrap; }
+  .plate { left: -3px; top: 667px; width: 1735px; height: 54px; background: rgba(255, 255, 255, .8); }
+  .name { top: 660px; height: 61px; display: flex; align-items: center; justify-content: center; text-align: center;
+          font: 61px "CoD map", "Bebas Neue", sans-serif; color: #000; text-transform: uppercase; white-space: nowrap; overflow: hidden; }
+  .name.mode { color: rgba(0, 0, 0, .45); }
+  .div { top: 78px; width: 2px; height: 643px; background: #000; }
+
+  /* ---- MAP BANS ---- */
+  .under, .over { left: 469px; top: 785px; width: 944px; height: 197px; }
+  .slogo { left: 787px; top: 823px; width: 373px; height: 141px; object-fit: contain; }
+  .cell { left: 0; top: 0; width: 1920px; height: 1080px; }
+  .cell .pic { position: absolute; background: #222 center / cover no-repeat; }
+  .cell .dark { position: absolute; inset: 0; background: rgba(33, 33, 33, .4); }
+  .cell .bname { position: absolute; display: flex; align-items: center; justify-content: center; text-align: center;
+                 font: 48px "CoD map", "Bebas Neue", sans-serif; color: #fff; text-transform: uppercase; white-space: nowrap;
+                 text-shadow: 0 0 3px rgba(0, 0, 0, .9); }
+  .mode-txt { top: 882px; width: 239px; height: 30px; display: flex; align-items: center; justify-content: center;
+              font: 700 18px "CoD label", "Inter", sans-serif; color: #fff; text-transform: uppercase; white-space: nowrap; }
+  .tlogo-a, .tlogo-b { width: 80px; height: 80px; object-fit: contain; }
+  .tlogo-a { left: 603px; top: 810px; }
+  .tlogo-b { left: 552px; top: 898px; }
+  img[src=""] { visibility: hidden; }
+
+  /* ---- the vMix storyboard, roughly ---- */
+  .play .back { animation: wipeR .5s cubic-bezier(.55, .055, .675, .19) .25s both; }
+  .play .picks-tag { animation: wipeU .5s cubic-bezier(.55, .055, .675, .19) .5s both; }
+  .play .picks-txt { animation: fade .65s cubic-bezier(.55, .055, .675, .19) 1s both; }
+  .play .col { animation: wipeU .35s cubic-bezier(.55, .055, .675, .19) both; }
+  .play .div { animation: wipeU .5s cubic-bezier(.55, .055, .675, .19) both; }
+  .play .plate { animation: wipeU .5s cubic-bezier(.55, .055, .675, .19) .65s both; }
+  .play .name { animation: wipeX .5s ease 1.25s both; }
+  .play .col .score { animation: fade .5s ease 1.5s both; }
+  .play .under { animation: wipeR 1s cubic-bezier(.55, .055, .675, .19) .5s both; }
+  .play .over { animation: wipeR 1.2s cubic-bezier(.55, .055, .675, .19) .45s both; }
+  .play .slogo { animation: zoomfade .65s cubic-bezier(.55, .055, .675, .19) .62s both; }
+  .play .cell.a { animation: wipeU 1.1s ease both; }
+  .play .cell.b { animation: wipeD .9s ease both; }
+  .play .cell .bname { animation: zoomfade 1s cubic-bezier(.55, .055, .675, .19) both; }
+  .play .mode-txt { animation: wipeY .5s cubic-bezier(.55, .055, .675, .19) both; }
+  .play .tlogo-a, .play .tlogo-b { animation: zoomfade .5s cubic-bezier(.55, .055, .675, .19) 1.1s both; }
+  @keyframes wipeR { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes wipeU { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes wipeD { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes wipeX { from { clip-path: inset(0 50% 0 50%); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes wipeY { from { clip-path: inset(50% 0 50% 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes zoomfade { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+  /* (a ban cell's clip-path is its shape; the wipe goes on its inner box) */
+  .play .cell.a, .play .cell.b { animation: none; }
+  .play .cell.a .in { animation: wipeU 1.1s ease both; }
+  .play .cell.b .in { animation: wipeD .9s ease both; }
+</style>
+<!-- HUD Builder > Game HUDs: the changes saved for this design, applied over the page -->
+<script src="/hudedit.js" data-design="cod-mapbans"></script>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<script>
+(function () {
+  "use strict";
+  const q = new URLSearchParams(location.search);
+  const show = q.get("show") === "picks" ? "picks" : q.get("show") === "bans" ? "bans" : "both";
+  const bo = q.get("bo") || "";
+  const stage = document.getElementById("stage");
+  const esc = t => String(t == null ? "" : t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const el = (cls, html, style) => {
+    const d = document.createElement("div");
+    d.className = "abs " + cls;
+    if (html) d.innerHTML = html;
+    if (style) d.setAttribute("style", style);
+    stage.appendChild(d);
+    return d;
+  };
+  const img = (cls, style) => {
+    const i = document.createElement("img");
+    i.className = "abs " + cls;
+    i.alt = "";
+    i.setAttribute("src", "");
+    if (style) i.setAttribute("style", style);
+    i.onerror = () => { i.style.visibility = "hidden"; };
+    i.onload = () => { i.style.visibility = ""; };
+    stage.appendChild(i);
+    return i;
+  };
+  const setSrc = (i, src) => { if (i.getAttribute("src") !== src) i.setAttribute("src", src); };
+  const logoUrl = l => !l ? "" : /^(https?:|data:|\/)/.test(l) ? l : "/" + l;
+
+  // Shrinks a line of text until it fits its box.
+  function fit(box, size) {
+    const span = box.firstElementChild;
+    if (!span) return;
+    span.style.fontSize = size + "px";
+    let s = size;
+    while (s > 12 && span.offsetWidth > box.clientWidth - 8) { s -= 2; span.style.fontSize = s + "px"; }
+  }
+
+  // ---- the picks board ------------------------------------------------------
+  let picks = null;
+  function buildPicks(n) {
+    if (picks) { picks.parts.forEach(p => p.remove()); }
+    const parts = [];
+    const back = el("back", '<img class="tlogo" src="" alt="">');
+    parts.push(back, el("picks-tag"), el("picks-txt", "MAP PICKS"));
+    const W = 1731 / n, cols = [], names = [], divs = [];
+    for (let i = 0; i < n; i++) {
+      const x = Math.round(i * W), w = Math.round((i + 1) * W) - x;
+      const c = el("col", '<div class="art"></div><div class="fade"></div><img class="win" src="" alt=""><div class="score"></div>',
+                   `left:${x}px;width:${w}px;animation-delay:${(.7 + i * .075).toFixed(3)}s`);
+      cols.push(c);
+      parts.push(c);
+    }
+    parts.push(el("plate"));
+    for (let i = 0; i < n; i++) {
+      const x = Math.round(i * W), w = Math.round((i + 1) * W) - x;
+      const d = el("div", "", `left:${x + w - 1}px;animation-delay:${(.5 + i * .1).toFixed(2)}s`);
+      divs.push(d);
+      parts.push(d);
+      const nm = el("name", "<span></span>", `left:${x + 10}px;width:${w - 20}px`);
+      names.push(nm);
+      parts.push(nm);
+    }
+    picks = { n, parts, back, cols, names };
+  }
+
+  function renderPicks(v) {
+    if (!picks || picks.n !== v.games.length) buildPicks(v.games.length);
+    setSrc(picks.back.querySelector(".tlogo"), logoUrl(v.tournament_logo));
+    v.games.forEach((g, i) => {
+      const c = picks.cols[i], art = c.querySelector(".art");
+      const want = g.art ? `url("${g.art}")` : "";
+      if (art.dataset.src !== want + g.map) {
+        art.dataset.src = want + g.map;
+        art.style.backgroundImage = want;
+        art.innerHTML = g.map && !g.art ? `<span style="font-size:${Math.min(150, Math.round(1300 / g.map.length))}px">${esc(g.map)}</span>` : "";
+      }
+      c.classList.toggle("empty", !g.map);
+      c.classList.toggle("done", !!g.winner);
+      const winner = g.winner ? v.teams[g.winner] : null;
+      setSrc(c.querySelector(".win"), winner ? logoUrl(winner.logo) : "");
+      const s = g.score, has = s.left != null || s.right != null;
+      c.querySelector(".score").textContent = has ? `${s.left == null ? 0 : s.left}-${s.right == null ? 0 : s.right}` : "";
+      const nm = picks.names[i];
+      nm.classList.toggle("mode", !g.map);
+      const text = g.map || g.mode_name;
+      if (nm.dataset.t !== text) { nm.dataset.t = text; nm.firstElementChild.textContent = text; fit(nm, 61); }
+    });
+  }
+
+  // ---- the bans strip -----------------------------------------------------------
+  // Each cell's shape (a parallelogram) and where its picture and name go,
+  // from the title: Team A's row on top, Team B's under it.
+  const SLANT = 49;
+  const CELLS = {
+    a: { y: 807, h: 88, x: [730, 957, 1185], w: 226, pic: 772, name: 821, nx: [732, 961, 1190] },
+    b: { y: 894, h: 88, x: [681, 908, 1136], w: 226, pic: 855, name: 917, nx: [676, 905, 1134] },
+  };
+  const MODE_X = [675, 902, 1130];
+  let bans = null;
+  function buildBans() {
+    const parts = [el("under", '<img src="/mapbans/bans-under.png" alt="" style="width:944px;height:197px">'), img("slogo")];
+    const cells = { a: [], b: [] };
+    ["a", "b"].forEach(row => {
+      const r = CELLS[row];
+      r.x.forEach((x, m) => {
+        const poly = `polygon(${x}px ${r.y}px, ${x + r.w}px ${r.y}px, ${x + r.w - SLANT}px ${r.y + r.h}px, ${x - SLANT}px ${r.y + r.h}px)`;
+        const c = el("cell " + row, "", `clip-path:${poly}`);
+        c.innerHTML = `<div class="in" style="position:absolute;left:${x - SLANT}px;top:${r.y}px;width:${r.w + SLANT}px;height:${r.h}px">
+          <div class="pic" style="left:0;top:${r.pic - r.y}px;width:${r.w + SLANT}px;height:153px"></div><div class="dark"></div></div>`;
+        c.querySelector(".in").style.animationDelay = row === "a" ? (.65 + m * .15) + "s" : "0s";
+        const nm = el("cell");
+        nm.innerHTML = `<div class="bname" style="left:${r.nx[m]}px;top:${r.name}px;width:177px;height:51px;animation-delay:${(1.55 + m * .15).toFixed(2)}s"><span></span></div>`;
+        cells[row].push({ c, nm: nm.firstElementChild });
+        parts.push(c, nm);
+      });
+    });
+    const over = el("over", '<img src="/mapbans/bans-over.png" alt="" style="width:944px;height:197px">');
+    parts.push(over);
+    const modes = MODE_X.map((x, m) => {
+      const d = el("mode-txt", "", `left:${x}px;animation-delay:${(1.45 + m * .15).toFixed(2)}s`);
+      parts.push(d);
+      return d;
+    });
+    const la = img("tlogo-a"), lb = img("tlogo-b");
+    parts.push(la, lb);
+    bans = { parts, cells, modes, la, lb, slogo: parts[1] };
+  }
+
+  function renderBans(v) {
+    if (!bans) buildBans();
+    setSrc(bans.slogo, logoUrl(v.tournament_logo));
+    setSrc(bans.la, logoUrl(v.teams[v.team_a].logo));
+    setSrc(bans.lb, logoUrl(v.teams[v.team_b].logo));
+    v.modes.forEach((m, i) => { bans.modes[i].textContent = m.name; });
+    ["a", "b"].forEach((row, r) => {
+      v.bans[r].cells.forEach((cell, m) => {
+        const { c, nm } = bans.cells[row][m];
+        const on = !!cell.map;
+        c.style.display = on ? "" : "none";
+        nm.parentElement.style.display = on ? "" : "none";
+        const pic = c.querySelector(".pic"), want = cell.art ? `url("${cell.art}")` : "";
+        if (pic.dataset.src !== want) { pic.dataset.src = want; pic.style.backgroundImage = want; }
+        const text = cell.map || "";
+        if (nm.dataset.t !== text) { nm.dataset.t = text; nm.firstElementChild.textContent = text; fit(nm, 48); }
+      });
+    });
+  }
+
+  let shown = "";
+  function render(v) {
+    const key = JSON.stringify(v);
+    if (key === shown) return;
+    shown = key;
+    document.documentElement.style.setProperty("--primary", v.primary || "#D50537");
+    document.documentElement.style.setProperty("--primary-hi", lighten(v.primary || "#D50537", .12));
+    if (show !== "bans") renderPicks(v);
+    if (show !== "picks") renderBans(v);
+    stage.classList.add("play");   // (the first data starts the storyboard)
+  }
+  function lighten(hex, k) {
+    const n = parseInt(String(hex).slice(1), 16);
+    if (isNaN(n)) return hex;
+    const ch = s => Math.min(255, Math.round(((n >> s) & 255) + (255 - ((n >> s) & 255)) * k));
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+  if (document.fonts) document.fonts.addEventListener("loadingdone", () => {
+    document.querySelectorAll(".name, .bname").forEach(b => fit(b, b.classList.contains("name") ? 61 : 48));
+  });
+
+  async function poll() {
+    try { render(await (await fetch("/api/map-bans" + (bo ? "?bo=" + encodeURIComponent(bo) : ""), { cache: "no-store" })).json()); }
+    catch (e) { /* the HUD is restarting */ }
+    setTimeout(poll, 500);
+  }
+  poll();
+})();
+</script>
+</body>
+</html>
