@@ -14,3 +14,4 @@ smoke-test.txt
 /apps/*/settings.json
 /apps/*/workspaces/
 /apps/*/library/
+/apps/*/cache/

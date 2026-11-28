@@ -386,12 +386,36 @@
   function tintedVideo(layer, value, opts) {
     const box = el("div", "gfx-media gfx-tint");
     if (!value) return box;
+    const speed = Math.max(0.1, Math.min(4, +GFX.resolve(layer.speed ?? 1) || 1));
+    // (playing: the copy the engine made in this colour, when it's there - see colouredLoop)
+    const made = opts.still ? null : colouredLoop(layer, value);
+    if (made) {
+      const v = el("video", "gfx-media", { objectFit: "cover" });
+      v.src = url(made);
+      v.muted = true; v.loop = true; v.playsInline = true; v.preload = "auto"; v.autoplay = true;
+      v.addEventListener("loadedmetadata", () => { v.playbackRate = speed; });
+      v.addEventListener("error", () => { coloured.set(loopKey(layer, value), ""); });
+      v.play().catch(() => {});
+      box.appendChild(v);
+      return box;
+    }
     const v = el("video", "gfx-media", { objectFit: "cover",
       filter: `grayscale(1) brightness(${+GFX.resolve(layer.brightness ?? 1.6) || 1.6})` });
     v.src = url(encodeURI(value));
     v.muted = true; v.loop = true; v.playsInline = true; v.preload = "auto";
-    const speed = Math.max(0.1, Math.min(4, +GFX.resolve(layer.speed ?? 1) || 1));
     v.addEventListener("loadedmetadata", () => { v.playbackRate = speed; });
+    // (the copy comes while it's on air: swapped in at the same point, once it can play there)
+    if (!opts.still) waitLoop(loopKey(layer, value), made => {
+      if (!box.isConnected || v.parentNode !== box) return;
+      const c = el("video", "gfx-media", { objectFit: "cover" });
+      c.muted = true; c.loop = true; c.playsInline = true; c.preload = "auto";
+      c.src = url(made);
+      c.addEventListener("loadedmetadata", () => { c.playbackRate = speed; c.currentTime = (v.currentTime + 0.25) % (c.duration || 1); }, { once: true });
+      c.addEventListener("seeked", () => {
+        if (!box.isConnected || v.parentNode !== box) return;
+        c.play().then(() => { box.replaceChildren(c); v.removeAttribute("src"); v.load(); }).catch(() => {});
+      }, { once: true });
+    });
     if (opts.still) v.addEventListener("loadeddata", () => { try { v.currentTime = 2; } catch (e) { /* */ } }, { once: true });
     else { v.autoplay = true; v.play().catch(() => {}); }
     // (the colour only once there's a picture to colour: on its own it would fill the box)
@@ -400,6 +424,37 @@
     v.addEventListener("error", () => { v.remove(); tint.remove(); });
     box.append(v, tint);
     return box;
+  }
+
+  // Coloured live, the loop costs the output a CSS filter and a blend over a
+  // 1080p video every frame: a board with it drew at under 20 frames a second
+  // and a stinger over it dropped most of its frames. The engine makes a copy
+  // in the colour once (/api/coloured-loop); until it's there (or with no
+  // engine: exported graphics) the loop is coloured live.
+  const coloured = new Map();   // key -> address of the copy | "" (none) | a promise (asked)
+  const loopKey = (layer, value) => [value, (GFX.resolve(layer.tint) || "#ffffff").trim().toLowerCase(),
+    +GFX.resolve(layer.brightness ?? 1.6) || 1.6].join("|");
+  function colouredLoop(layer, value) {
+    if (!value || /\{\{/.test(value) || /^(https?:|data:|blob:)/.test(value) || window.GFX_EXPORT) return null;
+    const key = loopKey(layer, value), have = coloured.get(key);
+    if (typeof have === "string") return have || null;
+    if (!have) askLoop(key, 0);
+    return null;
+  }
+  // fn(address) once the copy for key is there (not at all if there won't be one).
+  function waitLoop(key, fn, tries = 0) {
+    const have = coloured.get(key);
+    if (typeof have === "string") { if (have) fn(have); return; }
+    if (have && tries < 200) setTimeout(() => waitLoop(key, fn, tries + 1), 1000);
+  }
+  function askLoop(key, tries) {
+    const [src, color, brightness] = key.split("|");
+    const q = new URLSearchParams({ src, color, brightness });
+    coloured.set(key, fetch(url("api/coloured-loop?" + q)).then(r => r.json()).then(j => {
+      if (j.url) coloured.set(key, j.url);
+      else if (j.pending && tries < 60) setTimeout(() => askLoop(key, tries + 1), 3000);
+      else coloured.set(key, "");
+    }).catch(() => coloured.set(key, "")));
   }
 
   // A picture in another colour (the backdrop under the background loop, in
@@ -1194,7 +1249,12 @@
         if (layer.visible === false) continue;
         if (layer.type !== "image" && layer.type !== "video") continue;
         const v = GFX.content(layer, values);
-        if (layer.type === "video") { if (v && !/\{\{/.test(v)) videos.add(url(encodeURI(v))); continue; }
+        if (layer.type === "video") {
+          if (!v || /\{\{/.test(v)) continue;
+          const made = layer.tint ? colouredLoop(layer, v) : null;
+          videos.add(made ? url(made) : url(encodeURI(v)));
+          continue;
+        }
         if (v.startsWith("{{Sponsors")) continue;
         if (layer.tint && v && !/\{\{/.test(v) && hexRgb(GFX.resolve(layer.tint))) tintSrc(v, GFX.resolve(layer.tint));
         if (GFX.accent() && accentPic(layer, v)) { const a = accentSrc(v, GFX.accent()); if (typeof a === "string") want.add(a); }
@@ -2045,17 +2105,31 @@
       const v = this.stingerVideo(t.src);
       v.muted = !!this.opts.monitor || t.audio === false;
       v.volume = t.volume == null ? 1 : +t.volume;
-      v.currentTime = 0;
+      // (it was put back to the start when it last ended: no seek on the button)
+      if (v.currentTime) v.currentTime = 0;
       v.style.visibility = "visible";
       let swapped = false;
+      const q0 = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+      const report = () => {
+        // (how smoothly it played, in the engine's log: Program outputs, not the control panel's monitors)
+        if (!q0 || this.opts.monitor || this.opts.comp || window.GFX_EXPORT) return;
+        const q = v.getVideoPlaybackQuality();
+        const total = q.totalVideoFrames - q0.totalVideoFrames, dropped = q.droppedVideoFrames - q0.droppedVideoFrames;
+        if (total > 0) fetch(url("api/stinger-played"), { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: t.name || t.src, total, dropped }) }).catch(() => {});
+      };
       const swap = () => { if (!swapped) { swapped = true; animDelay > 0 ? this.sync(want, "animate", { animAt }) : this.sync(want, "cut"); } };
       const cutAt = Math.max(0, +t.cut || 0) / 1000;
-      const hide = () => { v.pause(); v.style.visibility = "hidden"; v.removeEventListener("timeupdate", tick); };
+      const hide = () => {
+        v.pause(); v.style.visibility = "hidden"; v.removeEventListener("timeupdate", tick);
+        // (back to the start now, ready for the next take)
+        v.currentTime = 0;
+      };
       const tick = () => { if (v.currentTime >= cutAt) swap(); };
       // timeupdate fires only ~4 times a second: a timer catches the cut on time.
       const timer = setTimeout(swap, cutAt * 1000 + 30);
       v.addEventListener("timeupdate", tick);
-      v.onended = () => { swap(); hide(); };
+      v.onended = () => { swap(); report(); hide(); };
       this.cleanup.push(() => { clearTimeout(timer); swap(); hide(); });
       const started = v.play();
       if (started) started.catch(() => { v.muted = true; v.play().catch(() => { clearTimeout(timer); swap(); hide(); }); });

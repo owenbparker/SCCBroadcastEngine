@@ -194,3 +194,133 @@ def save_meta(assets_dir, meta):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1)
     os.replace(tmp, meta_path(assets_dir))
+
+
+# --- the background loop, coloured once ---------------------------------------
+#
+# A board's background loop is shown in one colour: the video in grey, made
+# brighter, with the colour multiplied over it. Done live by the outputs (a CSS
+# filter and a blend over a 1080p video, every frame) that costs the output a
+# lot: a board with the loop on it rendered at under 20 frames a second, and a
+# stinger played over it dropped most of its frames. So the engine makes a
+# copy of the loop in that colour once, with FFmpeg, and the outputs play that.
+
+_BELOW_NORMAL = 0x00004000 if sys.platform == "win32" else 0
+GREY = (0.2126, 0.7152, 0.0722)   # CSS grayscale(1)
+
+
+def parse_colour(colour):
+    m = re.fullmatch(r"#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})", (colour or "").strip())
+    if not m:
+        return None
+    h = m[1] if len(m[1]) == 6 else "".join(c * 2 for c in m[1])
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def tint_loop(src, dest, colour, brightness, threads=2):
+    """Writes src in one colour to dest (MP4, H.264): the same picture as the
+    outputs' grayscale(1) brightness(b) with the colour multiplied over it."""
+    exe = ffmpeg_path()
+    if not exe:
+        raise RuntimeError("FFmpeg isn't available")
+    rgb = parse_colour(colour)
+    if rgb is None:
+        raise ValueError(f"Not a colour: {colour}")
+    grey = ":".join(f"{c}{k}={w * brightness:.5f}" for c in "rgb" for k, w in zip("rgb", GREY))
+    r, g, b = (v / 255 for v in rgb)
+    vf = (f"scale=in_color_matrix=bt709:in_range=tv,format=gbrp,colorchannelmixer={grey},"
+          f"colorchannelmixer=rr={r:.5f}:gg={g:.5f}:bb={b:.5f},"
+          f"scale=out_color_matrix=bt709:out_range=tv,format=yuv420p")
+    args = [exe, "-hide_banner", "-loglevel", "error", "-y", "-i", src, "-map", "0:v:0", "-vf", vf,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-g", "60", "-threads", str(threads),
+            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            "-movflags", "+faststart", "-an", "-f", "mp4", dest + ".part"]
+    kw = {"creationflags": _NO_WINDOW | _BELOW_NORMAL}
+    if sys.platform != "win32":
+        kw = {"preexec_fn": lambda: os.nice(10)}
+    proc = subprocess.run(args, capture_output=True, text=True, errors="replace", **kw)
+    if proc.returncode != 0:
+        try:
+            os.remove(dest + ".part")
+        except OSError:
+            pass
+        raise RuntimeError("FFmpeg couldn't colour the loop: " + proc.stderr.strip()[-300:])
+    os.replace(dest + ".part", dest)
+    return dest
+
+
+class LoopBaker:
+    """Coloured copies of background loops, made in the background, one at a
+    time, kept in a folder (the newest KEEP)."""
+    KEEP = 24
+
+    def __init__(self, folder, on_done=lambda: None):
+        self.folder = folder
+        self.on_done = on_done
+        self.lock = threading.Lock()
+        self.queue = []        # (key, src, colour, brightness)
+        self.failed = {}       # key -> why
+        self.busy = None
+
+    @staticmethod
+    def key(path, colour, brightness):
+        import hashlib
+        st = os.stat(path)
+        raw = f"{os.path.abspath(path)}|{st.st_size}|{int(st.st_mtime)}|{colour.lower()}|{brightness:.3f}|1"
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:20]
+
+    def file(self, name):
+        """The file for "<key>.mp4" (None if it isn't made)."""
+        if not re.fullmatch(r"[0-9a-f]{20}\.mp4", name or ""):
+            return None
+        path = os.path.join(self.folder, name)
+        return path if os.path.isfile(path) else None
+
+    def get(self, path, colour, brightness):
+        """{"file": "<key>.mp4"} when the copy is made; else it's started
+        (or queued) and {"pending": True}, or {"error": why}."""
+        if not path or not os.path.isfile(path):
+            return {"error": "No such video"}
+        if parse_colour(colour) is None:
+            return {"error": "Not a colour"}
+        brightness = max(0.0, min(10.0, float(brightness)))
+        key = self.key(path, colour, brightness)
+        if os.path.isfile(os.path.join(self.folder, key + ".mp4")):
+            return {"file": key + ".mp4"}
+        with self.lock:
+            if key in self.failed:
+                return {"error": self.failed[key]}
+            if self.busy != key and all(q[0] != key for q in self.queue):
+                self.queue.append((key, path, colour, brightness))
+                if not self.busy:
+                    threading.Thread(target=self._run, daemon=True).start()
+                    self.busy = "starting"
+        return {"pending": True}
+
+    def _run(self):
+        while True:
+            with self.lock:
+                if not self.queue:
+                    self.busy = None
+                    return
+                key, path, colour, brightness = self.queue.pop(0)
+                self.busy = key
+            try:
+                os.makedirs(self.folder, exist_ok=True)
+                tint_loop(path, os.path.join(self.folder, key + ".mp4"), colour, brightness)
+                log(f"Coloured the background loop {os.path.basename(path)} {colour} for the outputs")
+                self._trim()
+                self.on_done()
+            except Exception as e:
+                log(f"Couldn't colour the background loop: {e}", "error")
+                with self.lock:
+                    self.failed[key] = str(e)
+
+    def _trim(self):
+        try:
+            files = [os.path.join(self.folder, f) for f in os.listdir(self.folder) if f.endswith(".mp4")]
+            files.sort(key=os.path.getmtime, reverse=True)
+            for old in files[self.KEEP:]:
+                os.remove(old)
+        except OSError:
+            pass
